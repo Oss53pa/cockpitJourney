@@ -1,14 +1,15 @@
-// First-launch seed for CockpitJourney.
+// Per-user demo seed for CockpitJourney.
 //
-// Runs ONCE per Supabase database (when cj_profiles is empty). After that,
-// Supabase is the source of truth — the seed itself is just initial demo
-// data, not application state.
+// Runs ONCE per authenticated user (when their cj_profiles row count is 0).
+// All seeded entities have namespaced IDs (`<8-char hash>_<original id>`)
+// so two users with the same demo data don't collide on the global PK.
 //
-// On subsequent logins by the same user (with cj_profiles already populated),
-// we just link auth.users.id to the existing 'u_pame' profile if not done yet.
+// The "self" profile is `<prefix>_u_pame` — that's the persona the user
+// embodies when they log in. The other profiles (KJ, AD, MS, EV, AA, BEN)
+// are demo teammates owned by the same auth user.
 
 import { supabase } from './supabase';
-import { isEmpty, persist, setCurrentProfileId } from './repo';
+import { isEmpty, persist, setCurrentProfileId, setCurrentAuthUserId } from './repo';
 import {
   users,
   folders,
@@ -21,7 +22,7 @@ import {
   insights,
 } from '../data/mockData';
 
-/* ───────────── Demo data (matches the previous Dexie seed) ───────────── */
+/* ───────────── Demo data extending the mockData seed ───────────── */
 
 const automations = [
   {
@@ -300,35 +301,80 @@ const defaultSettings: Record<string, unknown> = {
   proph3t: { provider: 'groq', apiKey: '', model: 'llama-3.3-70b-versatile' },
 };
 
-/* ───────────── Bootstrap ───────────── */
+/* ───────────── Per-user namespacing ───────────── */
 
 /**
- * If the cj_* schema has no profiles yet, populate it from the demo data.
- * Returns true if seeding occurred.
+ * Recursively rewrite every ID-like string in `value` by prepending the
+ * user's 8-char prefix. The match pattern is intentionally strict so we
+ * never mutate free-form user copy:
+ *   u_, p_, s_, t_, g_, c_, n_, i_   → followed by [a-z0-9_-]
+ *   a, f, d, av, at, ff, fg          → followed by digits (a1, f1, av5, at3)
+ *   st_seed                          → fixed prefix for the seed subtasks
+ *
+ * The whole string must also have no spaces and ≤ 50 chars.
+ *
+ * Returns a deep clone — does NOT mutate the input.
+ */
+const ID_REGEX = /^(u_|p_|s_|t_|g_|c_|n_|i_)[a-z0-9_-]+$|^(a|f|d|av|at|ff|fg)\d+$|^st_seed\d+$/;
+
+function shouldRewrite(s: string): boolean {
+  return s.length <= 50 && !s.includes(' ') && ID_REGEX.test(s);
+}
+
+function nsClone<T>(value: T, prefix: string): T {
+  if (typeof value === 'string') {
+    return (shouldRewrite(value) ? `${prefix}_${value}` : value) as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => nsClone(v, prefix)) as unknown as T;
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = nsClone(v, prefix);
+    }
+    return out as T;
+  }
+  return value;
+}
+
+/* ───────────── Bootstrap (per-user) ───────────── */
+
+/**
+ * If the current authenticated user has no cj_profiles row, populate
+ * the demo data into their namespace. Idempotent — safe to call on
+ * every login.
  */
 export async function seedDatabaseIfEmpty(): Promise<boolean> {
   if (!(await isEmpty())) return false;
 
-  // Insert in FK-safe order. We use `persist.bulkPut` so writes go through
-  // the same write-tracked queue as runtime mutations.
-  await persist.bulkPut('users', users);
-  await persist.bulkPut('folders', folders);
-  await persist.bulkPut('projects', projects);
-  await persist.bulkPut('sections', sections);
-  await persist.bulkPut('tasks', tasks);
-  await persist.bulkPut('goals', goals);
-  await persist.bulkPut('comments', comments);
-  await persist.bulkPut('notifications', notifications);
-  await persist.bulkPut('insights', insights);
-  await persist.bulkPut('automations', automations as never);
-  await persist.bulkPut('forms', forms as never);
-  await persist.bulkPut('attachments', attachments as never);
-  await persist.bulkPut('dependencies', dependencies as never);
-  await persist.bulkPut('activity', activity as never);
-  await persist.bulkPut('subtasks', subtasks as never);
-  await persist.bulkPut('notes', notes as never);
+  // Find the current authenticated user
+  const { data: sessionData } = await supabase.auth.getSession();
+  const authUserId = sessionData.session?.user.id;
+  if (!authUserId) return false;
 
-  // Settings — bind to the current profile (set by auth bootstrap).
+  const prefix = authUserId.slice(0, 8);
+
+  // Insert in FK-safe order with namespaced IDs.
+  await persist.bulkPut('users', nsClone(users, prefix));
+  await persist.bulkPut('folders', nsClone(folders, prefix));
+  await persist.bulkPut('projects', nsClone(projects, prefix));
+  await persist.bulkPut('sections', nsClone(sections, prefix));
+  await persist.bulkPut('tasks', nsClone(tasks, prefix));
+  await persist.bulkPut('goals', nsClone(goals, prefix));
+  await persist.bulkPut('comments', nsClone(comments, prefix));
+  await persist.bulkPut('notifications', nsClone(notifications, prefix));
+  await persist.bulkPut('insights', nsClone(insights, prefix));
+  await persist.bulkPut('automations', nsClone(automations, prefix));
+  await persist.bulkPut('forms', nsClone(forms, prefix));
+  await persist.bulkPut('attachments', nsClone(attachments, prefix));
+  await persist.bulkPut('dependencies', nsClone(dependencies, prefix));
+  await persist.bulkPut('activity', nsClone(activity, prefix));
+  await persist.bulkPut('subtasks', nsClone(subtasks, prefix));
+  await persist.bulkPut('notes', nsClone(notes, prefix));
+
+  // Settings: bind to the user's "self" profile (the cloned u_pame).
+  setCurrentProfileId(`${prefix}_u_pame`);
   for (const [key, value] of Object.entries(defaultSettings)) {
     await persist.setSetting(key, value);
   }
@@ -337,53 +383,45 @@ export async function seedDatabaseIfEmpty(): Promise<boolean> {
 }
 
 /**
- * Bind the authenticated auth.users.id to a cj_profiles row. By default
- * the demo seed creates 'u_pame' for Pamela; the first authenticated user
- * claims that profile (so the app maps "u_pame" everywhere to the real user).
+ * Ensure the current auth user has a profile row to act as. We use
+ * `<prefix>_u_pame` as the canonical "self" profile id since the seed
+ * always creates it. If no seed has run yet (returning user, no demo
+ * data), this still returns the conventional id so the rest of the
+ * app keeps working.
  *
- * If no demo profile exists yet, the caller should run seedDatabaseIfEmpty()
- * first — but this function is safe to call multiple times.
+ * Called by appStore right after `setCurrentAuthUserId`. Returns the
+ * profileId to wire into the in-memory store.
  */
 export async function linkAuthUserToProfile(authUserId: string, email: string) {
-  // Try to claim the existing 'u_pame' profile if it has no auth_user_id yet
-  // and matches the user's email (or there's no claim conflict).
+  setCurrentAuthUserId(authUserId);
+  const prefix = authUserId.slice(0, 8);
+  const expectedSelfId = `${prefix}_u_pame`;
+
+  // Check if the self profile already exists
   const { data: existing } = await supabase
     .from('cj_profiles')
-    .select('id, auth_user_id')
+    .select('id')
     .eq('auth_user_id', authUserId)
+    .eq('id', expectedSelfId)
     .maybeSingle();
 
   if (existing) {
-    setCurrentProfileId((existing as { id: string }).id);
-    return (existing as { id: string }).id;
+    setCurrentProfileId(expectedSelfId);
+    return expectedSelfId;
   }
 
-  // Pick the first unclaimed profile (preferring 'u_pame').
-  const { data: candidates } = await supabase
-    .from('cj_profiles')
-    .select('id')
-    .is('auth_user_id', null)
-    .order('id', { ascending: true });
+  // No self profile — make one (covers the case of an existing user
+  // whose seed somehow didn't run, or who came in fresh).
+  const profile = {
+    id: expectedSelfId,
+    name: email.split('@')[0] || 'Utilisateur',
+    initials: ((email[0] || 'U').toUpperCase() + (email[1] || '')).toUpperCase().slice(0, 2),
+    email,
+    role: 'CEO · Atlas Studio',
+    color: '#95B07D',
+  };
+  await persist.put('users', profile);
 
-  let profileId: string;
-  if (candidates && candidates.length > 0) {
-    const pame = (candidates as { id: string }[]).find((p) => p.id === 'u_pame');
-    profileId = pame ? pame.id : (candidates[0] as { id: string }).id;
-    await supabase.from('cj_profiles').update({ auth_user_id: authUserId }).eq('id', profileId);
-  } else {
-    // No unclaimed profiles → create one fresh.
-    profileId = `u_${authUserId.slice(0, 8)}`;
-    const profile = {
-      id: profileId,
-      name: email.split('@')[0] || 'Utilisateur',
-      initials: (email[0] || 'U').toUpperCase() + (email[1] || '').toUpperCase(),
-      email,
-      role: 'Utilisateur',
-      color: '#95B07D',
-    };
-    await supabase.from('cj_profiles').insert({ id: profileId, auth_user_id: authUserId, data: profile });
-  }
-
-  setCurrentProfileId(profileId);
-  return profileId;
+  setCurrentProfileId(expectedSelfId);
+  return expectedSelfId;
 }

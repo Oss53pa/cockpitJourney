@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist as dbPersist, loadSnapshot, wipeDatabase } from '../lib/repo';
+import { persist as dbPersist, loadSnapshot, wipeDatabase, setCurrentAuthUserId } from '../lib/repo';
 import { seedDatabaseIfEmpty, linkAuthUserToProfile } from '../lib/seed';
 import { supabase, SUPABASE_CONFIGURED } from '../lib/supabase';
 import type {
@@ -368,10 +368,14 @@ const uid = (prefix = 'id') => `${prefix}_${Math.random().toString(36).slice(2, 
 async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn, get: GetFn) {
   set({ authStatus: 'signed_in', authEmail: email });
 
-  // Seed the cj_* tables on first ever launch (any user can trigger it).
+  // CRITICAL: set the auth user id FIRST so every subsequent write
+  // (seed, profile link, settings) carries the correct ownership.
+  setCurrentAuthUserId(authUserId);
+
+  // Seed the cj_* tables on first launch FOR THIS USER (RLS-scoped).
   await seedDatabaseIfEmpty();
 
-  // Bind this auth user to a profile (claims 'u_pame' if available).
+  // Bind this auth user to their self-profile (creates one if missing).
   const profileId = await linkAuthUserToProfile(authUserId, email);
 
   const snap = await loadSnapshot();
@@ -472,6 +476,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     // Subscribe to auth state changes (single subscription per app lifecycle)
     supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT' || !session) {
+        setCurrentAuthUserId(null);
         set({
           authStatus: 'signed_out',
           authEmail: undefined,
@@ -549,7 +554,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     get().logActivity({
       taskId: t.id,
       projectId: t.projectId,
-      actorId: 'u_pame',
+      actorId: get().currentProfileId || 'u_pame',
       verb: 'a créé la tâche',
       target: t.title,
     });
@@ -568,7 +573,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     if (t) {
       get().logActivity({
         projectId: t.projectId,
-        actorId: 'u_pame',
+        actorId: get().currentProfileId || 'u_pame',
         verb: 'a supprimé la tâche',
         target: t.title,
       });
@@ -586,7 +591,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     get().logActivity({
       taskId: t.id,
       projectId: t.projectId,
-      actorId: 'u_pame',
+      actorId: get().currentProfileId || 'u_pame',
       verb: isDone ? 'a rouvert' : 'a terminé',
       target: t.title,
     });
@@ -612,7 +617,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       get().logActivity({
         taskId: id,
         projectId: t.projectId,
-        actorId: 'u_pame',
+        actorId: get().currentProfileId || 'u_pame',
         verb: 'a déplacé vers',
         target: sec.name,
       });
@@ -624,13 +629,14 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       get().logActivity({
         taskId: id,
         projectId: t.projectId,
-        actorId: 'u_pame',
+        actorId: get().currentProfileId || 'u_pame',
         verb: 'a changé la priorité en',
         target: ['Faible', 'Normale', 'Haute', 'Critique'][priority - 1],
       });
   },
 
-  addComment: (taskId, body, authorId = 'u_pame') => {
+  addComment: (taskId, body, authorId) => {
+    authorId = authorId || get().currentProfileId || 'u_pame';
     const c: Comment = { id: uid('c'), taskId, authorId, body, createdAt: new Date().toISOString() };
     set((s) => ({ comments: [...s.comments, c] }));
     dbPersist.put('comments', c);
@@ -710,11 +716,11 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       status: p.status ?? 'active',
       color: p.color ?? '#95B07D',
       icon: p.icon ?? 'Compass',
-      ownerId: p.ownerId ?? 'u_pame',
+      ownerId: p.ownerId ?? get().currentProfileId ?? 'u_pame',
       health: p.health ?? 'green',
       progress: p.progress ?? 0,
       taskCount: 0,
-      membersIds: p.membersIds ?? ['u_pame'],
+      membersIds: p.membersIds ?? [get().currentProfileId ?? 'u_pame'],
       startDate: p.startDate,
       endDate: p.endDate,
     };
@@ -1061,7 +1067,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       title: `${titles[kind]} — ${period}`,
       period,
       generatedAt: new Date().toISOString(),
-      authorId: 'u_pame',
+      authorId: get().currentProfileId || 'u_pame',
       highlights: [
         `${tasksDone} tâches livrées sur la période (toutes périodes confondues)`,
         `${goalsProgress.filter((g) => g.health === 'green').length} goals on-track sur ${goals.length}`,
@@ -1189,7 +1195,12 @@ Reste sous 400 mots, ton factuel et engagé.`,
     dbPersist.put('attachments', at);
     const t = get().tasks.find((x) => x.id === taskId);
     if (t) get().updateTask(taskId, { attachmentCount: (t.attachmentCount || 0) + 1 });
-    get().logActivity({ taskId, actorId: 'u_pame', verb: 'a ajouté la pièce jointe', target: name });
+    get().logActivity({
+      taskId,
+      actorId: get().currentProfileId || 'u_pame',
+      verb: 'a ajouté la pièce jointe',
+      target: name,
+    });
     get().pushToast({ kind: 'success', title: 'Pièce jointe ajoutée', body: name });
   },
   removeAttachment: (id) => {

@@ -152,19 +152,25 @@ function indexedColsFor(table: AppTable, entity: Record<string, unknown>): Index
 }
 
 /**
- * Build the row to insert into Supabase. Always includes id + data.
+ * Build the row to insert into Supabase. Always includes id + data + auth_user_id.
  * For cj_notes the PK is task_id (no `id` column).
  * For cj_settings the PK is (profile_id, key) — handled separately.
  */
 function buildRow(table: AppTable, entity: Record<string, unknown>) {
+  const authUserId = getCurrentAuthUserId();
+  if (!authUserId) {
+    throw new Error(`[repo] cannot write to ${table}: no authenticated user. Sign in first.`);
+  }
   if (table === 'notes') {
     return {
       task_id: entity.taskId,
+      auth_user_id: authUserId,
       data: entity,
     };
   }
   return {
     id: entity.id as string,
+    auth_user_id: authUserId,
     ...indexedColsFor(table, entity),
     data: entity,
   };
@@ -304,9 +310,10 @@ function emptySnapshot(): Snapshot {
   };
 }
 
-/* ───────────── Settings (per-profile) ───────────── */
+/* ───────────── Auth context (set by appStore on session change) ───────────── */
 
 let currentProfileId: string | null = null;
+let currentAuthUserId: string | null = null;
 
 /** Set by the auth bootstrap once we know which profile is active. */
 export function setCurrentProfileId(id: string | null) {
@@ -317,6 +324,15 @@ export function getCurrentProfileId(): string | null {
   return currentProfileId;
 }
 
+/** Set by appStore.bootstrap as soon as the auth session resolves. */
+export function setCurrentAuthUserId(id: string | null) {
+  currentAuthUserId = id;
+}
+
+export function getCurrentAuthUserId(): string | null {
+  return currentAuthUserId;
+}
+
 async function loadSettings(): Promise<Record<string, unknown>> {
   if (!currentProfileId) return {};
   const { data, error } = await supabase
@@ -324,7 +340,6 @@ async function loadSettings(): Promise<Record<string, unknown>> {
     .select('key,value')
     .eq('profile_id', currentProfileId);
   if (error) {
-     
     console.error('[repo] loadSettings failed', error);
     return {};
   }
@@ -362,7 +377,6 @@ async function upsertOne(table: AppTable, entity: Record<string, unknown>): Prom
   const onConflict = table === 'notes' ? 'task_id' : 'id';
   const { error } = await supabase.from(sqlTable).upsert(row as never, { onConflict });
   if (error) {
-     
     console.error(`[repo] upsert ${table} failed`, error, row);
   }
 }
@@ -374,7 +388,6 @@ async function upsertMany(table: AppTable, entities: Record<string, unknown>[]):
   const onConflict = table === 'notes' ? 'task_id' : 'id';
   const { error } = await supabase.from(sqlTable).upsert(rows as never, { onConflict });
   if (error) {
-     
     console.error(`[repo] bulkUpsert ${table} failed`, error);
   }
 }
@@ -385,7 +398,6 @@ async function deleteOne(table: AppTable, key: string): Promise<void> {
   const pk = pkColumn(table);
   const { error } = await supabase.from(sqlTable).delete().eq(pk, key);
   if (error) {
-     
     console.error(`[repo] delete ${table} failed`, error);
   }
 }
@@ -396,18 +408,22 @@ async function deleteMany(table: AppTable, keys: string[]): Promise<void> {
   const pk = pkColumn(table);
   const { error } = await supabase.from(sqlTable).delete().in(pk, keys);
   if (error) {
-     
     console.error(`[repo] bulkDelete ${table} failed`, error);
   }
 }
 
 async function setSettingFn(key: string, value: unknown): Promise<void> {
-  if (!SUPABASE_CONFIGURED || !currentProfileId) return;
-  const { error } = await supabase
-    .from('cj_settings')
-    .upsert({ profile_id: currentProfileId, key, value }, { onConflict: 'profile_id,key' });
+  if (!SUPABASE_CONFIGURED || !currentProfileId || !currentAuthUserId) return;
+  const { error } = await supabase.from('cj_settings').upsert(
+    {
+      profile_id: currentProfileId,
+      auth_user_id: currentAuthUserId,
+      key,
+      value,
+    },
+    { onConflict: 'profile_id,key' }
+  );
   if (error) {
-     
     console.error('[repo] setSetting failed', error);
   }
 }
@@ -460,7 +476,6 @@ export async function wipeDatabase(): Promise<void> {
     const pk = pkColumn(table);
     const { error } = await supabase.from(sqlTable).delete().not(pk, 'is', null);
     if (error) {
-       
       console.error(`[repo] wipe ${table} failed`, error);
     }
   }
@@ -472,10 +487,12 @@ export async function wipeDatabase(): Promise<void> {
 
 /** Returns true when the cj_profiles table is empty (first launch ever). */
 export async function isEmpty(): Promise<boolean> {
-  if (!SUPABASE_CONFIGURED) return false;
-  const { count, error } = await supabase.from('cj_profiles').select('id', { count: 'exact', head: true });
+  if (!SUPABASE_CONFIGURED || !currentAuthUserId) return false;
+  const { count, error } = await supabase
+    .from('cj_profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('auth_user_id', currentAuthUserId);
   if (error) {
-     
     console.error('[repo] isEmpty failed', error);
     return false;
   }

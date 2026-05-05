@@ -110,6 +110,22 @@ export async function verifyEmailOtp(email: string, token: string) {
   return data;
 }
 
+/**
+ * Dev-only quick login: spawn an anonymous Supabase auth.users row to
+ * skip the email roundtrip. Each anonymous session is isolated by RLS,
+ * so this is safe even on a shared Supabase project.
+ *
+ * Requires Supabase Auth → "Enable anonymous sign-ins" toggled on
+ * (Authentication → Sign In / Up → Allow anonymous sign-ins).
+ */
+export async function signInAsDevAnonymous() {
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) throw error;
+  return data;
+}
+
+export const DEV_MODE = import.meta.env.DEV;
+
 export async function signOut() {
   await supabase.auth.signOut();
 }
