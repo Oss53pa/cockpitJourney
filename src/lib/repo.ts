@@ -1,0 +1,483 @@
+// Supabase-backed repository for CockpitJourney.
+//
+// Public API mirrors the previous Dexie module so the rest of the app
+// (and notably src/stores/appStore.ts) stays unchanged:
+//   - loadSnapshot()
+//   - persist.put / bulkPut / delete / bulkDelete / setSetting
+//   - flushWrites()
+//   - wipeDatabase()  // wipes only the current profile's cj_* rows
+//
+// All cj_* tables use a hybrid schema: indexed columns + a `data jsonb`
+// column holding the full app entity. Reads always extract `data`.
+
+import { supabase, SUPABASE_CONFIGURED } from './supabase';
+import type {
+  User,
+  Folder,
+  Project,
+  Section,
+  Task,
+  Goal,
+  Comment,
+  Notification,
+  PropheticInsight,
+} from '../types';
+import type {
+  AutomationRule,
+  IntakeForm,
+  Report,
+  Attachment,
+  TaskDependency,
+  ActivityEvent,
+  TaskNote,
+  Subtask,
+} from '../stores/appStore';
+
+/* ───────────── Table mapping ───────────── */
+
+export type AppTable =
+  | 'users'
+  | 'folders'
+  | 'projects'
+  | 'sections'
+  | 'tasks'
+  | 'subtasks'
+  | 'goals'
+  | 'comments'
+  | 'notifications'
+  | 'insights'
+  | 'automations'
+  | 'forms'
+  | 'reports'
+  | 'attachments'
+  | 'dependencies'
+  | 'activity'
+  | 'notes';
+
+const sqlTableFor: Record<AppTable, string> = {
+  users: 'cj_profiles',
+  folders: 'cj_folders',
+  projects: 'cj_projects',
+  sections: 'cj_sections',
+  tasks: 'cj_tasks',
+  subtasks: 'cj_subtasks',
+  goals: 'cj_goals',
+  comments: 'cj_comments',
+  notifications: 'cj_notifications',
+  insights: 'cj_insights',
+  automations: 'cj_automations',
+  forms: 'cj_forms',
+  reports: 'cj_reports',
+  attachments: 'cj_attachments',
+  dependencies: 'cj_dependencies',
+  activity: 'cj_activity',
+  notes: 'cj_notes',
+};
+
+/**
+ * Extract indexed columns out of an entity. The `data` jsonb always holds
+ * the FULL entity; these are duplicated for filtering/RLS/joins later.
+ */
+type Indexed = Record<string, unknown>;
+
+function indexedColsFor(table: AppTable, entity: Record<string, unknown>): Indexed {
+  switch (table) {
+    case 'projects':
+      return {
+        folder_id: entity.folderId ?? null,
+        owner_id: entity.ownerId ?? null,
+        status: entity.status ?? null,
+      };
+    case 'sections':
+      return { project_id: entity.projectId ?? null };
+    case 'tasks':
+      return {
+        project_id: entity.projectId ?? null,
+        section_id: entity.sectionId ?? null,
+        parent_task_id: entity.parentTaskId ?? null,
+        status: entity.status ?? null,
+        priority: entity.priority ?? null,
+        due_date: entity.dueDate ?? null,
+      };
+    case 'subtasks':
+      return { task_id: entity.taskId ?? null };
+    case 'goals':
+      return {
+        owner_id: entity.ownerId ?? null,
+        level: entity.level ?? null,
+        status: entity.status ?? null,
+      };
+    case 'comments':
+      return {
+        task_id: entity.taskId ?? null,
+        author_id: entity.authorId ?? null,
+      };
+    case 'notifications':
+      return {
+        // mock notifications don't carry a recipient; we scope to the
+        // current authenticated profile (mapped at boot).
+        user_id: (entity.userId ?? 'u_pame') as string,
+        read: !!entity.read,
+      };
+    case 'insights':
+      return { kind: entity.kind ?? null };
+    case 'automations':
+      return { enabled: !!entity.enabled };
+    case 'forms':
+      return {
+        project_id: entity.projectId ?? null,
+        enabled: entity.enabled ?? true,
+      };
+    case 'reports':
+      return {
+        kind: entity.kind ?? null,
+        generated_at: entity.generatedAt ?? new Date().toISOString(),
+      };
+    case 'attachments':
+      return { task_id: entity.taskId ?? null };
+    case 'dependencies':
+      return {
+        task_id: entity.taskId ?? null,
+        related_task_id: entity.relatedTaskId ?? null,
+      };
+    case 'activity':
+      return {
+        task_id: entity.taskId ?? null,
+        project_id: entity.projectId ?? null,
+        actor_id: entity.actorId ?? null,
+      };
+    default:
+      return {};
+  }
+}
+
+/**
+ * Build the row to insert into Supabase. Always includes id + data.
+ * For cj_notes the PK is task_id (no `id` column).
+ * For cj_settings the PK is (profile_id, key) — handled separately.
+ */
+function buildRow(table: AppTable, entity: Record<string, unknown>) {
+  if (table === 'notes') {
+    return {
+      task_id: entity.taskId,
+      data: entity,
+    };
+  }
+  return {
+    id: entity.id as string,
+    ...indexedColsFor(table, entity),
+    data: entity,
+  };
+}
+
+/** Return the PK column name. */
+function pkColumn(table: AppTable): string {
+  return table === 'notes' ? 'task_id' : 'id';
+}
+
+/* ───────────── Read: snapshot ───────────── */
+
+export interface Snapshot {
+  users: User[];
+  folders: Folder[];
+  projects: Project[];
+  sections: Section[];
+  tasks: Task[];
+  goals: Goal[];
+  comments: Comment[];
+  notifications: Notification[];
+  insights: PropheticInsight[];
+  automations: AutomationRule[];
+  forms: IntakeForm[];
+  reports: Report[];
+  attachments: Attachment[];
+  dependencies: TaskDependency[];
+  activity: ActivityEvent[];
+  notes: TaskNote[];
+  subtasks: Subtask[];
+  settings: Record<string, unknown>;
+}
+
+async function fetchData<T>(sqlTable: string): Promise<T[]> {
+  // Fetch in pages of 1000 to bypass the default REST limit.
+  const PAGE = 1000;
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const to = from + PAGE - 1;
+    const { data, error } = await supabase.from(sqlTable).select('data').range(from, to);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    for (const row of data) out.push((row as { data: T }).data);
+    if (data.length < PAGE) break;
+  }
+  return out;
+}
+
+export async function loadSnapshot(): Promise<Snapshot> {
+  if (!SUPABASE_CONFIGURED) {
+    return emptySnapshot();
+  }
+
+  const [
+    users,
+    folders,
+    projects,
+    sections,
+    tasks,
+    goals,
+    comments,
+    notifications,
+    insights,
+    automations,
+    forms,
+    reports,
+    attachments,
+    dependencies,
+    activity,
+    notes,
+    subtasks,
+  ] = await Promise.all([
+    fetchData<User>('cj_profiles'),
+    fetchData<Folder>('cj_folders'),
+    fetchData<Project>('cj_projects'),
+    fetchData<Section>('cj_sections'),
+    fetchData<Task>('cj_tasks'),
+    fetchData<Goal>('cj_goals'),
+    fetchData<Comment>('cj_comments'),
+    fetchData<Notification>('cj_notifications'),
+    fetchData<PropheticInsight>('cj_insights'),
+    fetchData<AutomationRule>('cj_automations'),
+    fetchData<IntakeForm>('cj_forms'),
+    fetchData<Report>('cj_reports'),
+    fetchData<Attachment>('cj_attachments'),
+    fetchData<TaskDependency>('cj_dependencies'),
+    fetchData<ActivityEvent>('cj_activity'),
+    fetchData<TaskNote>('cj_notes'),
+    fetchData<Subtask>('cj_subtasks'),
+  ]);
+
+  // Settings — separate per-user table
+  const settings = await loadSettings();
+
+  return {
+    users,
+    folders,
+    projects,
+    sections,
+    tasks,
+    goals,
+    comments,
+    notifications,
+    insights,
+    automations,
+    forms,
+    reports,
+    attachments,
+    dependencies,
+    activity,
+    notes,
+    subtasks,
+    settings,
+  };
+}
+
+function emptySnapshot(): Snapshot {
+  return {
+    users: [],
+    folders: [],
+    projects: [],
+    sections: [],
+    tasks: [],
+    goals: [],
+    comments: [],
+    notifications: [],
+    insights: [],
+    automations: [],
+    forms: [],
+    reports: [],
+    attachments: [],
+    dependencies: [],
+    activity: [],
+    notes: [],
+    subtasks: [],
+    settings: {},
+  };
+}
+
+/* ───────────── Settings (per-profile) ───────────── */
+
+let currentProfileId: string | null = null;
+
+/** Set by the auth bootstrap once we know which profile is active. */
+export function setCurrentProfileId(id: string | null) {
+  currentProfileId = id;
+}
+
+export function getCurrentProfileId(): string | null {
+  return currentProfileId;
+}
+
+async function loadSettings(): Promise<Record<string, unknown>> {
+  if (!currentProfileId) return {};
+  const { data, error } = await supabase
+    .from('cj_settings')
+    .select('key,value')
+    .eq('profile_id', currentProfileId);
+  if (error) {
+     
+    console.error('[repo] loadSettings failed', error);
+    return {};
+  }
+  const out: Record<string, unknown> = {};
+  for (const row of data ?? []) {
+    out[(row as { key: string }).key] = (row as { value: unknown }).value;
+  }
+  return out;
+}
+
+/* ───────────── Write: persist (write-through) ───────────── */
+
+const writeQueue: Promise<unknown>[] = [];
+
+function track<T>(p: Promise<T>): Promise<T> {
+  writeQueue.push(p as unknown as Promise<unknown>);
+  p.finally(() => {
+    const i = writeQueue.indexOf(p as unknown as Promise<unknown>);
+    if (i >= 0) writeQueue.splice(i, 1);
+  });
+  return p;
+}
+
+/** Wait for all pending writes (tests, before-unload). */
+export async function flushWrites(): Promise<void> {
+  while (writeQueue.length) {
+    await Promise.allSettled([...writeQueue]);
+  }
+}
+
+async function upsertOne(table: AppTable, entity: Record<string, unknown>): Promise<void> {
+  if (!SUPABASE_CONFIGURED) return;
+  const sqlTable = sqlTableFor[table];
+  const row = buildRow(table, entity) as Record<string, unknown>;
+  const onConflict = table === 'notes' ? 'task_id' : 'id';
+  const { error } = await supabase.from(sqlTable).upsert(row as never, { onConflict });
+  if (error) {
+     
+    console.error(`[repo] upsert ${table} failed`, error, row);
+  }
+}
+
+async function upsertMany(table: AppTable, entities: Record<string, unknown>[]): Promise<void> {
+  if (!SUPABASE_CONFIGURED || entities.length === 0) return;
+  const sqlTable = sqlTableFor[table];
+  const rows = entities.map((e) => buildRow(table, e) as Record<string, unknown>);
+  const onConflict = table === 'notes' ? 'task_id' : 'id';
+  const { error } = await supabase.from(sqlTable).upsert(rows as never, { onConflict });
+  if (error) {
+     
+    console.error(`[repo] bulkUpsert ${table} failed`, error);
+  }
+}
+
+async function deleteOne(table: AppTable, key: string): Promise<void> {
+  if (!SUPABASE_CONFIGURED) return;
+  const sqlTable = sqlTableFor[table];
+  const pk = pkColumn(table);
+  const { error } = await supabase.from(sqlTable).delete().eq(pk, key);
+  if (error) {
+     
+    console.error(`[repo] delete ${table} failed`, error);
+  }
+}
+
+async function deleteMany(table: AppTable, keys: string[]): Promise<void> {
+  if (!SUPABASE_CONFIGURED || keys.length === 0) return;
+  const sqlTable = sqlTableFor[table];
+  const pk = pkColumn(table);
+  const { error } = await supabase.from(sqlTable).delete().in(pk, keys);
+  if (error) {
+     
+    console.error(`[repo] bulkDelete ${table} failed`, error);
+  }
+}
+
+async function setSettingFn(key: string, value: unknown): Promise<void> {
+  if (!SUPABASE_CONFIGURED || !currentProfileId) return;
+  const { error } = await supabase
+    .from('cj_settings')
+    .upsert({ profile_id: currentProfileId, key, value }, { onConflict: 'profile_id,key' });
+  if (error) {
+     
+    console.error('[repo] setSetting failed', error);
+  }
+}
+
+export const persist = {
+  put<T extends Record<string, unknown> | object>(table: AppTable, item: T) {
+    return track(upsertOne(table, item as unknown as Record<string, unknown>));
+  },
+  bulkPut<T extends Record<string, unknown> | object>(table: AppTable, items: T[]) {
+    return track(upsertMany(table, items as unknown as Record<string, unknown>[]));
+  },
+  delete(table: AppTable, key: string) {
+    return track(deleteOne(table, key));
+  },
+  bulkDelete(table: AppTable, keys: string[]) {
+    return track(deleteMany(table, keys));
+  },
+  setSetting(key: string, value: unknown) {
+    return track(setSettingFn(key, value));
+  },
+};
+
+/* ───────────── Bulk wipe (used by Settings → Réinitialiser) ───────────── */
+
+const TABLE_ORDER_REVERSE: AppTable[] = [
+  // FK-safe deletion order: leaves first, roots last.
+  'notes',
+  'subtasks',
+  'attachments',
+  'dependencies',
+  'activity',
+  'comments',
+  'tasks',
+  'sections',
+  'goals',
+  'notifications',
+  'insights',
+  'automations',
+  'forms',
+  'reports',
+  'projects',
+  'folders',
+  'users',
+];
+
+export async function wipeDatabase(): Promise<void> {
+  if (!SUPABASE_CONFIGURED) return;
+  for (const table of TABLE_ORDER_REVERSE) {
+    const sqlTable = sqlTableFor[table];
+    const pk = pkColumn(table);
+    const { error } = await supabase.from(sqlTable).delete().not(pk, 'is', null);
+    if (error) {
+       
+      console.error(`[repo] wipe ${table} failed`, error);
+    }
+  }
+  // Settings (composite key, no `id`)
+  if (currentProfileId) {
+    await supabase.from('cj_settings').delete().eq('profile_id', currentProfileId);
+  }
+}
+
+/** Returns true when the cj_profiles table is empty (first launch ever). */
+export async function isEmpty(): Promise<boolean> {
+  if (!SUPABASE_CONFIGURED) return false;
+  const { count, error } = await supabase.from('cj_profiles').select('id', { count: 'exact', head: true });
+  if (error) {
+     
+    console.error('[repo] isEmpty failed', error);
+    return false;
+  }
+  return (count ?? 0) === 0;
+}

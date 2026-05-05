@@ -1,8 +1,14 @@
-// Initial database seed — populated only on first launch (when DB is empty).
-// After that, Dexie is the source of truth. The seed itself is just initial data,
-// not application state.
+// First-launch seed for CockpitJourney.
+//
+// Runs ONCE per Supabase database (when cj_profiles is empty). After that,
+// Supabase is the source of truth — the seed itself is just initial demo
+// data, not application state.
+//
+// On subsequent logins by the same user (with cj_profiles already populated),
+// we just link auth.users.id to the existing 'u_pame' profile if not done yet.
 
-import { db, isEmpty } from './db';
+import { supabase } from './supabase';
+import { isEmpty, persist, setCurrentProfileId } from './repo';
 import {
   users,
   folders,
@@ -14,6 +20,8 @@ import {
   notifications,
   insights,
 } from '../data/mockData';
+
+/* ───────────── Demo data (matches the previous Dexie seed) ───────────── */
 
 const automations = [
   {
@@ -141,8 +149,6 @@ const forms = [
     ],
   },
 ];
-
-const reports: any[] = [];
 
 const attachments = [
   {
@@ -294,52 +300,90 @@ const defaultSettings: Record<string, unknown> = {
   proph3t: { provider: 'groq', apiKey: '', model: 'llama-3.3-70b-versatile' },
 };
 
+/* ───────────── Bootstrap ───────────── */
+
+/**
+ * If the cj_* schema has no profiles yet, populate it from the demo data.
+ * Returns true if seeding occurred.
+ */
 export async function seedDatabaseIfEmpty(): Promise<boolean> {
   if (!(await isEmpty())) return false;
 
-  await db.transaction(
-    'rw',
-    [
-      db.users,
-      db.folders,
-      db.projects,
-      db.sections,
-      db.tasks,
-      db.goals,
-      db.comments,
-      db.notifications,
-      db.insights,
-      db.automations,
-      db.forms,
-      db.reports,
-      db.attachments,
-      db.dependencies,
-      db.activity,
-      db.subtasks,
-      db.notes,
-      db.settings,
-    ],
-    async () => {
-      await db.users.bulkPut(users);
-      await db.folders.bulkPut(folders);
-      await db.projects.bulkPut(projects);
-      await db.sections.bulkPut(sections);
-      await db.tasks.bulkPut(tasks);
-      await db.goals.bulkPut(goals);
-      await db.comments.bulkPut(comments);
-      await db.notifications.bulkPut(notifications);
-      await db.insights.bulkPut(insights);
-      await db.automations.bulkPut(automations as any);
-      await db.forms.bulkPut(forms as any);
-      await db.reports.bulkPut(reports as any);
-      await db.attachments.bulkPut(attachments as any);
-      await db.dependencies.bulkPut(dependencies as any);
-      await db.activity.bulkPut(activity as any);
-      await db.subtasks.bulkPut(subtasks as any);
-      await db.notes.bulkPut(notes as any);
-      await db.settings.bulkPut(Object.entries(defaultSettings).map(([key, value]) => ({ key, value })));
-    }
-  );
+  // Insert in FK-safe order. We use `persist.bulkPut` so writes go through
+  // the same write-tracked queue as runtime mutations.
+  await persist.bulkPut('users', users);
+  await persist.bulkPut('folders', folders);
+  await persist.bulkPut('projects', projects);
+  await persist.bulkPut('sections', sections);
+  await persist.bulkPut('tasks', tasks);
+  await persist.bulkPut('goals', goals);
+  await persist.bulkPut('comments', comments);
+  await persist.bulkPut('notifications', notifications);
+  await persist.bulkPut('insights', insights);
+  await persist.bulkPut('automations', automations as never);
+  await persist.bulkPut('forms', forms as never);
+  await persist.bulkPut('attachments', attachments as never);
+  await persist.bulkPut('dependencies', dependencies as never);
+  await persist.bulkPut('activity', activity as never);
+  await persist.bulkPut('subtasks', subtasks as never);
+  await persist.bulkPut('notes', notes as never);
+
+  // Settings — bind to the current profile (set by auth bootstrap).
+  for (const [key, value] of Object.entries(defaultSettings)) {
+    await persist.setSetting(key, value);
+  }
 
   return true;
+}
+
+/**
+ * Bind the authenticated auth.users.id to a cj_profiles row. By default
+ * the demo seed creates 'u_pame' for Pamela; the first authenticated user
+ * claims that profile (so the app maps "u_pame" everywhere to the real user).
+ *
+ * If no demo profile exists yet, the caller should run seedDatabaseIfEmpty()
+ * first — but this function is safe to call multiple times.
+ */
+export async function linkAuthUserToProfile(authUserId: string, email: string) {
+  // Try to claim the existing 'u_pame' profile if it has no auth_user_id yet
+  // and matches the user's email (or there's no claim conflict).
+  const { data: existing } = await supabase
+    .from('cj_profiles')
+    .select('id, auth_user_id')
+    .eq('auth_user_id', authUserId)
+    .maybeSingle();
+
+  if (existing) {
+    setCurrentProfileId((existing as { id: string }).id);
+    return (existing as { id: string }).id;
+  }
+
+  // Pick the first unclaimed profile (preferring 'u_pame').
+  const { data: candidates } = await supabase
+    .from('cj_profiles')
+    .select('id')
+    .is('auth_user_id', null)
+    .order('id', { ascending: true });
+
+  let profileId: string;
+  if (candidates && candidates.length > 0) {
+    const pame = (candidates as { id: string }[]).find((p) => p.id === 'u_pame');
+    profileId = pame ? pame.id : (candidates[0] as { id: string }).id;
+    await supabase.from('cj_profiles').update({ auth_user_id: authUserId }).eq('id', profileId);
+  } else {
+    // No unclaimed profiles → create one fresh.
+    profileId = `u_${authUserId.slice(0, 8)}`;
+    const profile = {
+      id: profileId,
+      name: email.split('@')[0] || 'Utilisateur',
+      initials: (email[0] || 'U').toUpperCase() + (email[1] || '').toUpperCase(),
+      email,
+      role: 'Utilisateur',
+      color: '#95B07D',
+    };
+    await supabase.from('cj_profiles').insert({ id: profileId, auth_user_id: authUserId, data: profile });
+  }
+
+  setCurrentProfileId(profileId);
+  return profileId;
 }

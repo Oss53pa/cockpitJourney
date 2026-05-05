@@ -2,28 +2,47 @@
 
 > Pilotez votre journée. Compagnon quotidien de gestion de tâches et de projets, propulsé par PROPH3T (Atlas Studio).
 
-Version locale prête à l'emploi · Aucun service tiers payant requis · Données stockées dans votre navigateur.
+Backend cloud Supabase · Auth magic-link · IA gratuite (Groq).
 
 ---
 
-## 🚀 Lancer CockpitJourney en local
+## 🚀 Mise en route
 
-### Windows
-Double-cliquez sur **`start-cockpitjourney.cmd`**.
-Il installera les dépendances si nécessaire, compilera l'app, puis ouvrira l'app dans votre navigateur sur `http://localhost:5400`.
+### 1. Configurer Supabase
 
-### macOS / Linux
+CockpitJourney utilise un projet Supabase pour la persistance et l'authentification (magic link e-mail).
+
 ```bash
-./start-cockpitjourney.sh
+cp .env.example .env.local
 ```
-(Si la première fois : `chmod +x start-cockpitjourney.sh`.)
 
-### Manuel
+Puis remplissez `.env.local` avec **vos** valeurs :
+
+```
+VITE_SUPABASE_URL=https://<votre-projet>.supabase.co
+VITE_SUPABASE_ANON_KEY=sb_publishable_...   # ou la legacy anon key
+```
+
+> Le schéma cloud (`cj_*`) est appliqué via les migrations Supabase de ce dépôt — voir `supabase/migrations/` (à créer pour un nouveau projet) ou réutilisez le projet Atlas Studio existant si vous y avez accès.
+
+### 2. Lancer
+
+**Windows** — double-cliquez sur `start-cockpitjourney.cmd`.
+**macOS/Linux** — `./start-cockpitjourney.sh`.
+
+**Manuel** :
 ```bash
 npm install        # première fois seulement
-npm run build      # compile l'app
-npm run start      # ouvre http://localhost:5400 dans le navigateur
+npm run dev        # mode dev avec HMR sur http://localhost:5400
+# OU
+npm run build && npm run start   # mode production
 ```
+
+### 3. Se connecter
+
+À la première ouverture, vous arrivez sur l'écran de login → entrez votre adresse e-mail → Supabase vous envoie un **lien magique**. Cliquez dessus, vous êtes connectée. Aucun mot de passe à retenir.
+
+> Sur la première connexion, la base est automatiquement peuplée avec un jeu de données démo (Pamela, projets Cockpit/Cosmos/SOAP/Brand, ~30 tâches, goals, automations…). Vous reprenez le contrôle de cette identité de démonstration et tout devient persistant côté Supabase.
 
 ---
 
@@ -66,11 +85,15 @@ Alternatives gratuites supportées : OpenRouter (free models) ou Ollama auto-hé
 
 ## 💾 Données
 
-Toutes les données (tâches, projets, goals, notes, paramètres, clé API) sont stockées **dans le `localStorage` de votre navigateur**, pas sur un serveur.
+Toutes les données (tâches, projets, goals, notes, paramètres) sont stockées dans **Supabase Postgres** (préfixe `cj_*` du schéma `public` du projet Atlas Studio). 18 tables, RLS activée, accès limité aux utilisateurs authentifiés.
 
-- Refresh navigateur = données conservées
-- Vider le cache navigateur ou cliquer **Paramètres → Réinitialiser** = retour aux données seed par défaut
-- Données isolées par navigateur et par profil (un Chrome ≠ un Firefox ≠ un mode incognito)
+Architecture :
+- **Auth** — Supabase magic-link (email OTP, sans mot de passe)
+- **Persistance** — chaque table `cj_*` est un schéma hybride : colonnes indexées (id, project_id, status…) + colonne `data jsonb` contenant l'entité complète
+- **Bootstrap** — au login, le store Zustand charge tout en mémoire (`loadSnapshot`) puis chaque mutation est write-through vers Supabase
+- **Seed** — déclenché une seule fois (cj_profiles vide), populate ~30 tâches / 4 projets / goals / automations
+
+Réinitialiser : **Paramètres → Données → Réinitialiser** vide les tables `cj_*` et relance le seed.
 
 ---
 
@@ -99,10 +122,11 @@ Une fois `npm run start` lancé :
 
 - **React 18** + **TypeScript 5** + **Vite 5**
 - **Tailwind CSS 3** (charte Atlas : sage `#6E8B58` + cream `#F4F2E9`)
-- **Zustand** + persist middleware (localStorage)
+- **Zustand** (cache mémoire, hydraté depuis Supabase)
+- **Supabase** (Postgres + Auth magic-link + RLS)
 - **dnd-kit** (drag & drop Kanban)
 - **Lucide React** (iconographie)
-- **Service Worker** (offline-first)
+- **Service Worker** (PWA installable)
 - **Groq / OpenRouter / Ollama** (PROPH3T — optionnel)
 
 ---
@@ -111,19 +135,22 @@ Une fois `npm run start` lancé :
 
 ```
 src/
-├── App.tsx                 # Shell + routing + lazy-load des vues
+├── App.tsx                 # Shell + auth gate + routing + lazy-load des vues
 ├── main.tsx                # Bootstrap + SW + error handlers
 ├── stores/appStore.ts      # État global Zustand (tasks, projects, goals, ...)
 ├── lib/
+│   ├── supabase.ts         # Client Supabase + helpers auth (magic link)
+│   ├── repo.ts             # Repo Supabase (loadSnapshot + persist write-through)
+│   ├── seed.ts             # Seed first-login + linkAuthUserToProfile
 │   ├── proph3t.ts          # Client IA (Groq/OpenRouter/Ollama)
 │   └── utils.ts            # Helpers (cn, format dates, ...)
 ├── components/
 │   ├── layout/             # Sidebar, TopBar, CommandMenu
-│   ├── views/              # TodayView, ProjectView, GoalsView, ...
+│   ├── views/              # TodayView, ProjectView, LoginView, ...
 │   ├── modals/             # ModalRoot + 10 modales métier
 │   ├── ui/                 # Primitives (Modal, Menu, Field, Toast, ...)
 │   └── TaskDetailDrawer.tsx
-├── data/mockData.ts        # Données seed (utilisateurs, projets, tâches)
+├── data/mockData.ts        # Données seed initiales (un seul shot)
 └── types/index.ts          # Types TypeScript
 ```
 
@@ -146,7 +173,12 @@ Le navigateur a besoin d'accès Internet pour Google Fonts (Dosis + Grand Hotel 
 ```
 Paramètres → Données → Réinitialiser
 ```
-Ou en cas de blocage : ouvrez la console (F12) → `localStorage.clear(); location.reload();`
+(Vide les tables `cj_*` côté Supabase, puis relance le seed initial.)
+
+**Le login ne marche pas :**
+- Vérifiez que `.env.local` est bien rempli et que vous avez **redémarré** le serveur Vite (les variables `VITE_*` sont lues au démarrage)
+- Vérifiez que l'email de magic link n'est pas dans vos spams
+- Côté Supabase, vérifiez que le redirect URL `http://localhost:5400` est autorisé : Authentication → URL Configuration → Redirect URLs
 
 ---
 

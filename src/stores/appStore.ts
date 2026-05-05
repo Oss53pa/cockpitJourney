@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { persist as dbPersist, loadSnapshot, wipeDatabase } from '../lib/db';
-import { seedDatabaseIfEmpty } from '../lib/seed';
+import { persist as dbPersist, loadSnapshot, wipeDatabase } from '../lib/repo';
+import { seedDatabaseIfEmpty, linkAuthUserToProfile } from '../lib/seed';
+import { supabase, SUPABASE_CONFIGURED } from '../lib/supabase';
 import type {
   User,
   Project,
@@ -214,8 +215,12 @@ interface State {
   notes: TaskNote[];
   subtasks: Subtask[];
 
-  // hydration flag — true once Dexie has been loaded
+  // hydration flag — true once Supabase snapshot has been loaded
   ready: boolean;
+  // auth state
+  authStatus: 'loading' | 'signed_out' | 'signed_in';
+  authEmail?: string;
+  currentProfileId?: string;
 
   // UI state
   toasts: Toast[];
@@ -240,8 +245,10 @@ interface State {
   };
 
   // === actions ===
-  // bootstrap (hydrate from IndexedDB)
+  // bootstrap (subscribe to auth + hydrate from Supabase)
   bootstrap: () => Promise<void>;
+  // sign out from Supabase + reset in-memory state
+  signOut: () => Promise<void>;
 
   // toasts
   pushToast: (t: Omit<Toast, 'id'>) => void;
@@ -354,6 +361,44 @@ export type ModalKind =
 
 const uid = (prefix = 'id') => `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
 
+/**
+ * Shared hydration: claim/create the user's profile, run seed if needed,
+ * load the snapshot from Supabase into the Zustand cache.
+ */
+async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn, get: GetFn) {
+  set({ authStatus: 'signed_in', authEmail: email });
+
+  // Seed the cj_* tables on first ever launch (any user can trigger it).
+  await seedDatabaseIfEmpty();
+
+  // Bind this auth user to a profile (claims 'u_pame' if available).
+  const profileId = await linkAuthUserToProfile(authUserId, email);
+
+  const snap = await loadSnapshot();
+  set({
+    users: snap.users,
+    folders: snap.folders,
+    projects: snap.projects,
+    sections: snap.sections,
+    tasks: snap.tasks,
+    goals: snap.goals,
+    comments: snap.comments,
+    notifications: snap.notifications,
+    insights: snap.insights,
+    automations: snap.automations,
+    forms: snap.forms,
+    reports: snap.reports,
+    attachments: snap.attachments,
+    dependencies: snap.dependencies,
+    activity: snap.activity,
+    subtasks: snap.subtasks,
+    notes: snap.notes,
+    settings: { ...get().settings, ...(snap.settings as Partial<State['settings']>) },
+    currentProfileId: profileId,
+    ready: true,
+  });
+}
+
 const focusPresets: Record<FocusSession['preset'], { total: number; label: string }> = {
   pomodoro: { total: 25 * 60, label: 'Pomodoro 25/5' },
   'pomodoro-long': { total: 50 * 60, label: 'Pomodoro 50/10' },
@@ -386,6 +431,9 @@ const initialState = (set: SetFn, get: GetFn): State => ({
   notes: [],
 
   ready: false,
+  authStatus: 'loading',
+  authEmail: undefined,
+  currentProfileId: undefined,
 
   toasts: [],
   modal: null,
@@ -415,29 +463,51 @@ const initialState = (set: SetFn, get: GetFn): State => ({
 
   bootstrap: async () => {
     if (get().ready) return;
-    await seedDatabaseIfEmpty();
-    const snap = await loadSnapshot();
-    set({
-      users: snap.users,
-      folders: snap.folders,
-      projects: snap.projects,
-      sections: snap.sections,
-      tasks: snap.tasks,
-      goals: snap.goals,
-      comments: snap.comments,
-      notifications: snap.notifications,
-      insights: snap.insights,
-      automations: snap.automations,
-      forms: snap.forms,
-      reports: snap.reports,
-      attachments: snap.attachments,
-      dependencies: snap.dependencies,
-      activity: snap.activity,
-      subtasks: snap.subtasks,
-      notes: snap.notes,
-      settings: { ...get().settings, ...(snap.settings as Partial<State['settings']>) },
-      ready: true,
+
+    if (!SUPABASE_CONFIGURED) {
+      set({ authStatus: 'signed_out', ready: false });
+      return;
+    }
+
+    // Subscribe to auth state changes (single subscription per app lifecycle)
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        set({
+          authStatus: 'signed_out',
+          authEmail: undefined,
+          currentProfileId: undefined,
+          ready: false,
+          users: [],
+          folders: [],
+          projects: [],
+          sections: [],
+          tasks: [],
+          goals: [],
+          comments: [],
+          notifications: [],
+          insights: [],
+          automations: [],
+          forms: [],
+          reports: [],
+          attachments: [],
+          dependencies: [],
+          activity: [],
+          subtasks: [],
+          notes: [],
+        });
+        return;
+      }
+      // Signed in — hydrate
+      await hydrateFromSupabase(session.user.id, session.user.email ?? '', set, get);
     });
+
+    // Pick up any existing session
+    const { data } = await supabase.auth.getSession();
+    if (data.session) {
+      await hydrateFromSupabase(data.session.user.id, data.session.user.email ?? '', set, get);
+    } else {
+      set({ authStatus: 'signed_out' });
+    }
   },
 
   pushToast: (t) => {
@@ -1300,12 +1370,18 @@ Reste sous 400 mots, ton factuel et engagé.`,
     dbPersist.bulkPut('subtasks', updated);
   },
 
+  signOut: async () => {
+    await supabase.auth.signOut();
+    // onAuthStateChange will reset the in-memory state
+  },
+
   resetSeed: async () => {
     try {
       localStorage.removeItem('cockpit-store-v1');
     } catch {
       /* legacy key cleanup */
     }
+    // Wipe all cj_* rows in Supabase, then reload to re-run the seed.
     await wipeDatabase();
     location.reload();
   },

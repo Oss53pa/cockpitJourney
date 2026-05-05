@@ -5,6 +5,7 @@ import { CommandMenu } from './components/layout/CommandMenu';
 import { TodayView } from './components/views/TodayView';
 import { TaskDetailDrawer } from './components/TaskDetailDrawer';
 import { HomeView } from './components/views/HomeView';
+import { LoginView } from './components/views/LoginView';
 import { ModalRoot } from './components/modals/ModalRoot';
 import { Toaster } from './components/ui/Toaster';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -52,6 +53,7 @@ function App() {
   const [cmdOpen, setCmdOpen] = useState(false);
 
   const ready = useApp((s) => s.ready);
+  const authStatus = useApp((s) => s.authStatus);
   const bootstrap = useApp((s) => s.bootstrap);
   const projects = useApp((s) => s.projects);
   const openModal = useApp((s) => s.openModal);
@@ -59,7 +61,7 @@ function App() {
   const focusRunning = useApp((s) => s.focus.running);
   const theme = useApp((s) => s.settings.theme);
 
-  // Hydrate from IndexedDB on first render
+  // Subscribe to Supabase auth + hydrate snapshot on session change
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
@@ -158,19 +160,48 @@ function App() {
     setMobileSidebarOpen(false);
   }, [view, activeProjectId]);
 
-  // Boot screen while DB hydrates
-  if (!ready) {
+  // 1. Still resolving session → splash
+  if (authStatus === 'loading') {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-atlas-black">
+      <div className="min-h-screen w-full flex items-center justify-center bg-atlas-cream">
         <div className="text-center">
           <div className="font-logo text-5xl text-atlas-fg-1 mb-4">
-            Cockpit<span className="text-atlas-amber-deep">Journey</span>
+            Cockpit<span className="text-atlas-sage-deep">Journey</span>
           </div>
           <div className="text-2xs uppercase tracking-[0.2em] text-atlas-fg-3 font-medium">
-            Chargement de votre base locale…
+            Connexion à Supabase…
           </div>
           <div className="mt-5 mx-auto w-32 h-1 rounded-full bg-black/[0.05] overflow-hidden">
-            <div className="h-full w-1/2 bg-amber-gradient animate-pulse-soft rounded-full" />
+            <div className="h-full w-1/2 bg-atlas-sage-deep animate-pulse-soft rounded-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Not signed in → login screen
+  if (authStatus === 'signed_out') {
+    return (
+      <ErrorBoundary>
+        <LoginView />
+        <Toaster />
+      </ErrorBoundary>
+    );
+  }
+
+  // 3. Signed in but snapshot not yet loaded → loading screen
+  if (!ready) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-atlas-cream">
+        <div className="text-center">
+          <div className="font-logo text-5xl text-atlas-fg-1 mb-4">
+            Cockpit<span className="text-atlas-sage-deep">Journey</span>
+          </div>
+          <div className="text-2xs uppercase tracking-[0.2em] text-atlas-fg-3 font-medium">
+            Chargement de votre cockpit…
+          </div>
+          <div className="mt-5 mx-auto w-32 h-1 rounded-full bg-black/[0.05] overflow-hidden">
+            <div className="h-full w-1/2 bg-atlas-sage-deep animate-pulse-soft rounded-full" />
           </div>
         </div>
       </div>
