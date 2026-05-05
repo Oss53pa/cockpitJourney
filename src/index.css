@@ -1,0 +1,214 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  /* Dark mode override (toggled by App.tsx via .dark class on <html>) */
+  html.dark {
+    color-scheme: dark;
+    --atlas-black: #0e1110;
+    --atlas-ink: #14171a;
+    --atlas-panel: #1a1d1f;
+    --atlas-panel-2: #1f2225;
+    --atlas-surface: #25282b;
+    --atlas-line: #2e3236;
+    --atlas-line-2: #3b4045;
+    --atlas-fg-1: #e7eae2;
+    --atlas-fg-2: #b7bcae;
+    --atlas-fg-3: #7a8071;
+  }
+  html.dark body {
+    background:
+      radial-gradient(1200px 600px at 50% -20%, rgba(149, 176, 125, 0.1), transparent 60%), #0e1110 !important;
+    color: var(--atlas-fg-1);
+  }
+  html.dark .panel,
+  html.dark .panel-flat {
+    background: var(--atlas-panel) !important;
+    border-color: var(--atlas-line) !important;
+  }
+  html.dark aside,
+  html.dark header.sticky {
+    background: rgba(20, 23, 26, 0.85) !important;
+    border-color: var(--atlas-line) !important;
+  }
+  html.dark .text-atlas-fg-1 {
+    color: var(--atlas-fg-1) !important;
+  }
+  html.dark .text-atlas-fg-2 {
+    color: var(--atlas-fg-2) !important;
+  }
+  html.dark .text-atlas-fg-3 {
+    color: var(--atlas-fg-3) !important;
+  }
+  html.dark .bg-white {
+    background: var(--atlas-panel) !important;
+  }
+  html.dark .bg-atlas-panel {
+    background: var(--atlas-panel) !important;
+  }
+  html.dark .bg-atlas-panel-2 {
+    background: var(--atlas-panel-2) !important;
+  }
+  html.dark .bg-atlas-surface,
+  html.dark .surface {
+    background: var(--atlas-surface) !important;
+  }
+  html.dark .border-atlas-line {
+    border-color: var(--atlas-line) !important;
+  }
+  html.dark .border-atlas-line-2 {
+    border-color: var(--atlas-line-2) !important;
+  }
+  html.dark input,
+  html.dark textarea,
+  html.dark select {
+    background: var(--atlas-surface) !important;
+    color: var(--atlas-fg-1) !important;
+    border-color: var(--atlas-line) !important;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    font-family: 'Dosis', system-ui, sans-serif;
+    font-optical-sizing: auto;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    letter-spacing: 0.005em;
+    color: #1a1d17;
+    background:
+      radial-gradient(1200px 600px at 50% -20%, rgba(110, 139, 88, 0.1), transparent 60%),
+      radial-gradient(900px 500px at 110% 110%, rgba(92, 123, 161, 0.06), transparent 60%), #f4f2e9;
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: rgba(110, 139, 88, 0.28);
+    color: #1a1d17;
+  }
+
+  /* Scrollbar premium */
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgba(26, 29, 23, 0.1);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(110, 139, 88, 0.45);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-atlas-panel/95 backdrop-blur-xl border border-atlas-line rounded-2xl shadow-panel;
+  }
+  .panel-flat {
+    @apply bg-atlas-panel border border-atlas-line rounded-2xl;
+  }
+  .surface {
+    @apply bg-atlas-surface border border-atlas-line rounded-xl;
+  }
+  .glass {
+    @apply bg-white/60 backdrop-blur-2xl border border-atlas-line;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 select-none font-medium tracking-tight transition-all duration-150 ease-out disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-atlas-amber/60 focus-visible:ring-offset-2 focus-visible:ring-offset-atlas-black;
+  }
+  .btn-primary {
+    @apply btn bg-amber-gradient text-white shadow-amber-deep hover:brightness-110 active:translate-y-px;
+  }
+  .btn-secondary {
+    @apply btn bg-white text-atlas-fg-1 border border-atlas-line hover:border-atlas-line-2 hover:bg-atlas-panel-2;
+  }
+  .btn-ghost {
+    @apply btn text-atlas-fg-2 hover:bg-black/[0.04] hover:text-atlas-fg-1;
+  }
+  .btn-danger {
+    @apply btn bg-signal-red/10 text-signal-red border border-signal-red/30 hover:bg-signal-red/20;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-2xs font-medium uppercase tracking-wider;
+  }
+
+  .nav-item {
+    @apply relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-atlas-fg-2 hover:text-atlas-fg-1 hover:bg-black/[0.04] transition-colors duration-150;
+  }
+  .nav-item-active {
+    @apply text-atlas-fg-1 bg-black/[0.05];
+  }
+
+  .kbd {
+    @apply inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-md text-2xs font-mono font-medium bg-black/[0.04] border border-atlas-line text-atlas-fg-2;
+  }
+
+  .tab-base {
+    @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-atlas-fg-3 hover:text-atlas-fg-1 transition-colors;
+  }
+  .tab-active {
+    @apply text-atlas-fg-1 bg-white shadow-inner-line;
+  }
+
+  .priority-dot {
+    @apply inline-block w-2 h-2 rounded-full;
+  }
+
+  .checkbox-task {
+    @apply relative inline-flex items-center justify-center w-[18px] h-[18px] rounded-md border border-atlas-line-2 hover:border-atlas-amber/70 transition-colors cursor-pointer;
+  }
+  .checkbox-task[data-checked='true'] {
+    @apply bg-amber-gradient border-atlas-amber;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+
+  .bg-noise {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.04 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+
+  .text-gradient-amber {
+    background: linear-gradient(135deg, #6e8b58 0%, #52693f 50%, #3e5230 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .border-amber-glow {
+    box-shadow:
+      0 0 0 1px rgba(110, 139, 88, 0.45),
+      0 0 24px -2px rgba(110, 139, 88, 0.35);
+  }
+
+  .mask-fade-r {
+    -webkit-mask-image: linear-gradient(to right, black 75%, transparent);
+    mask-image: linear-gradient(to right, black 75%, transparent);
+  }
+}
