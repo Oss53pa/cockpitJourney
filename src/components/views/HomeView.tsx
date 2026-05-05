@@ -8,7 +8,7 @@ import {
   Compass,
   type LucideIcon,
 } from 'lucide-react';
-import { useApp } from '../../stores/appStore';
+import { useApp, useCurrentUser } from '../../stores/appStore';
 import { cn } from '../../lib/utils';
 import type { ViewKey } from '../../types';
 
@@ -20,7 +20,7 @@ export function HomeView({ onEnter }: Props) {
   const tasks = useApp((s) => s.tasks);
   const goals = useApp((s) => s.goals);
   const projects = useApp((s) => s.projects);
-  const me = useApp((s) => s.users[0]);
+  const me = useCurrentUser();
   const notifications = useApp((s) => s.notifications);
   const openModal = useApp((s) => s.openModal);
   const pushToast = useApp((s) => s.pushToast);

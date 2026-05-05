@@ -30,7 +30,7 @@ import {
 import { Logo } from '../ui/Logo';
 import { Avatar } from '../ui/Avatar';
 import { HealthDot } from '../ui/HealthDot';
-import { useApp } from '../../stores/appStore';
+import { useApp, useCurrentUser } from '../../stores/appStore';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../ui/Menu';
 import { cn } from '../../lib/utils';
 import type { ViewKey } from '../../types';
@@ -59,15 +59,15 @@ export function Sidebar({ view, activeProjectId, onNavigate, onOpenCommand, onEx
   const projects = useApp((s) => s.projects);
   const tasks = useApp((s) => s.tasks);
   const notifications = useApp((s) => s.notifications);
-  const me = useApp((s) => s.users[0]);
+  const me = useCurrentUser();
   const openModal = useApp((s) => s.openModal);
   const pushToast = useApp((s) => s.pushToast);
 
-  const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({
-    f_studio: true,
-    f_cosmos: true,
-    f_personal: false,
-  });
+  // Folder expand/collapse state is keyed by folder id and lazy-initialized:
+  // an unknown key → expanded by default (better than hardcoding ids that
+  // don't exist in this user's namespace).
+  const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
+  const isFolderOpen = (id: string) => openFolders[id] !== false;
 
   const todayCount = tasks.filter(
     (t) =>
@@ -173,7 +173,7 @@ export function Sidebar({ view, activeProjectId, onNavigate, onOpenCommand, onEx
         <div className="space-y-0.5">
           {folders.map((folder) => {
             const FolderIcon = folderIcons[folder.icon] || Building2;
-            const isOpen = openFolders[folder.id];
+            const isOpen = isFolderOpen(folder.id);
             const folderProjects = projects.filter((p) => folder.projectIds.includes(p.id));
             return (
               <div key={folder.id}>

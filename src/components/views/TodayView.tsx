@@ -103,40 +103,38 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
     (t) => t.dueDate && new Date(t.dueDate).toDateString() === todayStr && t.status !== 'done'
   );
 
-  const focusBlocks = [
-    { time: '07:00', label: 'Daily Brief PROPH3T', icon: Sunrise, kind: 'brief' as const },
-    {
-      time: '08:30',
-      label: 'Deep Work · Stratégie 2027',
-      icon: Headphones,
-      kind: 'focus' as const,
-      taskId: 't_today_focus_1',
-    },
-    { time: '10:30', label: 'Pause active · 10 min', icon: Coffee, kind: 'break' as const },
-    {
-      time: '11:00',
-      label: 'Brief Eva — Onboarding clients',
-      icon: MessageCircle,
-      kind: 'meeting' as const,
-      taskId: 't_today_focus_3',
-    },
-    {
-      time: '12:00',
-      label: 'Réponse Banque Atlantique',
-      icon: Mail,
-      kind: 'task' as const,
-      taskId: 't_today_focus_2',
-    },
-    {
-      time: '14:00',
-      label: 'Validation maquette Daily Brief',
+  // Static "ritual" blocks — visual agenda. Real task slots are derived
+  // from dueToday below and prepended dynamically.
+  const ritualBlocks: Array<{
+    time: string;
+    label: string;
+    icon: typeof Sunrise;
+    kind: 'brief' | 'focus' | 'break' | 'meeting' | 'task' | 'review';
+    taskId?: string;
+  }> = [
+    { time: '07:00', label: 'Daily Brief PROPH3T', icon: Sunrise, kind: 'brief' },
+    { time: '08:30', label: 'Deep Work · Plage focus', icon: Headphones, kind: 'focus' },
+    { time: '10:30', label: 'Pause active · 10 min', icon: Coffee, kind: 'break' },
+    { time: '12:00', label: 'Pause déjeuner', icon: Mail, kind: 'break' },
+    { time: '16:00', label: 'Revue de mi-journée', icon: Flame, kind: 'meeting' },
+    { time: '18:00', label: 'Revue de journée', icon: Moon, kind: 'review' },
+  ];
+
+  // Pre-pend real task slots from the user's due-today list, sorted by due time.
+  const taskBlocks = dueToday
+    .slice(0, 3)
+    .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''))
+    .map((t) => ({
+      time: t.dueDate
+        ? new Date(t.dueDate).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+        : '—',
+      label: t.title,
       icon: Sparkles,
       kind: 'task' as const,
-      taskId: 't_brief_design',
-    },
-    { time: '16:00', label: 'CoDir Cosmos — 30 min', icon: Flame, kind: 'meeting' as const },
-    { time: '18:00', label: 'Revue de journée', icon: Moon, kind: 'review' as const },
-  ];
+      taskId: t.id,
+    }));
+
+  const focusBlocks = [...taskBlocks, ...ritualBlocks];
 
   const totals = {
     planned: dueToday.length + 3,

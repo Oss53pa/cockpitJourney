@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useApp } from '../../stores/appStore';
+import { useApp, useCurrentUser } from '../../stores/appStore';
 import { Modal } from '../ui/Modal';
 import { FieldLabel, NativeSelect, Switch, TextInput, Textarea } from '../ui/Field';
 import { Avatar } from '../ui/Avatar';
@@ -60,6 +60,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
   const sections = useApp((s) => s.sections);
   const users = useApp((s) => s.users);
   const goals = useApp((s) => s.goals);
+  const me = useCurrentUser();
   const createTask = useApp((s) => s.createTask);
   const updateTask = useApp((s) => s.updateTask);
   const addSubtaskAction = useApp((s) => s.addSubtask);
@@ -77,8 +78,8 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
   const [priority, setPriority] = useState<Priority>((initial?.priority as Priority) ?? 2);
   const [taskType, setTaskType] = useState('standard');
 
-  // People
-  const [assignees, setAssignees] = useState<string[]>(initial?.assignees ?? ['u_pame']);
+  // People — default the new task to the current user
+  const [assignees, setAssignees] = useState<string[]>(initial?.assignees ?? (me ? [me.id] : []));
   const [watchers, setWatchers] = useState<string[]>(initial?.watchers ?? []);
 
   // Planning

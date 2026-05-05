@@ -1401,3 +1401,19 @@ Reste sous 400 mots, ton factuel et engagé.`,
 export const useApp = create<State>()((set, get) => initialState(set, get));
 
 export const focusPresetMap = focusPresets;
+
+/**
+ * Returns the currently authenticated user's profile (the one whose
+ * id === state.currentProfileId). Falls back to the first profile in
+ * the array — but if you see that fallback firing in production, you
+ * have an auth bootstrap bug.
+ */
+export function useCurrentUser() {
+  return useApp((s) => {
+    if (s.currentProfileId) {
+      const me = s.users.find((u) => u.id === s.currentProfileId);
+      if (me) return me;
+    }
+    return s.users[0];
+  });
+}

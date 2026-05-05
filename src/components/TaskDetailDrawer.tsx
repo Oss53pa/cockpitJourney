@@ -36,7 +36,7 @@ import {
   Maximize2,
 } from 'lucide-react';
 import type { Task, Priority } from '../types';
-import { useApp, type Attachment } from '../stores/appStore';
+import { useApp, useCurrentUser, type Attachment } from '../stores/appStore';
 import { Avatar, AvatarGroup } from './ui/Avatar';
 import { PriorityBadge } from './ui/PriorityBadge';
 import { StatusBadge, ProgressBar } from './ui/StatusBadge';
@@ -1002,7 +1002,7 @@ function DiscussionTab({ task }: { task: Task }) {
   const reactToComment = useApp((s) => s.reactToComment);
   const taskComments = allComments.filter((c) => c.taskId === task.id);
   const [draft, setDraft] = useState('');
-  const me = users[0];
+  const me = useCurrentUser();
 
   const submit = () => {
     if (!draft.trim()) return;

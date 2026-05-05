@@ -114,9 +114,11 @@ function indexedColsFor(table: AppTable, entity: Record<string, unknown>): Index
       };
     case 'notifications':
       return {
-        // mock notifications don't carry a recipient; we scope to the
-        // current authenticated profile (mapped at boot).
-        user_id: (entity.userId ?? 'u_pame') as string,
+        // Notifications without an explicit recipient are scoped to the
+        // current self-profile (defined at boot by linkAuthUserToProfile).
+        // currentProfileId is always set when buildRow is called because
+        // setCurrentAuthUserId throws otherwise.
+        user_id: (entity.userId ?? currentProfileId ?? '') as string,
         read: !!entity.read,
       };
     case 'insights':

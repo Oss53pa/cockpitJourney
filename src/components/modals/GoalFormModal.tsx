@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useApp } from '../../stores/appStore';
+import { useApp, useCurrentUser } from '../../stores/appStore';
 import { Modal } from '../ui/Modal';
 import { FieldLabel, NativeSelect, TextInput, Textarea } from '../ui/Field';
 import type { Goal } from '../../types';
@@ -14,12 +14,13 @@ export function GoalFormModal({ initial, onClose }: Props) {
   const goals = useApp((s) => s.goals);
   const create = useApp((s) => s.createGoal);
   const update = useApp((s) => s.updateGoal);
+  const me = useCurrentUser();
 
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [level, setLevel] = useState<Goal['level']>(initial?.level ?? 'team');
   const [parentGoalId, setParentGoalId] = useState(initial?.parentGoalId ?? '');
-  const [ownerId, setOwnerId] = useState(initial?.ownerId ?? 'u_pame');
+  const [ownerId, setOwnerId] = useState(initial?.ownerId ?? me?.id ?? '');
   const [period, setPeriod] = useState<Goal['period']>(initial?.period ?? 'quarterly');
   const [metricType, setMetricType] = useState<Goal['metricType']>(initial?.metricType ?? 'percentage');
   const [unit, setUnit] = useState(initial?.unit ?? '%');

@@ -16,7 +16,7 @@ import {
   BookOpen,
   type LucideIcon,
 } from 'lucide-react';
-import { projects } from '../../data/mockData';
+import { useApp } from '../../stores/appStore';
 import type { ViewKey } from '../../types';
 
 const icons: Record<string, LucideIcon> = {
@@ -36,6 +36,7 @@ interface Props {
 }
 
 export function CommandMenu({ open, onClose, onNavigate }: Props) {
+  const projects = useApp((s) => s.projects);
   const [q, setQ] = useState('');
   useEffect(() => {
     if (!open) setQ('');

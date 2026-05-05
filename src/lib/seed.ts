@@ -355,6 +355,18 @@ export async function seedDatabaseIfEmpty(): Promise<boolean> {
 
   const prefix = authUserId.slice(0, 8);
 
+  // Set the self-profile id EARLY so any indexed-col fallback in repo.ts
+  // (e.g. notifications.user_id) resolves correctly during seeding.
+  // The profile row itself is inserted in the very first bulkPut below.
+  setCurrentProfileId(`${prefix}_u_pame`);
+
+  // Notifications have no `userId` field in the mock data — annotate
+  // them with the current user as recipient before nsClone rewrites IDs.
+  const notificationsWithRecipient = notifications.map((n) => ({
+    ...n,
+    userId: 'u_pame',
+  }));
+
   // Insert in FK-safe order with namespaced IDs.
   await persist.bulkPut('users', nsClone(users, prefix));
   await persist.bulkPut('folders', nsClone(folders, prefix));
@@ -363,7 +375,7 @@ export async function seedDatabaseIfEmpty(): Promise<boolean> {
   await persist.bulkPut('tasks', nsClone(tasks, prefix));
   await persist.bulkPut('goals', nsClone(goals, prefix));
   await persist.bulkPut('comments', nsClone(comments, prefix));
-  await persist.bulkPut('notifications', nsClone(notifications, prefix));
+  await persist.bulkPut('notifications', nsClone(notificationsWithRecipient, prefix));
   await persist.bulkPut('insights', nsClone(insights, prefix));
   await persist.bulkPut('automations', nsClone(automations, prefix));
   await persist.bulkPut('forms', nsClone(forms, prefix));
@@ -373,8 +385,7 @@ export async function seedDatabaseIfEmpty(): Promise<boolean> {
   await persist.bulkPut('subtasks', nsClone(subtasks, prefix));
   await persist.bulkPut('notes', nsClone(notes, prefix));
 
-  // Settings: bind to the user's "self" profile (the cloned u_pame).
-  setCurrentProfileId(`${prefix}_u_pame`);
+  // Default settings — currentProfileId already bound above.
   for (const [key, value] of Object.entries(defaultSettings)) {
     await persist.setSetting(key, value);
   }

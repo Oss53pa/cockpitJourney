@@ -1,15 +1,17 @@
 import { Modal } from '../ui/Modal';
-import { useApp } from '../../stores/appStore';
+import { useApp, useCurrentUser } from '../../stores/appStore';
 import { FieldLabel, NativeSelect, Switch, TextInput } from '../ui/Field';
 import { Avatar } from '../ui/Avatar';
-import { RotateCcw, Sparkles, ExternalLink, KeyRound } from 'lucide-react';
+import { RotateCcw, Sparkles, ExternalLink, KeyRound, LogOut } from 'lucide-react';
 import { PROVIDERS, type ProphProvider } from '../../lib/proph3t';
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const settings = useApp((s) => s.settings);
   const update = useApp((s) => s.updateSettings);
-  const me = useApp((s) => s.users[0]);
+  const me = useCurrentUser();
   const resetSeed = useApp((s) => s.resetSeed);
+  const signOut = useApp((s) => s.signOut);
+  const authEmail = useApp((s) => s.authEmail);
 
   return (
     <Modal
@@ -210,22 +212,51 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         </section>
 
         <section>
-          <h3 className="text-2xs uppercase tracking-wider font-medium text-atlas-fg-3 mb-3">Données</h3>
-          <div className="panel p-4 flex items-center gap-3">
-            <div className="flex-1">
-              <div className="text-sm font-medium text-atlas-fg-1">Réinitialiser les données</div>
-              <div className="text-2xs text-atlas-fg-3">
-                Supprime tout le contenu local (localStorage) et recharge avec les seeds par défaut.
+          <h3 className="text-2xs uppercase tracking-wider font-medium text-atlas-fg-3 mb-3">
+            Compte & données
+          </h3>
+          <div className="space-y-2">
+            <div className="panel p-4 flex items-center gap-3">
+              <div className="flex-1">
+                <div className="text-sm font-medium text-atlas-fg-1">Session active</div>
+                <div className="text-2xs text-atlas-fg-3">
+                  Connecté{authEmail ? ` en tant que ${authEmail}` : ''}.
+                </div>
               </div>
+              <button
+                onClick={() => {
+                  if (confirm('Se déconnecter de CockpitJourney ?')) {
+                    void signOut();
+                    onClose();
+                  }
+                }}
+                className="btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
+              >
+                <LogOut className="w-3.5 h-3.5" /> Se déconnecter
+              </button>
             </div>
-            <button
-              onClick={() => {
-                if (confirm('Effacer toutes les données et recharger ?')) resetSeed();
-              }}
-              className="btn-danger text-xs px-3 py-1.5"
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> Réinitialiser
-            </button>
+            <div className="panel p-4 flex items-center gap-3">
+              <div className="flex-1">
+                <div className="text-sm font-medium text-atlas-fg-1">Réinitialiser les données</div>
+                <div className="text-2xs text-atlas-fg-3">
+                  Vide votre cockpit dans Supabase et relance le seed démo. Les autres utilisateurs ne sont
+                  pas affectés.
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (
+                    confirm(
+                      'Effacer TOUTES vos données dans Supabase et recharger ? Cette action est irréversible.'
+                    )
+                  )
+                    resetSeed();
+                }}
+                className="btn-danger text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Réinitialiser
+              </button>
+            </div>
           </div>
         </section>
       </div>

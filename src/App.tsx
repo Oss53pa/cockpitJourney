@@ -48,7 +48,7 @@ function ViewSkeleton() {
 function App() {
   const [entered, setEntered] = useState(false);
   const [view, setView] = useState<ViewKey>('today');
-  const [activeProjectId, setActiveProjectId] = useState<string | undefined>('p_cockpit');
+  const [activeProjectId, setActiveProjectId] = useState<string | undefined>(undefined);
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
 
@@ -65,6 +65,14 @@ function App() {
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
+
+  // Once snapshot is loaded, default the active project to the user's
+  // first project (their namespace, no global hardcoded id).
+  useEffect(() => {
+    if (ready && !activeProjectId && projects.length > 0) {
+      setActiveProjectId(projects[0].id);
+    }
+  }, [ready, projects, activeProjectId]);
 
   // Apply theme dark mode
   useEffect(() => {
