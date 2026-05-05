@@ -31,6 +31,64 @@ const ReportsView = lazy(() =>
   import('./components/views/ReportsView').then((m) => ({ default: m.ReportsView }))
 );
 
+/**
+ * Splash shown while we wait for Supabase auth to resolve. After 4s a
+ * "ça met du temps" hint appears with a manual escape hatch (clear local
+ * storage + reload) for the rare case where bootstrap genuinely hangs
+ * (network fail, broken CORS, stale auth token, browser extension blocking
+ * the auth iframe…).
+ */
+function ConnectingSplash() {
+  const [showEscape, setShowEscape] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setShowEscape(true), 4000);
+    return () => clearTimeout(id);
+  }, []);
+
+  const hardReset = () => {
+    try {
+      // Clear any cached Supabase auth (PKCE verifier, refresh token, etc.)
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith('cj-supabase-auth') || k.startsWith('sb-'))
+        .forEach((k) => localStorage.removeItem(k));
+    } catch {
+      /* localStorage might be blocked */
+    }
+    window.location.reload();
+  };
+
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center bg-atlas-cream px-6">
+      <div className="text-center max-w-sm">
+        <div className="font-logo text-5xl text-atlas-fg-1 mb-4">
+          Cockpit<span className="text-atlas-sage-deep">Journey</span>
+        </div>
+        <div className="text-2xs uppercase tracking-[0.2em] text-atlas-fg-3 font-medium">
+          Connexion à Supabase…
+        </div>
+        <div className="mt-5 mx-auto w-32 h-1 rounded-full bg-black/[0.05] overflow-hidden">
+          <div className="h-full w-1/2 bg-atlas-sage-deep animate-pulse-soft rounded-full" />
+        </div>
+        {showEscape && (
+          <div className="mt-8 space-y-3">
+            <p className="text-xs text-atlas-fg-2 leading-relaxed">
+              Ça prend plus longtemps que prévu. Vérifiez la console du navigateur (
+              <span className="font-mono">F12</span>) pour les erreurs réseau, ou réinitialisez la session
+              locale ci-dessous.
+            </p>
+            <button
+              onClick={hardReset}
+              className="text-xs uppercase tracking-wider text-atlas-sage-deep hover:text-atlas-sage-deeper transition font-medium underline underline-offset-4"
+            >
+              Réinitialiser et réessayer
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ViewSkeleton() {
   return (
     <div className="px-8 py-7 space-y-4 animate-pulse">
@@ -168,23 +226,9 @@ function App() {
     setMobileSidebarOpen(false);
   }, [view, activeProjectId]);
 
-  // 1. Still resolving session → splash
+  // 1. Still resolving session → splash (with escape hatch after 4s)
   if (authStatus === 'loading') {
-    return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-atlas-cream">
-        <div className="text-center">
-          <div className="font-logo text-5xl text-atlas-fg-1 mb-4">
-            Cockpit<span className="text-atlas-sage-deep">Journey</span>
-          </div>
-          <div className="text-2xs uppercase tracking-[0.2em] text-atlas-fg-3 font-medium">
-            Connexion à Supabase…
-          </div>
-          <div className="mt-5 mx-auto w-32 h-1 rounded-full bg-black/[0.05] overflow-hidden">
-            <div className="h-full w-1/2 bg-atlas-sage-deep animate-pulse-soft rounded-full" />
-          </div>
-        </div>
-      </div>
-    );
+    return <ConnectingSplash />;
   }
 
   // 2. Not signed in → login screen

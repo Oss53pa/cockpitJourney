@@ -366,41 +366,51 @@ const uid = (prefix = 'id') => `${prefix}_${Math.random().toString(36).slice(2, 
  * load the snapshot from Supabase into the Zustand cache.
  */
 async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn, get: GetFn) {
-  set({ authStatus: 'signed_in', authEmail: email });
+  // Idempotent: if we already hydrated for this user, don't redo the work
+  // (onAuthStateChange + getSession can both fire for the same session).
+  if (get().ready && get().currentProfileId) return;
 
-  // CRITICAL: set the auth user id FIRST so every subsequent write
-  // (seed, profile link, settings) carries the correct ownership.
-  setCurrentAuthUserId(authUserId);
+  try {
+    set({ authStatus: 'signed_in', authEmail: email });
 
-  // Seed the cj_* tables on first launch FOR THIS USER (RLS-scoped).
-  await seedDatabaseIfEmpty();
+    // CRITICAL: set the auth user id FIRST so every subsequent write
+    // (seed, profile link, settings) carries the correct ownership.
+    setCurrentAuthUserId(authUserId);
 
-  // Bind this auth user to their self-profile (creates one if missing).
-  const profileId = await linkAuthUserToProfile(authUserId, email);
+    // Seed the cj_* tables on first launch FOR THIS USER (RLS-scoped).
+    await seedDatabaseIfEmpty();
 
-  const snap = await loadSnapshot();
-  set({
-    users: snap.users,
-    folders: snap.folders,
-    projects: snap.projects,
-    sections: snap.sections,
-    tasks: snap.tasks,
-    goals: snap.goals,
-    comments: snap.comments,
-    notifications: snap.notifications,
-    insights: snap.insights,
-    automations: snap.automations,
-    forms: snap.forms,
-    reports: snap.reports,
-    attachments: snap.attachments,
-    dependencies: snap.dependencies,
-    activity: snap.activity,
-    subtasks: snap.subtasks,
-    notes: snap.notes,
-    settings: { ...get().settings, ...(snap.settings as Partial<State['settings']>) },
-    currentProfileId: profileId,
-    ready: true,
-  });
+    // Bind this auth user to their self-profile (creates one if missing).
+    const profileId = await linkAuthUserToProfile(authUserId, email);
+
+    const snap = await loadSnapshot();
+    set({
+      users: snap.users,
+      folders: snap.folders,
+      projects: snap.projects,
+      sections: snap.sections,
+      tasks: snap.tasks,
+      goals: snap.goals,
+      comments: snap.comments,
+      notifications: snap.notifications,
+      insights: snap.insights,
+      automations: snap.automations,
+      forms: snap.forms,
+      reports: snap.reports,
+      attachments: snap.attachments,
+      dependencies: snap.dependencies,
+      activity: snap.activity,
+      subtasks: snap.subtasks,
+      notes: snap.notes,
+      settings: { ...get().settings, ...(snap.settings as Partial<State['settings']>) },
+      currentProfileId: profileId,
+      ready: true,
+    });
+  } catch (err) {
+    console.error('[hydrate] failed — falling back to signed_out', err);
+    setCurrentAuthUserId(null);
+    set({ authStatus: 'signed_out', ready: false });
+  }
 }
 
 const focusPresets: Record<FocusSession['preset'], { total: number; label: string }> = {
@@ -466,52 +476,85 @@ const initialState = (set: SetFn, get: GetFn): State => ({
   },
 
   bootstrap: async () => {
-    if (get().ready) return;
+    if (get().ready || get().authStatus !== 'loading') return;
 
     if (!SUPABASE_CONFIGURED) {
+      console.warn('[bootstrap] Supabase not configured — going to signed_out');
       set({ authStatus: 'signed_out', ready: false });
       return;
     }
 
-    // Subscribe to auth state changes (single subscription per app lifecycle)
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT' || !session) {
-        setCurrentAuthUserId(null);
-        set({
-          authStatus: 'signed_out',
-          authEmail: undefined,
-          currentProfileId: undefined,
-          ready: false,
-          users: [],
-          folders: [],
-          projects: [],
-          sections: [],
-          tasks: [],
-          goals: [],
-          comments: [],
-          notifications: [],
-          insights: [],
-          automations: [],
-          forms: [],
-          reports: [],
-          attachments: [],
-          dependencies: [],
-          activity: [],
-          subtasks: [],
-          notes: [],
-        });
-        return;
+    // Hard timeout: if Supabase auth hasn't resolved within 6s (network
+    // hung, broken token, CORS issue…), fall through to signed_out so
+    // the user can at least try to log in instead of seeing a frozen splash.
+    const timeoutId = setTimeout(() => {
+      if (get().authStatus === 'loading') {
+        console.warn('[bootstrap] auth resolution timed out after 6s — falling back to signed_out');
+        set({ authStatus: 'signed_out' });
       }
-      // Signed in — hydrate
-      await hydrateFromSupabase(session.user.id, session.user.email ?? '', set, get);
+    }, 6000);
+
+    // Subscribe to auth state changes (single subscription per app lifecycle).
+    // INITIAL_SESSION fires once on subscribe with the cached session (if any),
+    // SIGNED_IN / SIGNED_OUT / TOKEN_REFRESHED fire on subsequent changes.
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      console.info('[auth]', event, session ? `(user ${session.user.id.slice(0, 8)})` : '(no session)');
+      try {
+        if (event === 'SIGNED_OUT' || !session) {
+          setCurrentAuthUserId(null);
+          set({
+            authStatus: 'signed_out',
+            authEmail: undefined,
+            currentProfileId: undefined,
+            ready: false,
+            users: [],
+            folders: [],
+            projects: [],
+            sections: [],
+            tasks: [],
+            goals: [],
+            comments: [],
+            notifications: [],
+            insights: [],
+            automations: [],
+            forms: [],
+            reports: [],
+            attachments: [],
+            dependencies: [],
+            activity: [],
+            subtasks: [],
+            notes: [],
+          });
+          return;
+        }
+        // Signed in / refreshed / initial session with valid creds → hydrate
+        await hydrateFromSupabase(session.user.id, session.user.email ?? '', set, get);
+      } catch (err) {
+        console.error('[bootstrap] auth state change handler failed', err);
+        set({ authStatus: 'signed_out' });
+      } finally {
+        clearTimeout(timeoutId);
+      }
     });
 
-    // Pick up any existing session
-    const { data } = await supabase.auth.getSession();
-    if (data.session) {
-      await hydrateFromSupabase(data.session.user.id, data.session.user.email ?? '', set, get);
-    } else {
+    // Belt-and-suspenders: also call getSession() ourselves in case
+    // INITIAL_SESSION isn't dispatched promptly (some browser extensions
+    // block the auth iframe).
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
+      if (data.session) {
+        // onAuthStateChange will likely already have fired with the same
+        // session, but hydrateFromSupabase short-circuits when ready=true.
+        await hydrateFromSupabase(data.session.user.id, data.session.user.email ?? '', set, get);
+      } else if (get().authStatus === 'loading') {
+        set({ authStatus: 'signed_out' });
+      }
+    } catch (err) {
+      console.error('[bootstrap] getSession failed', err);
       set({ authStatus: 'signed_out' });
+    } finally {
+      clearTimeout(timeoutId);
     }
   },
 
