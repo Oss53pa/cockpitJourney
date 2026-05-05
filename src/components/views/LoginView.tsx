@@ -11,6 +11,30 @@ import {
 
 type Step = 'email' | 'code' | 'verifying';
 
+/**
+ * Map raw Supabase auth errors to actionable French messages. The default
+ * Supabase SMTP has a tight rate limit (~4 emails/hour) and gives a generic
+ * "Error sending magic link email" — we surface the underlying cause and
+ * always nudge the user toward the dev login fallback.
+ */
+function humanizeAuthError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const lower = raw.toLowerCase();
+  if (lower.includes('rate') || lower.includes('too many')) {
+    return 'Limite d’envoi atteinte (Supabase). Réessayez dans 1–2 minutes ou utilisez la connexion développeur ci-dessous.';
+  }
+  if (lower.includes('error sending') || lower.includes('smtp') || lower.includes('email')) {
+    return "Le service e-mail Supabase n'a pas pu envoyer le code (rate limit ou SMTP non configuré). Utilisez la connexion développeur ci-dessous, ou configurez un SMTP custom dans Supabase Auth.";
+  }
+  if (lower.includes('invalid') && lower.includes('email')) {
+    return 'Adresse e-mail invalide.';
+  }
+  if (lower.includes('signup') && lower.includes('disable')) {
+    return 'Les inscriptions par e-mail sont désactivées sur ce projet Supabase. Activez-les dans Auth → Providers → Email.';
+  }
+  return raw || 'Erreur inconnue';
+}
+
 export function LoginView() {
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
@@ -34,7 +58,7 @@ export function LoginView() {
       await sendEmailOtp(email);
       setStep('code');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur inconnue');
+      setError(humanizeAuthError(err));
     } finally {
       setSending(false);
     }
@@ -64,7 +88,7 @@ export function LoginView() {
     try {
       await sendEmailOtp(email);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur inconnue');
+      setError(humanizeAuthError(err));
     } finally {
       setSending(false);
     }
@@ -77,7 +101,7 @@ export function LoginView() {
       await signInAsDev();
       // onAuthStateChange takes over from here.
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur inconnue');
+      setError(humanizeAuthError(err));
       setDevLoading(false);
     }
   };
@@ -157,7 +181,7 @@ export function LoginView() {
                   <button
                     type="submit"
                     disabled={sending || !email.trim()}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-atlas-sage-deep text-white font-medium hover:bg-atlas-sage-deeper transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-atlas-sage-deep text-white text-sm font-semibold tracking-wide hover:bg-atlas-sage-deeper transition disabled:opacity-50 disabled:cursor-not-allowed shadow-amber-deep"
                   >
                     {sending ? (
                       <>
@@ -250,7 +274,7 @@ export function LoginView() {
                   <button
                     type="submit"
                     disabled={step === 'verifying' || code.length < 6}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-atlas-sage-deep text-white font-medium hover:bg-atlas-sage-deeper transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-atlas-sage-deep text-white text-sm font-semibold tracking-wide hover:bg-atlas-sage-deeper transition disabled:opacity-50 disabled:cursor-not-allowed shadow-amber-deep"
                   >
                     {step === 'verifying' ? (
                       <>

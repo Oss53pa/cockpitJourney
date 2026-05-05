@@ -21,11 +21,17 @@ export default {
           'fg-2': '#3F443A',
           'fg-1': '#1A1D17',       // primary text
           white: '#0E1110',        // inverted (deepest contrast)
-          // Sage primary
+          // Sage primary — both naming conventions point at the same colors.
+          // 'amber-*' is historical (early WIP); 'sage-*' is the canonical
+          // alias used in newer code. Keep both so old templates don't break.
           amber: '#6E8B58',
           'amber-soft': '#95B07D',
           'amber-deep': '#52693F',
           'amber-glow': '#C8DBAE',
+          sage: '#95B07D',          // softer sage for subtle accents/borders
+          'sage-deep': '#6E8B58',   // primary brand button bg
+          'sage-deeper': '#52693F', // hover / pressed
+          'sage-glow': '#C8DBAE',
         },
         signal: {
           green: '#4D9A6A',
