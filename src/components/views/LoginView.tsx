@@ -3,8 +3,9 @@ import { Mail, Loader2, ArrowRight, Sparkles, KeyRound, Zap } from 'lucide-react
 import {
   sendEmailOtp,
   verifyEmailOtp,
-  signInAsDevAnonymous,
+  signInAsDev,
   DEV_MODE,
+  DEV_USER_EMAIL,
   SUPABASE_CONFIGURED,
 } from '../../lib/supabase';
 
@@ -73,14 +74,10 @@ export function LoginView() {
     setDevLoading(true);
     setError(null);
     try {
-      await signInAsDevAnonymous();
+      await signInAsDev();
       // onAuthStateChange takes over from here.
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? `${err.message} (activez "Anonymous sign-ins" dans Supabase Auth Providers)`
-          : 'Erreur inconnue'
-      );
+      setError(err instanceof Error ? err.message : 'Erreur inconnue');
       setDevLoading(false);
     }
   };
@@ -198,13 +195,13 @@ export function LoginView() {
                       ) : (
                         <>
                           <Zap className="w-4 h-4" />
-                          Connexion développeur (anonymous)
+                          Connexion développeur
                         </>
                       )}
                     </button>
                     <p className="mt-2 text-2xs text-atlas-fg-3 leading-relaxed">
-                      Crée une session anonyme isolée par RLS. Aucune donnée ne fuit vers d'autres
-                      utilisateurs.
+                      Connexion instantanée comme <code className="font-mono">{DEV_USER_EMAIL}</code> —
+                      cockpit isolé par RLS, parfait pour le dev local.
                     </p>
                   </>
                 )}

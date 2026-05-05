@@ -111,15 +111,22 @@ export async function verifyEmailOtp(email: string, token: string) {
 }
 
 /**
- * Dev-only quick login: spawn an anonymous Supabase auth.users row to
- * skip the email roundtrip. Each anonymous session is isolated by RLS,
- * so this is safe even on a shared Supabase project.
+ * Dev-only quick login: signs in as the fixed `dev@cockpitjourney.local`
+ * user that's been provisioned via SQL migration `cj_dev_user_for_quick_login`.
+ * Avoids the email roundtrip and doesn't require enabling anonymous auth
+ * in the Supabase dashboard.
  *
- * Requires Supabase Auth → "Enable anonymous sign-ins" toggled on
- * (Authentication → Sign In / Up → Allow anonymous sign-ins).
+ * The dev user is RLS-isolated like any other authenticated user, so it
+ * cannot read or modify data belonging to real users.
  */
-export async function signInAsDevAnonymous() {
-  const { data, error } = await supabase.auth.signInAnonymously();
+export const DEV_USER_EMAIL = 'dev@cockpitjourney.local';
+const DEV_USER_PASSWORD = 'cockpit-dev-2026';
+
+export async function signInAsDev() {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: DEV_USER_EMAIL,
+    password: DEV_USER_PASSWORD,
+  });
   if (error) throw error;
   return data;
 }
