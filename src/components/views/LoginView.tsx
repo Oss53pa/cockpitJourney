@@ -20,11 +20,16 @@ type Step = 'email' | 'code' | 'verifying';
 function humanizeAuthError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   const lower = raw.toLowerCase();
+  // Specific Resend cause we hit on this Supabase project: the sender
+  // domain (atlasstudio.org) isn't verified yet on resend.com/domains.
+  if (lower.includes('domain') && lower.includes('not verified')) {
+    return "Le domaine expéditeur n'est pas vérifié sur Resend. Vérifiez atlasstudio.org sur resend.com/domains, ou utilisez la connexion développeur ci-dessous.";
+  }
   if (lower.includes('rate') || lower.includes('too many')) {
-    return 'Limite d’envoi atteinte (Supabase). Réessayez dans 1–2 minutes ou utilisez la connexion développeur ci-dessous.';
+    return 'Limite d’envoi atteinte. Réessayez dans 1–2 minutes ou utilisez la connexion développeur ci-dessous.';
   }
   if (lower.includes('error sending') || lower.includes('smtp') || lower.includes('email')) {
-    return "Le service e-mail Supabase n'a pas pu envoyer le code (rate limit ou SMTP non configuré). Utilisez la connexion développeur ci-dessous, ou configurez un SMTP custom dans Supabase Auth.";
+    return "Le service e-mail (Resend via Supabase) n'a pas pu envoyer le code. Vérifiez le domaine expéditeur dans resend.com/domains, ou utilisez la connexion développeur ci-dessous.";
   }
   if (lower.includes('invalid') && lower.includes('email')) {
     return 'Adresse e-mail invalide.';
