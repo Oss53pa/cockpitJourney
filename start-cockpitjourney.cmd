@@ -8,6 +8,9 @@ echo   Pilotez votre journee.
 echo ============================================================
 echo.
 
+REM Free port 5400 if a previous instance is still holding it
+powershell.exe -NoProfile -Command "Get-NetTCPConnection -LocalPort 5400 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+
 if not exist "node_modules" (
   echo [1/3] Installation des dependances ^(premiere execution^)...
   call npm install
