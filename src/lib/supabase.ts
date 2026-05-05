@@ -14,7 +14,7 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | und
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   // Don't throw at import-time — let the app boot and surface a clean
   // configuration banner instead.
-   
+
   console.warn(
     '[supabase] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY missing. ' +
       'Copy .env.example → .env.local and fill them in.'
@@ -80,15 +80,34 @@ export async function getCurrentSession() {
   return data.session;
 }
 
-export async function signInWithMagicLink(email: string, redirectTo?: string) {
+/**
+ * Send a 6-digit OTP code by email. Works on any host/port without
+ * needing a redirect URL whitelist on the Supabase side.
+ *
+ * The default Supabase email template includes both `{{ .ConfirmationURL }}`
+ * and `{{ .Token }}` — we instruct the user to copy the 6-digit token.
+ */
+export async function sendEmailOtp(email: string) {
   const { error } = await supabase.auth.signInWithOtp({
     email: email.trim().toLowerCase(),
     options: {
-      emailRedirectTo: redirectTo ?? window.location.origin,
       shouldCreateUser: true,
+      // omit emailRedirectTo on purpose: the user enters the code in-app,
+      // no browser redirect needed.
     },
   });
   if (error) throw error;
+}
+
+/** Verify the 6-digit OTP code received by email. */
+export async function verifyEmailOtp(email: string, token: string) {
+  const { data, error } = await supabase.auth.verifyOtp({
+    email: email.trim().toLowerCase(),
+    token: token.trim(),
+    type: 'email',
+  });
+  if (error) throw error;
+  return data;
 }
 
 export async function signOut() {

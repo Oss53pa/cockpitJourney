@@ -40,7 +40,7 @@ npm run build && npm run start   # mode production
 
 ### 3. Se connecter
 
-À la première ouverture, vous arrivez sur l'écran de login → entrez votre adresse e-mail → Supabase vous envoie un **lien magique**. Cliquez dessus, vous êtes connectée. Aucun mot de passe à retenir.
+À la première ouverture, vous arrivez sur l'écran de login → entrez votre adresse e-mail → Supabase vous envoie un **code à 6 chiffres** par e-mail → recopiez-le dans l'app. Aucun mot de passe à retenir, aucune redirection à configurer (ça marche sur n'importe quel port/host).
 
 > Sur la première connexion, la base est automatiquement peuplée avec un jeu de données démo (Pamela, projets Cockpit/Cosmos/SOAP/Brand, ~30 tâches, goals, automations…). Vous reprenez le contrôle de cette identité de démonstration et tout devient persistant côté Supabase.
 
@@ -177,8 +177,8 @@ Paramètres → Données → Réinitialiser
 
 **Le login ne marche pas :**
 - Vérifiez que `.env.local` est bien rempli et que vous avez **redémarré** le serveur Vite (les variables `VITE_*` sont lues au démarrage)
-- Vérifiez que l'email de magic link n'est pas dans vos spams
-- Côté Supabase, vérifiez que le redirect URL `http://localhost:5400` est autorisé : Authentication → URL Configuration → Redirect URLs
+- Vérifiez que l'email contenant le code à 6 chiffres n'est pas dans vos spams
+- Le code expire au bout de quelques minutes — si dépassé, cliquez "Renvoyer le code"
 
 ---
 
