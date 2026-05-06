@@ -24,6 +24,19 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 export const SUPABASE_CONFIGURED = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 
 /**
+ * App identity used by the shared Supabase Auth email templates to
+ * branch the rendering (logo, tagline, copy, footer) per product.
+ *
+ * Atlas Studio runs several SaaS products on a single Supabase project,
+ * so we tag every OTP request with `data.app` and the email template
+ * uses {{ if eq .Data.app "CockpitJourney" }}…{{ end }} to swap the
+ * brand block. See docs/email-templates/magic-link.html.
+ */
+export const APP_ID = 'CockpitJourney';
+export const APP_TAGLINE = 'Pilotez votre journée. Compagnon quotidien de gestion de tâches et projets.';
+export const APP_URL = 'https://cockpitjourney.app';
+
+/**
  * Hybrid jsonb-backed row. Indexed columns are derived from `data`; we
  * always read the entity straight out of `data` to get full fidelity.
  */
@@ -86,12 +99,23 @@ export async function getCurrentSession() {
  *
  * The default Supabase email template includes both `{{ .ConfirmationURL }}`
  * and `{{ .Token }}` — we instruct the user to copy the 6-digit token.
+ *
+ * `options.data` becomes the user's `raw_user_meta_data` and is exposed
+ * in email templates as `{{ .Data }}`. We tag every request with
+ * `app: APP_ID` so the shared Atlas-Supabase template can render
+ * CockpitJourney branding for these emails (and Atlas Studio default
+ * branding for emails coming from sibling products on the same project).
  */
 export async function sendEmailOtp(email: string) {
   const { error } = await supabase.auth.signInWithOtp({
     email: email.trim().toLowerCase(),
     options: {
       shouldCreateUser: true,
+      data: {
+        app: APP_ID,
+        app_tagline: APP_TAGLINE,
+        app_url: APP_URL,
+      },
       // omit emailRedirectTo on purpose: the user enters the code in-app,
       // no browser redirect needed.
     },

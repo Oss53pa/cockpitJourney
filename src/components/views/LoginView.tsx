@@ -115,7 +115,7 @@ export function LoginView() {
     return (
       <div className="min-h-screen flex items-start justify-center bg-atlas-cream px-6 py-12">
         <div className="max-w-lg w-full bg-white rounded-2xl shadow-card-hover border border-black/5 p-8 mt-12">
-          <div className="text-signal-red font-medium mb-2">Supabase non configuré</div>
+          <div className="text-signal-red font-light mb-2">Supabase non configuré</div>
           <div className="text-sm text-atlas-fg-2 leading-relaxed">
             Cette installation n'a pas accès à la base de données. Copiez{' '}
             <code className="px-1.5 py-0.5 bg-atlas-cream rounded text-atlas-sage-deep">.env.example</code>{' '}
@@ -136,7 +136,7 @@ export function LoginView() {
             <div className="font-logo text-4xl sm:text-5xl text-atlas-fg-1 leading-none mb-2 sm:mb-3">
               Cockpit<span className="text-atlas-sage-deep">Journey</span>
             </div>
-            <div className="text-2xs sm:text-xs uppercase tracking-[0.22em] text-atlas-fg-3 font-medium">
+            <div className="text-2xs sm:text-xs uppercase tracking-[0.22em] text-atlas-fg-3 font-light">
               Pilotez votre journée · propulsé par PROPH3T
             </div>
           </div>
@@ -145,7 +145,7 @@ export function LoginView() {
           <div className="bg-white rounded-2xl shadow-card-hover border border-black/5 p-6 sm:p-8">
             {step === 'email' && (
               <>
-                <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-atlas-sage-deep font-medium mb-3">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-atlas-sage-deep font-light mb-3">
                   <Sparkles className="w-3.5 h-3.5" />
                   Connexion sécurisée
                 </div>
@@ -159,7 +159,7 @@ export function LoginView() {
 
                 <form onSubmit={handleSendEmail} className="space-y-3">
                   <div>
-                    <label className="block text-xs uppercase tracking-wider text-atlas-fg-3 font-medium mb-2">
+                    <label className="block text-xs uppercase tracking-wider text-atlas-fg-3 font-light mb-2">
                       Adresse e-mail
                     </label>
                     <div className="relative">
@@ -186,7 +186,7 @@ export function LoginView() {
                   <button
                     type="submit"
                     disabled={sending || !email.trim()}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-atlas-sage-deep text-white text-sm font-semibold tracking-wide hover:bg-atlas-sage-deeper transition disabled:opacity-50 disabled:cursor-not-allowed shadow-amber-deep"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-atlas-sage-deep text-white text-sm font-light tracking-wider hover:bg-atlas-sage-deeper transition disabled:opacity-50 disabled:cursor-not-allowed shadow-amber-deep"
                   >
                     {sending ? (
                       <>
@@ -214,7 +214,7 @@ export function LoginView() {
                       type="button"
                       onClick={handleDevLogin}
                       disabled={devLoading}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-atlas-sage-deep/30 bg-atlas-sage/10 text-atlas-sage-deeper font-medium hover:bg-atlas-sage/20 transition disabled:opacity-50"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-atlas-sage-deep/30 bg-atlas-sage/10 text-atlas-sage-deeper font-light hover:bg-atlas-sage/20 transition disabled:opacity-50"
                     >
                       {devLoading ? (
                         <>
@@ -239,7 +239,7 @@ export function LoginView() {
 
             {(step === 'code' || step === 'verifying') && (
               <>
-                <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-atlas-sage-deep font-medium mb-3">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-atlas-sage-deep font-light mb-3">
                   <KeyRound className="w-3.5 h-3.5" />
                   Code de vérification
                 </div>
@@ -248,12 +248,12 @@ export function LoginView() {
                 </h1>
                 <p className="text-sm text-atlas-fg-2 mb-5 leading-relaxed">
                   Un code à 6 chiffres a été envoyé à{' '}
-                  <span className="font-medium text-atlas-fg-1">{email}</span>. Recopiez-le ci-dessous.
+                  <span className="font-light text-atlas-fg-1">{email}</span>. Recopiez-le ci-dessous.
                 </p>
 
                 <form onSubmit={handleVerifyCode} className="space-y-3">
                   <div>
-                    <label className="block text-xs uppercase tracking-wider text-atlas-fg-3 font-medium mb-2">
+                    <label className="block text-xs uppercase tracking-wider text-atlas-fg-3 font-light mb-2">
                       Code à 6 chiffres
                     </label>
                     <input
@@ -279,7 +279,7 @@ export function LoginView() {
                   <button
                     type="submit"
                     disabled={step === 'verifying' || code.length < 6}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-atlas-sage-deep text-white text-sm font-semibold tracking-wide hover:bg-atlas-sage-deeper transition disabled:opacity-50 disabled:cursor-not-allowed shadow-amber-deep"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-atlas-sage-deep text-white text-sm font-light tracking-wider hover:bg-atlas-sage-deeper transition disabled:opacity-50 disabled:cursor-not-allowed shadow-amber-deep"
                   >
                     {step === 'verifying' ? (
                       <>
@@ -302,7 +302,7 @@ export function LoginView() {
                         setCode('');
                         setError(null);
                       }}
-                      className="uppercase tracking-wider text-atlas-fg-3 hover:text-atlas-fg-1 transition font-medium"
+                      className="uppercase tracking-wider text-atlas-fg-3 hover:text-atlas-fg-1 transition font-light"
                     >
                       ← Changer d'adresse
                     </button>
@@ -310,7 +310,7 @@ export function LoginView() {
                       type="button"
                       onClick={handleResend}
                       disabled={sending || step === 'verifying'}
-                      className="uppercase tracking-wider text-atlas-sage-deep hover:text-atlas-sage-deeper transition font-medium disabled:opacity-50"
+                      className="uppercase tracking-wider text-atlas-sage-deep hover:text-atlas-sage-deeper transition font-light disabled:opacity-50"
                     >
                       {sending ? 'Envoi…' : 'Renvoyer le code'}
                     </button>

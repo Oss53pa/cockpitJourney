@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<title>Code de connexion · {{ if eq .Data.app "CockpitJourney" }}CockpitJourney{{ else }}Atlas Studio{{ end }}</title>
+<style>
+  /* Email-safe CSS only — no flexbox, no grid, inline-friendly */
+  @import url('https://fonts.googleapis.com/css2?family=Grand+Hotel&family=Dosis:wght@200;300;400;500&family=JetBrains+Mono:wght@300;400&display=swap');
+  body { margin: 0; padding: 0; background: #F4F2E9; font-family: 'Dosis', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #1A1D17; font-weight: 300; }
+  .wrapper { width: 100%; background: #F4F2E9; padding: 32px 12px; }
+  .container { max-width: 520px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 24px 48px -22px rgba(26,29,23,0.18), 0 0 0 1px rgba(26,29,23,0.05); }
+  .header { padding: 32px 32px 16px; text-align: center; }
+  .logo { font-family: "Grand Hotel", Georgia, serif; font-size: 38px; line-height: 1; color: #1A1D17; letter-spacing: -0.02em; font-weight: 400; }
+  .logo .accent { color: #6E8B58; }
+  .tagline { margin-top: 10px; font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: #7A8071; font-weight: 300; }
+  .body { padding: 8px 32px 32px; }
+  .pill { display: inline-block; padding: 4px 10px; background: rgba(110,139,88,0.1); color: #52693F; border-radius: 999px; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 500; margin-bottom: 16px; }
+  h1 { margin: 0 0 12px; font-size: 22px; line-height: 1.3; color: #1A1D17; font-weight: 300; letter-spacing: -0.01em; }
+  p { margin: 0 0 16px; font-size: 15px; line-height: 1.55; color: #3F443A; font-weight: 300; }
+  p strong { font-weight: 500; }
+  .code-block { margin: 28px 0; padding: 24px; background: linear-gradient(180deg, #FBFAF4 0%, #F4F2E9 100%); border: 1px solid #DCD9CB; border-radius: 12px; text-align: center; }
+  .code-label { font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: #7A8071; font-weight: 400; margin-bottom: 12px; }
+  .code-value { font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace; font-size: 36px; font-weight: 300; color: #1A1D17; letter-spacing: 0.4em; padding-left: 0.4em; /* visual centering compensation */ }
+  .button { display: inline-block; padding: 14px 28px; background: #52693F; color: #FFFFFF !important; text-decoration: none; border-radius: 12px; font-size: 15px; font-weight: 400; letter-spacing: 0.04em; box-shadow: 0 8px 22px -8px rgba(110,139,88,0.45); }
+  .button-wrap { text-align: center; margin: 24px 0 8px; }
+  .small { font-size: 13px; color: #7A8071; line-height: 1.55; font-weight: 300; }
+  .divider { border: none; border-top: 1px solid #DCD9CB; margin: 28px 0; }
+  .footer { padding: 24px 32px; background: #F8F6EE; text-align: center; font-size: 12px; color: #7A8071; line-height: 1.6; font-weight: 300; }
+  .footer strong { font-weight: 500; color: #3F443A; }
+  .footer a { color: #6E8B58; text-decoration: none; }
+  @media (max-width: 540px) {
+    .container { border-radius: 12px; }
+    .header { padding: 24px 20px 12px; }
+    .body { padding: 8px 20px 24px; }
+    .footer { padding: 20px 20px; }
+    .code-value { font-size: 30px; letter-spacing: 0.32em; padding-left: 0.32em; }
+    h1 { font-size: 19px; }
+  }
+</style>
+</head>
+<body>
+<table role="presentation" class="wrapper" cellpadding="0" cellspacing="0" border="0" width="100%">
+  <tr><td>
+    <table role="presentation" class="container" cellpadding="0" cellspacing="0" border="0" align="center">
+      <tr><td class="header">
+        {{ if eq .Data.app "CockpitJourney" }}
+          <div class="logo">Cockpit<span class="accent">Journey</span></div>
+          <div class="tagline">Pilotez votre journée · propulsé par PROPH3T</div>
+        {{ else }}
+          <div class="logo">Atlas<span class="accent">Studio</span></div>
+          <div class="tagline">Suite cockpit · pilotez votre journée</div>
+        {{ end }}
+      </td></tr>
+      <tr><td class="body">
+        <span class="pill">🔐 Connexion sécurisée</span>
+        <h1>Voici votre code de connexion</h1>
+        <p>Bonjour,</p>
+        <p>
+          Quelqu'un (probablement vous) vient de demander à se connecter à
+          {{ if eq .Data.app "CockpitJourney" }}votre cockpit <strong>CockpitJourney</strong>{{ else }}votre cockpit <strong>Atlas Studio</strong>{{ end }}.
+          Voici votre code à 6 chiffres :
+        </p>
+
+        <div class="code-block">
+          <div class="code-label">Code de vérification</div>
+          <div class="code-value">{{ .Token }}</div>
+        </div>
+
+        <p class="small">Ce code expire dans <strong>5 minutes</strong>. Si vous ne reconnaissez pas cette demande, ignorez simplement cet e-mail — votre compte reste protégé.</p>
+
+        <hr class="divider" />
+
+        <p class="small">Vous préférez cliquer un lien plutôt que de recopier le code ?</p>
+        <div class="button-wrap">
+          <a class="button" href="{{ .ConfirmationURL }}">Me connecter en un clic</a>
+        </div>
+
+      </td></tr>
+      <tr><td class="footer">
+        {{ if eq .Data.app "CockpitJourney" }}
+          <strong>CockpitJourney</strong> · 13e produit du catalogue Atlas Studio<br/>
+          Vous recevez cet e-mail parce qu'une connexion a été demandée à <strong>{{ .Email }}</strong>.<br/>
+          Si ce n'était pas vous, aucune action n'est requise — le code sera invalide dans 5 minutes.<br/>
+          <br/>
+          <a href="{{ .Data.app_url }}">cockpitjourney.app</a> · <a href="https://atlas-studio.org">atlas-studio.org</a>
+        {{ else }}
+          <strong>Atlas Studio</strong> · Suite cockpit pour dirigeants<br/>
+          Vous recevez cet e-mail parce qu'une connexion a été demandée à <strong>{{ .Email }}</strong>.<br/>
+          Si ce n'était pas vous, aucune action n'est requise — le code sera invalide dans 5 minutes.<br/>
+          <br/>
+          <a href="https://atlas-studio.org">atlas-studio.org</a>
+        {{ end }}
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>

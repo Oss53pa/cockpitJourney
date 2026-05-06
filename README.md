@@ -83,6 +83,27 @@ Alternatives gratuites supportées : OpenRouter (free models) ou Ollama auto-hé
 
 ---
 
+## 📧 Email d'authentification (multi-app)
+
+Plusieurs produits Atlas Studio partagent **un seul projet Supabase**. Pour que les emails de connexion (OTP code) affichent un branding différent par produit, on utilise un pattern conditionnel :
+
+1. Côté client, `signInWithOtp` envoie une métadonnée `data: { app: 'CockpitJourney' }` (voir `src/lib/supabase.ts` → `APP_ID`)
+2. Côté Supabase, le template Magic Link (Authentication → Email Templates) utilise des conditionnels Go-template :
+   ```html
+   {{ if eq .Data.app "CockpitJourney" }}
+     <div class="logo">Cockpit<span class="accent">Journey</span></div>
+   {{ else }}
+     <div class="logo">Atlas<span class="accent">Studio</span></div>
+   {{ end }}
+   ```
+3. Pour ajouter un nouveau produit (ex: AtlasFnA, AtlasBanx), définir un nouveau `APP_ID` dans son client et étendre le template Supabase d'un nouveau bloc `{{ else if eq .Data.app "AtlasFnA" }}…`
+
+Le HTML complet du template est dans `docs/email-templates/magic-link.html`. Subject conseillé : `Votre code de connexion · Atlas Studio`.
+
+**Sender** unique côté projet Supabase : `notifications@atlas-studio.org` (domaine vérifié sur Resend, voir Authentication → SMTP Settings).
+
+---
+
 ## 💾 Données
 
 Toutes les données (tâches, projets, goals, notes, paramètres) sont stockées dans **Supabase Postgres** (préfixe `cj_*` du schéma `public` du projet Atlas Studio). 18 tables, RLS activée, accès limité aux utilisateurs authentifiés.
