@@ -96,12 +96,20 @@ Routes définies dans `src/App.tsx` :
 | `/dashboard` | `CockpitShell` | Le cockpit lui-même (Today, Project, Goals, Reports…). Protégé : redirige vers `/login` si non authentifié, en mémorisant l'URL d'origine. |
 | `/*` | redirect | `/dashboard` si authentifié, `/login` sinon. |
 
-**Flow SSO en prod (cookies partagés)** :
+**Flow SSO en prod (token handoff via Edge Function)** :
 
 1. L'utilisateur se connecte sur `atlas-studio.org`
-2. La session Supabase est posée dans un cookie scopé `.atlas-studio.org`
-3. L'utilisateur navigue vers `cockpit.atlas-studio.org` → le cookie est partagé
-4. `supabase.auth.getSession()` retourne la session immédiatement → CockpitShell se charge
+2. Atlas Studio génère un JWT signé via son Edge Function `app-token` et redirige l'utilisateur vers `cockpitjourney.app/auth?token=<JWT>`
+3. `AuthCallback` détecte le `?token=` et POST sur `${SUPABASE_URL}/functions/v1/atlas-sso` avec ce JWT
+4. L'Edge Function `atlas-sso` (déployée sur Supabase) valide le JWT et retourne `{ token_hash, email, type: 'magiclink', appId, appName }`
+5. CockpitJourney appelle `supabase.auth.verifyOtp({ type: 'magiclink', token_hash })` → session établie
+6. Redirection vers `/dashboard`
+
+> ⚠️ Dépendance : ce flow exige que les Edge Functions **`app-token`** (côté Atlas Studio) et **`atlas-sso`** (côté CockpitJourney/projet Supabase) soient déployées et actives. Vérifiables via Dashboard Supabase → Edge Functions, ou `npx supabase functions list`.
+
+**Flow alternatif — cookies partagés (`*.atlas-studio.org`)** :
+
+Si CockpitJourney est hébergé sous un sous-domaine de `atlas-studio.org` ET que la session Supabase est stockée en cookie scopé `.atlas-studio.org` (storage adapter custom à mettre en place côté `src/lib/supabase.ts`), `getSession()` retourne immédiatement la session sans aucun token handoff. À envisager pour réduire la latence d'entrée par rapport au flow Edge Function (~500 ms d'aller-retour).
 
 **Flow magic-link en local dev** :
 

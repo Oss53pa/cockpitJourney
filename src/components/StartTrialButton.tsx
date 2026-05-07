@@ -1,14 +1,17 @@
 /**
- * StartTrialButton.tsx — Bouton "Essayer gratuitement" pour la marketplace
+ * StartTrialButton.tsx — Bouton "Essayer gratuitement" pour la marketplace.
  *
- * À placer sur chaque carte d'app dans la marketplace publique
- * (ex: /portal/apps ou /apps).
+ * NOTE (CockpitJourney) : ce composant n'est pas utilisé par CockpitJourney
+ * lui-même. Il a été ajouté comme draft pour la future marketplace publique
+ * Atlas Studio (`/portal/apps`). Conservé ici en attendant qu'il soit
+ * déplacé dans le repo dédié de la marketplace.
  *
- * L'user doit être connecté. S'il ne l'est pas, redirigez-le vers /login d'abord.
+ * Le composant suppose que l'utilisateur est déjà authentifié (sinon le
+ * caller doit rediriger vers /login).
  */
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../lib/supabase';
 
 interface Props {
   appId: string;
