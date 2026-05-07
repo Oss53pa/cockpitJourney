@@ -68,19 +68,22 @@ export function TopBar({ breadcrumb, onOpenCommand, onToggleSidebar }: Props) {
         ))}
       </nav>
 
-      <div className="ml-4 flex-1 max-w-xl">
+      <div className="ml-2 sm:ml-4 flex-1 max-w-xl min-w-0">
         <button
           onClick={onOpenCommand}
           className="group w-full flex items-center gap-2.5 h-9 px-3 rounded-xl bg-black/[0.03] hover:bg-black/[0.06] border border-atlas-line hover:border-atlas-line-2 text-atlas-fg-3 hover:text-atlas-fg-2 transition-colors"
         >
-          <Search className="w-4 h-4" />
-          <span className="text-sm flex-1 text-left">Rechercher tâches, projets, personnes…</span>
-          <span className="kbd">⌘K</span>
+          <Search className="w-4 h-4 shrink-0" />
+          <span className="text-sm flex-1 text-left truncate">
+            <span className="hidden sm:inline">Rechercher tâches, projets, personnes…</span>
+            <span className="sm:hidden">Rechercher…</span>
+          </span>
+          <span className="kbd hidden sm:inline-flex">⌘K</span>
         </button>
       </div>
 
-      <div className="ml-auto flex items-center gap-2.5">
-        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/[0.03] border border-atlas-line">
+      <div className="ml-auto flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+        <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/[0.03] border border-atlas-line">
           <Cloud className="w-3.5 h-3.5 text-signal-blue" />
           <span className="text-2xs text-atlas-fg-2 font-medium">Abidjan · 28°C</span>
           <span className="text-2xs text-atlas-fg-3 capitalize">· {now}</span>
@@ -88,10 +91,10 @@ export function TopBar({ breadcrumb, onOpenCommand, onToggleSidebar }: Props) {
 
         <Menu
           trigger={
-            <button className="relative px-3 h-9 rounded-xl bg-gradient-to-br from-atlas-amber/20 to-atlas-amber/5 border border-atlas-amber/30 text-atlas-amber-deep flex items-center gap-1.5 hover:from-atlas-amber/30 hover:to-atlas-amber/10 transition-all">
+            <button className="relative h-9 sm:px-3 px-2 rounded-xl bg-gradient-to-br from-atlas-amber/20 to-atlas-amber/5 border border-atlas-amber/30 text-atlas-amber-deep flex items-center gap-1.5 hover:from-atlas-amber/30 hover:to-atlas-amber/10 transition-all">
               <Sparkles className="w-3.5 h-3.5" />
-              <span className="text-xs font-medium tracking-tight">PROPH3T</span>
-              <span className="ml-1 w-1.5 h-1.5 rounded-full bg-atlas-amber animate-pulse-soft" />
+              <span className="text-xs font-medium tracking-tight hidden sm:inline">PROPH3T</span>
+              <span className="ml-0.5 sm:ml-1 w-1.5 h-1.5 rounded-full bg-atlas-amber animate-pulse-soft" />
             </button>
           }
           width={260}
@@ -163,7 +166,7 @@ export function TopBar({ breadcrumb, onOpenCommand, onToggleSidebar }: Props) {
           {openNotifs && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setOpenNotifs(false)} />
-              <div className="absolute right-0 top-12 w-[400px] panel p-2 animate-fade-in-scale origin-top-right z-50">
+              <div className="fixed sm:absolute right-2 sm:right-0 top-14 sm:top-12 left-2 sm:left-auto sm:w-[400px] panel p-2 animate-fade-in-scale origin-top-right z-50">
                 <div className="px-3 py-2 flex items-center justify-between">
                   <div>
                     <div className="text-sm font-medium text-atlas-fg-1">Notifications</div>
@@ -290,7 +293,7 @@ export function TopBar({ breadcrumb, onOpenCommand, onToggleSidebar }: Props) {
           )}
         </Menu>
 
-        <div className="ml-1 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-signal-green-soft border border-signal-green/30">
+        <div className="hidden md:flex ml-1 items-center gap-2 px-3 py-1.5 rounded-lg bg-signal-green-soft border border-signal-green/30">
           <Wifi className="w-3.5 h-3.5 text-signal-green" />
           <span className="text-2xs font-medium uppercase tracking-wider text-signal-green">Synchronisé</span>
         </div>

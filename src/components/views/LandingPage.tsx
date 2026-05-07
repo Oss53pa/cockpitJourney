@@ -619,30 +619,32 @@ function Comparison() {
             Ce que CockpitJourney fait que les autres ne font pas.
           </h2>
         </div>
-        <div className="rounded-2xl border border-atlas-line bg-white overflow-hidden shadow-panel">
-          <div className="grid grid-cols-[1fr_auto_auto_auto] text-2xs uppercase tracking-[0.18em] font-light text-atlas-fg-3 bg-atlas-panel-2 border-b border-atlas-line">
-            <div className="px-5 py-3.5">Capacité</div>
-            <div className="px-4 py-3.5 text-center min-w-[100px]">
-              <span className="font-logo text-base text-atlas-sage-deep normal-case tracking-normal">
-                Cockpit
-              </span>
+        <div className="rounded-2xl border border-atlas-line bg-white shadow-panel overflow-x-auto">
+          <div className="min-w-[640px]">
+            <div className="grid grid-cols-[1fr_auto_auto_auto] text-2xs uppercase tracking-[0.18em] font-light text-atlas-fg-3 bg-atlas-panel-2 border-b border-atlas-line">
+              <div className="px-5 py-3.5">Capacité</div>
+              <div className="px-4 py-3.5 text-center min-w-[100px]">
+                <span className="font-logo text-base text-atlas-sage-deep normal-case tracking-normal">
+                  Cockpit
+                </span>
+              </div>
+              <div className="px-4 py-3.5 text-center min-w-[80px]">Notion</div>
+              <div className="px-4 py-3.5 text-center min-w-[80px]">Asana</div>
             </div>
-            <div className="px-4 py-3.5 text-center min-w-[80px]">Notion</div>
-            <div className="px-4 py-3.5 text-center min-w-[80px]">Asana</div>
+            {rows.map((r, i) => (
+              <div
+                key={i}
+                className={`grid grid-cols-[1fr_auto_auto_auto] text-sm font-light text-atlas-fg-1 ${
+                  i % 2 === 0 ? '' : 'bg-atlas-panel-2/40'
+                }`}
+              >
+                <div className="px-5 py-3.5 leading-snug">{r.label}</div>
+                <div className="px-4 py-3.5 text-center min-w-[100px] bg-atlas-sage/5">{cell(r.cj)}</div>
+                <div className="px-4 py-3.5 text-center min-w-[80px]">{cell(r.notion)}</div>
+                <div className="px-4 py-3.5 text-center min-w-[80px]">{cell(r.asana)}</div>
+              </div>
+            ))}
           </div>
-          {rows.map((r, i) => (
-            <div
-              key={i}
-              className={`grid grid-cols-[1fr_auto_auto_auto] text-sm font-light text-atlas-fg-1 ${
-                i % 2 === 0 ? '' : 'bg-atlas-panel-2/40'
-              }`}
-            >
-              <div className="px-5 py-3.5 leading-snug">{r.label}</div>
-              <div className="px-4 py-3.5 text-center min-w-[100px] bg-atlas-sage/5">{cell(r.cj)}</div>
-              <div className="px-4 py-3.5 text-center min-w-[80px]">{cell(r.notion)}</div>
-              <div className="px-4 py-3.5 text-center min-w-[80px]">{cell(r.asana)}</div>
-            </div>
-          ))}
         </div>
         <p className="mt-4 text-2xs text-atlas-fg-3 font-light text-center">
           ✓ disponible · ~ partiellement / via plugin · ✗ absent. Données collectées en mai 2026.
