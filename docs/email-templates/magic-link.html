@@ -51,10 +51,19 @@
       <!-- Header -->
       <tr><td bgcolor="#FBFAF4" style="background:#FBFAF4; background-image:linear-gradient(135deg, #FBFAF4 0%, #F4F2E9 50%, #ECE6D2 100%);">
         <div class="em-header" style="padding:38px 32px 28px; text-align:center;">
-          <div class="em-logo" style="font-family:'Grand Hotel', 'Brush Script MT', 'Lucida Handwriting', Georgia, serif; font-size:44px; line-height:1; color:#1A1D17; letter-spacing:-0.02em; font-weight:400;">
-            Cockpit<span style="color:#6E8B58;">Journey</span>
-          </div>
-          <div style="margin-top:12px; font-size:10px; letter-spacing:0.28em; text-transform:uppercase; color:#6E8B58; font-weight:500; font-family:'Dosis', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;">
+          <!-- Wordmark — text-as-paths PNG (Grand Hotel outlined). Served
+               via jsDelivr from the repo so we don't depend on web fonts
+               which Yahoo/Outlook strip. The @2x source is in srcset for
+               retina; clients that ignore srcset just use the 1x. -->
+          <img
+            src="https://cdn.jsdelivr.net/gh/Oss53pa/cockpitJourney@main/public/cj-wordmark.png"
+            srcset="https://cdn.jsdelivr.net/gh/Oss53pa/cockpitJourney@main/public/cj-wordmark.png 1x, https://cdn.jsdelivr.net/gh/Oss53pa/cockpitJourney@main/public/cj-wordmark@2x.png 2x"
+            alt="CockpitJourney"
+            width="280"
+            height="71"
+            style="display:block; margin:0 auto; max-width:100%; height:auto; border:0; outline:none; text-decoration:none;"
+          />
+          <div style="margin-top:14px; font-size:10px; letter-spacing:0.28em; text-transform:uppercase; color:#6E8B58; font-weight:500; font-family:'Dosis', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;">
             Pilotez votre journée<span style="color:#C9C2A8; margin:0 8px; font-weight:300;">·</span>Propulsé par PROPH3T
           </div>
         </div>

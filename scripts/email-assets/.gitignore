@@ -1,0 +1,3 @@
+# The TTF is downloaded on demand by the generator; we don't ship it.
+GrandHotel-Regular.ttf
+*.ttf
