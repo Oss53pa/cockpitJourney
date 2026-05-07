@@ -13,13 +13,31 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Register Service Worker (offline-first) — production only
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
-      console.warn('[CockpitJourney] SW registration failed', err);
+// Service Worker is currently DISABLED.
+//
+// We previously shipped an offline-first SW (precache + cache-first for
+// static assets) that ended up trapping users on stale builds — most
+// notably during the Supabase migration, when the cached bundle had
+// undefined VITE_SUPABASE_URL and showed "Supabase non configuré"
+// indefinitely until the user manually wiped service workers in DevTools.
+//
+// Until we ship a proper PWA strategy (cache versioning + skip-waiting
+// with an in-app "update ready" banner), we actively unregister any SW
+// that's still registered from a previous build. This rescues browsers
+// that picked up the old SW and prevents new ones from being installed.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker
+    .getRegistrations()
+    .then((registrations) => {
+      for (const reg of registrations) {
+        reg.unregister().then((ok) => {
+          if (ok) console.info('[CockpitJourney] unregistered stale service worker');
+        });
+      }
+    })
+    .catch(() => {
+      /* ignore — older browsers, etc. */
     });
-  });
 }
 
 createRoot(document.getElementById('root')!).render(
