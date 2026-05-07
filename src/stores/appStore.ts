@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist as dbPersist, loadSnapshot, wipeDatabase, setCurrentAuthUserId } from '../lib/repo';
-import { seedDatabaseIfEmpty, linkAuthUserToProfile } from '../lib/seed';
+import { seedDatabaseIfEmpty, linkAuthUserToProfile, buildOfflineSnapshot } from '../lib/seed';
 import { supabase, SUPABASE_CONFIGURED } from '../lib/supabase';
 import type {
   User,
@@ -228,6 +228,8 @@ interface State {
   authStatus: 'loading' | 'signed_out' | 'signed_in';
   authEmail?: string;
   currentProfileId?: string;
+  // true if hydrate fell back to offline mockData (Supabase unreachable)
+  degraded?: boolean;
 
   // UI state
   toasts: Toast[];
@@ -386,32 +388,83 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
     return;
   }
 
+  // Offline fallback: load demo data from mockData directly into memory,
+  // namespaced for this user. Mutations stay in-memory only — the app
+  // is fully usable but won't persist until Supabase REST is reachable.
+  const goOffline = (reason: string) => {
+    console.warn('[hydrate] entering OFFLINE mode —', reason);
+    const offline = buildOfflineSnapshot(authUserId);
+    set({
+      users: offline.users,
+      folders: offline.folders,
+      projects: offline.projects,
+      sections: offline.sections,
+      tasks: offline.tasks,
+      goals: offline.goals,
+      comments: offline.comments,
+      notifications: offline.notifications,
+      insights: offline.insights,
+      automations: offline.automations,
+      forms: offline.forms,
+      reports: offline.reports,
+      attachments: offline.attachments,
+      dependencies: offline.dependencies,
+      activity: offline.activity,
+      subtasks: offline.subtasks,
+      notes: offline.notes,
+      settings: { ...get().settings, ...(offline.settings as Partial<State['settings']>) },
+      currentProfileId: offline.selfProfileId,
+      authStatus: 'signed_in',
+      authEmail: email,
+      ready: true,
+      degraded: true,
+    });
+    console.info('[hydrate] DONE (offline) — ready=true, degraded=true');
+  };
+
   hydrateInFlight = (async () => {
+    // Hard 20s overall watchdog: regardless of where the cascade hangs
+    // (seed, link, snapshot), we never trap the user beyond ~20s.
+    let bailed = false;
+    const overallTimeout = setTimeout(() => {
+      bailed = true;
+      goOffline('hydrate exceeded 20s — Supabase REST unreachable');
+    }, 20_000);
+
     try {
       console.info('[hydrate] start for user', authUserId.slice(0, 8));
       set({ authStatus: 'signed_in', authEmail: email });
-
-      // CRITICAL: set the auth user id FIRST so every subsequent write
-      // (seed, profile link, settings) carries the correct ownership.
       setCurrentAuthUserId(authUserId);
 
       console.info('[hydrate] step 1/3 — seedDatabaseIfEmpty');
       const seeded = await seedDatabaseIfEmpty();
+      if (bailed) return;
       console.info(
         seeded ? '[hydrate] seed: inserted demo data' : '[hydrate] seed: skipped (data already present)'
       );
 
       console.info('[hydrate] step 2/3 — linkAuthUserToProfile');
       const profileId = await linkAuthUserToProfile(authUserId, email);
+      if (bailed) return;
       console.info('[hydrate] profile bound:', profileId);
 
       console.info('[hydrate] step 3/3 — loadSnapshot');
       const snap = await loadSnapshot();
+      if (bailed) return;
       console.info(
         '[hydrate] snapshot loaded:',
         `${snap.users.length} users, ${snap.projects.length} projects, ${snap.tasks.length} tasks`
       );
 
+      // If snapshot came back EMPTY (Supabase silently no-op'd because seed
+      // was skipped via watchdog), use offline data so the cockpit is usable.
+      if (snap.users.length === 0 && snap.projects.length === 0 && snap.tasks.length === 0) {
+        clearTimeout(overallTimeout);
+        goOffline('snapshot empty — seed never landed in Supabase');
+        return;
+      }
+
+      clearTimeout(overallTimeout);
       set({
         users: snap.users,
         folders: snap.folders,
@@ -433,12 +486,13 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
         settings: { ...get().settings, ...(snap.settings as Partial<State['settings']>) },
         currentProfileId: profileId,
         ready: true,
+        degraded: false,
       });
       console.info('[hydrate] DONE — ready=true');
     } catch (err) {
-      console.error('[hydrate] failed — falling back to signed_out', err);
-      setCurrentAuthUserId(null);
-      set({ authStatus: 'signed_out', ready: false });
+      clearTimeout(overallTimeout);
+      console.error('[hydrate] threw — falling back to offline', err);
+      goOffline(err instanceof Error ? err.message : 'unknown error');
     } finally {
       hydrateInFlight = null;
     }

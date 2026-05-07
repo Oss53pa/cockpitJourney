@@ -437,6 +437,41 @@ export async function seedDatabaseIfEmpty(): Promise<boolean> {
 }
 
 /**
+ * Build an in-memory snapshot of the demo data, namespaced for the given
+ * auth user, WITHOUT touching Supabase. Used as a fallback when Supabase
+ * REST is unreachable (corporate proxy, browser extension, etc.) so the
+ * cockpit at least renders and the user can see the UI work.
+ *
+ * In offline mode mutations stay in-memory only — they are logged but
+ * not persisted. A banner in the UI tells the user about the degraded mode.
+ */
+export function buildOfflineSnapshot(authUserId: string) {
+  const prefix = authUserId.slice(0, 8);
+  const notifsWithRecipient = notifications.map((n) => ({ ...n, userId: 'u_pame' }));
+  return {
+    users: nsClone(users, prefix),
+    folders: nsClone(folders, prefix),
+    projects: nsClone(projects, prefix),
+    sections: nsClone(sections, prefix),
+    tasks: nsClone(tasks, prefix),
+    goals: nsClone(goals, prefix),
+    comments: nsClone(comments, prefix),
+    notifications: nsClone(notifsWithRecipient, prefix),
+    insights: nsClone(insights, prefix),
+    automations: nsClone(automations, prefix),
+    forms: nsClone(forms, prefix),
+    reports: [],
+    attachments: nsClone(attachments, prefix),
+    dependencies: nsClone(dependencies, prefix),
+    activity: nsClone(activity, prefix),
+    notes: nsClone(notes, prefix),
+    subtasks: nsClone(subtasks, prefix),
+    settings: defaultSettings,
+    selfProfileId: `${prefix}_u_pame`,
+  };
+}
+
+/**
  * Ensure the current auth user has a profile row to act as. We use
  * `<prefix>_u_pame` as the canonical "self" profile id since the seed
  * always creates it. If no seed has run yet (returning user, no demo
