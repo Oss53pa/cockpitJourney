@@ -43,7 +43,17 @@ if ('serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
+    <BrowserRouter
+      // Opt-in to React Router v7 behaviors so we don't get console
+      // deprecation warnings AND we're already aligned with the next
+      // major. v7_startTransition wraps state updates in startTransition
+      // for smoother UX; v7_relativeSplatPath aligns relative resolution
+      // inside splat routes ("*").
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true,
+      }}
+    >
       <App />
     </BrowserRouter>
   </StrictMode>

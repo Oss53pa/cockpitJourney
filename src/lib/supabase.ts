@@ -111,13 +111,12 @@ export async function sendEmailOtp(email: string) {
     email: email.trim().toLowerCase(),
     options: {
       shouldCreateUser: true,
-      // The email contains BOTH a 6-digit code (preferred path, no
-      // redirect needed) AND a "Click to sign in" button. If the user
-      // clicks the button, Supabase sends them back to /auth with the
-      // session tokens in the URL hash; AuthCallback claims them and
-      // forwards to /dashboard. The redirect URL must be whitelisted
-      // in Supabase Auth → URL Configuration → Redirect URLs.
-      emailRedirectTo: `${window.location.origin}/auth`,
+      // We deliberately DO NOT pass emailRedirectTo: the user enters the
+      // 6-digit code in-app, no clickable magic-link is needed and the
+      // email template is configured to omit the link button entirely.
+      // Removing this option also avoids hitting Supabase's redirect-URL
+      // whitelist constraints when CockpitJourney is opened on tunnels,
+      // alternate ports, or sub-domains we haven't whitelisted yet.
       data: {
         app: APP_ID,
         app_tagline: APP_TAGLINE,

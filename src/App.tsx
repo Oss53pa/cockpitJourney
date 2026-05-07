@@ -7,6 +7,7 @@ import { TodayView } from './components/views/TodayView';
 import { TaskDetailDrawer } from './components/TaskDetailDrawer';
 import { HomeView } from './components/views/HomeView';
 import { LoginView } from './components/views/LoginView';
+import { LandingPage } from './components/views/LandingPage';
 import { AuthCallback } from './components/AuthCallback';
 import { ModalRoot } from './components/modals/ModalRoot';
 import { Toaster } from './components/ui/Toaster';
@@ -355,7 +356,16 @@ function App() {
 
   return (
     <Routes>
+      {/* Public landing — pre-login marketing page (distincte de HomeView interne). */}
+      <Route
+        path="/"
+        element={authStatus === 'signed_in' ? <Navigate to="/dashboard" replace /> : <LandingPage />}
+      />
+
+      {/* SSO callback (Atlas Studio token handoff or magic-link redirect) */}
       <Route path="/auth" element={<AuthCallback />} />
+
+      {/* Login (OTP code + dev login + Atlas Studio link) */}
       <Route
         path="/login"
         element={
@@ -369,13 +379,19 @@ function App() {
           )
         }
       />
+
+      {/* Authenticated cockpit */}
       <Route
         path="/dashboard"
         element={authStatus === 'signed_in' ? <CockpitShell /> : <SignedOutRedirect />}
       />
+
+      {/* Fallback: unknown URL → /dashboard if signed in, / (landing) otherwise */}
       <Route
         path="*"
-        element={authStatus === 'signed_in' ? <Navigate to="/dashboard" replace /> : <SignedOutRedirect />}
+        element={
+          authStatus === 'signed_in' ? <Navigate to="/dashboard" replace /> : <Navigate to="/" replace />
+        }
       />
     </Routes>
   );
