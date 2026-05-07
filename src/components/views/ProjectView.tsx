@@ -589,7 +589,11 @@ function KanbanCard({
   dragging?: boolean;
 }) {
   const users = useApp((s) => s.users);
-  const subtasks = useApp((s) => s.subtasks.filter((st) => st.taskId === task.id));
+  // IMPORTANT: select the raw array, derive at render time. A selector
+  // that returns `arr.filter(...)` produces a new array each call which
+  // Zustand interprets as a state change → infinite re-render loop.
+  const allSubtasks = useApp((s) => s.subtasks);
+  const subtasks = allSubtasks.filter((st) => st.taskId === task.id);
   const toggleDone = useApp((s) => s.toggleTaskDone);
   const openModal = useApp((s) => s.openModal);
   const deleteTask = useApp((s) => s.deleteTask);
@@ -837,7 +841,9 @@ function ListRow({
   onOpenTask: (t: Task) => void;
   toggleDone: (id: string) => void;
 }) {
-  const subtasks = useApp((s) => s.subtasks.filter((st) => st.taskId === t.id));
+  // Same anti-pattern fix as KanbanCard above — select raw, derive at render.
+  const allSubtasks = useApp((s) => s.subtasks);
+  const subtasks = allSubtasks.filter((st) => st.taskId === t.id);
   const subPct = subtasks.length
     ? (subtasks.filter((s) => s.done).length / subtasks.length) * 100
     : t.status === 'done'
