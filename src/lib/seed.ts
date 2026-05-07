@@ -347,7 +347,19 @@ function nsClone<T>(value: T, prefix: string): T {
  */
 export async function seedDatabaseIfEmpty(): Promise<boolean> {
   console.info('[seed] checking isEmpty()');
-  if (!(await isEmpty())) {
+  // Watchdog the very first DB call too — if the network/CORS is
+  // misconfigured this is where we'll see it, not somewhere downstream.
+  const isEmptyResult = await Promise.race([
+    isEmpty(),
+    new Promise<'__timeout__'>((resolve) => setTimeout(() => resolve('__timeout__'), 8000)),
+  ]);
+  if (isEmptyResult === '__timeout__') {
+    console.warn(
+      '[seed] ⚠ isEmpty() timed out > 8s — assuming non-empty and skipping seed. Check Supabase CORS / network.'
+    );
+    return false;
+  }
+  if (!isEmptyResult) {
     console.info('[seed] not empty — skip');
     return false;
   }
