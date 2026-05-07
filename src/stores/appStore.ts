@@ -2,6 +2,13 @@ import { create } from 'zustand';
 import { persist as dbPersist, loadSnapshot, wipeDatabase, setCurrentAuthUserId } from '../lib/repo';
 import { seedDatabaseIfEmpty, linkAuthUserToProfile } from '../lib/seed';
 import { supabase, SUPABASE_CONFIGURED } from '../lib/supabase';
+
+// Module-level guards: React StrictMode runs effects twice in dev, which
+// would subscribe to onAuthStateChange twice and run hydrateFromSupabase
+// concurrently. We guard at the module level (NOT in store state) so the
+// second invocation literally cannot start.
+let bootstrapStarted = false;
+let hydrateInFlight: Promise<void> | null = null;
 import type {
   User,
   Project,
@@ -366,51 +373,78 @@ const uid = (prefix = 'id') => `${prefix}_${Math.random().toString(36).slice(2, 
  * load the snapshot from Supabase into the Zustand cache.
  */
 async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn, get: GetFn) {
-  // Idempotent: if we already hydrated for this user, don't redo the work
-  // (onAuthStateChange + getSession can both fire for the same session).
-  if (get().ready && get().currentProfileId) return;
-
-  try {
-    set({ authStatus: 'signed_in', authEmail: email });
-
-    // CRITICAL: set the auth user id FIRST so every subsequent write
-    // (seed, profile link, settings) carries the correct ownership.
-    setCurrentAuthUserId(authUserId);
-
-    // Seed the cj_* tables on first launch FOR THIS USER (RLS-scoped).
-    await seedDatabaseIfEmpty();
-
-    // Bind this auth user to their self-profile (creates one if missing).
-    const profileId = await linkAuthUserToProfile(authUserId, email);
-
-    const snap = await loadSnapshot();
-    set({
-      users: snap.users,
-      folders: snap.folders,
-      projects: snap.projects,
-      sections: snap.sections,
-      tasks: snap.tasks,
-      goals: snap.goals,
-      comments: snap.comments,
-      notifications: snap.notifications,
-      insights: snap.insights,
-      automations: snap.automations,
-      forms: snap.forms,
-      reports: snap.reports,
-      attachments: snap.attachments,
-      dependencies: snap.dependencies,
-      activity: snap.activity,
-      subtasks: snap.subtasks,
-      notes: snap.notes,
-      settings: { ...get().settings, ...(snap.settings as Partial<State['settings']>) },
-      currentProfileId: profileId,
-      ready: true,
-    });
-  } catch (err) {
-    console.error('[hydrate] failed — falling back to signed_out', err);
-    setCurrentAuthUserId(null);
-    set({ authStatus: 'signed_out', ready: false });
+  // De-dupe concurrent calls (onAuthStateChange + explicit getSession()
+  // can both fire SIGNED_IN for the same session). Whoever starts first
+  // owns the work; subsequent callers share the same in-flight promise.
+  if (hydrateInFlight) {
+    console.info('[hydrate] already in flight, awaiting existing promise');
+    return hydrateInFlight;
   }
+  // Idempotent: already hydrated for this user.
+  if (get().ready && get().currentProfileId) {
+    console.info('[hydrate] already ready, skipping');
+    return;
+  }
+
+  hydrateInFlight = (async () => {
+    try {
+      console.info('[hydrate] start for user', authUserId.slice(0, 8));
+      set({ authStatus: 'signed_in', authEmail: email });
+
+      // CRITICAL: set the auth user id FIRST so every subsequent write
+      // (seed, profile link, settings) carries the correct ownership.
+      setCurrentAuthUserId(authUserId);
+
+      console.info('[hydrate] step 1/3 — seedDatabaseIfEmpty');
+      const seeded = await seedDatabaseIfEmpty();
+      console.info(
+        seeded ? '[hydrate] seed: inserted demo data' : '[hydrate] seed: skipped (data already present)'
+      );
+
+      console.info('[hydrate] step 2/3 — linkAuthUserToProfile');
+      const profileId = await linkAuthUserToProfile(authUserId, email);
+      console.info('[hydrate] profile bound:', profileId);
+
+      console.info('[hydrate] step 3/3 — loadSnapshot');
+      const snap = await loadSnapshot();
+      console.info(
+        '[hydrate] snapshot loaded:',
+        `${snap.users.length} users, ${snap.projects.length} projects, ${snap.tasks.length} tasks`
+      );
+
+      set({
+        users: snap.users,
+        folders: snap.folders,
+        projects: snap.projects,
+        sections: snap.sections,
+        tasks: snap.tasks,
+        goals: snap.goals,
+        comments: snap.comments,
+        notifications: snap.notifications,
+        insights: snap.insights,
+        automations: snap.automations,
+        forms: snap.forms,
+        reports: snap.reports,
+        attachments: snap.attachments,
+        dependencies: snap.dependencies,
+        activity: snap.activity,
+        subtasks: snap.subtasks,
+        notes: snap.notes,
+        settings: { ...get().settings, ...(snap.settings as Partial<State['settings']>) },
+        currentProfileId: profileId,
+        ready: true,
+      });
+      console.info('[hydrate] DONE — ready=true');
+    } catch (err) {
+      console.error('[hydrate] failed — falling back to signed_out', err);
+      setCurrentAuthUserId(null);
+      set({ authStatus: 'signed_out', ready: false });
+    } finally {
+      hydrateInFlight = null;
+    }
+  })();
+
+  return hydrateInFlight;
 }
 
 const focusPresets: Record<FocusSession['preset'], { total: number; label: string }> = {
@@ -476,7 +510,13 @@ const initialState = (set: SetFn, get: GetFn): State => ({
   },
 
   bootstrap: async () => {
-    if (get().ready || get().authStatus !== 'loading') return;
+    // StrictMode-safe: only run once per page load even though useEffect
+    // fires bootstrap() twice in development.
+    if (bootstrapStarted) {
+      console.info('[bootstrap] already started, skipping duplicate call');
+      return;
+    }
+    bootstrapStarted = true;
 
     if (!SUPABASE_CONFIGURED) {
       console.warn('[bootstrap] Supabase not configured — going to signed_out');
