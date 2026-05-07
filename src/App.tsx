@@ -10,6 +10,7 @@ import { LoginView } from './components/views/LoginView';
 import { LandingPage } from './components/views/LandingPage';
 import { AuthCallback } from './components/AuthCallback';
 import { ModalRoot } from './components/modals/ModalRoot';
+const TeamSettingsPage = lazy(() => import('./pages/settings/TeamSettingsPage'));
 import { Toaster } from './components/ui/Toaster';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useApp } from './stores/appStore';
@@ -364,6 +365,20 @@ function App() {
 
       {/* SSO callback (Atlas Studio token handoff or magic-link redirect) */}
       <Route path="/auth" element={<AuthCallback />} />
+
+      {/* Team settings — gestion equipe via licence_seats */}
+      <Route
+        path="/settings/team"
+        element={
+          authStatus === 'signed_in' ? (
+            <Suspense fallback={<ViewSkeleton />}>
+              <TeamSettingsPage />
+            </Suspense>
+          ) : (
+            <SignedOutRedirect />
+          )
+        }
+      />
 
       {/* Login (OTP code + dev login + Atlas Studio link) */}
       <Route
