@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Sparkles } from 'lucide-react';
 import { Sidebar } from './components/layout/Sidebar';
 import { TopBar } from './components/layout/TopBar';
 import { CommandMenu } from './components/layout/CommandMenu';
@@ -129,6 +130,7 @@ function CockpitShell() {
   const [cmdOpen, setCmdOpen] = useState(false);
 
   const ready = useApp((s) => s.ready);
+  const degraded = useApp((s) => s.degraded);
   const projects = useApp((s) => s.projects);
   const openModal = useApp((s) => s.openModal);
   const tickFocus = useApp((s) => s.tickFocus);
@@ -256,60 +258,90 @@ function CockpitShell() {
 
   return (
     <ErrorBoundary>
-      <div className="flex h-screen w-screen overflow-hidden text-atlas-fg-1 bg-atlas-black bg-noise">
-        {mobileSidebarOpen && (
-          <div
-            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
-            onClick={() => setMobileSidebarOpen(false)}
-          />
-        )}
-        <div
-          className={cn(
-            'shrink-0 transition-transform z-50',
-            mobileSidebarOpen ? 'fixed inset-y-0 left-0 translate-x-0' : 'hidden md:flex md:translate-x-0',
-            mobileSidebarOpen && 'flex'
+      <div className="flex flex-col h-screen w-screen overflow-hidden text-atlas-fg-1 bg-atlas-black bg-noise">
+        {degraded && <DegradedBanner />}
+        <div className="flex flex-1 overflow-hidden">
+          {mobileSidebarOpen && (
+            <div
+              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
+              onClick={() => setMobileSidebarOpen(false)}
+            />
           )}
-        >
-          <Sidebar
-            view={view}
-            activeProjectId={activeProjectId}
-            onNavigate={(v, p) => {
-              onNavigate(v, p);
-              setMobileSidebarOpen(false);
-            }}
-            onOpenCommand={() => setCmdOpen(true)}
-            onExitToHome={() => setEntered(false)}
-          />
-        </div>
-        <main className="flex-1 flex flex-col overflow-hidden min-w-0">
-          <TopBar
-            breadcrumb={breadcrumb}
-            onOpenCommand={() => setCmdOpen(true)}
-            onToggleSidebar={() => setMobileSidebarOpen(true)}
-          />
-          <div className="flex-1 overflow-y-auto">
-            <ErrorBoundary>
-              <Suspense fallback={<ViewSkeleton />}>
-                {view === 'today' && <TodayView onOpenTask={setOpenTask} onNavigate={onNavigate} />}
-                {view === 'inbox' && <InboxView onOpenTask={setOpenTask} />}
-                {view === 'goals' && <GoalsView />}
-                {view === 'dashboards' && <DashboardView />}
-                {view === 'focus' && <FocusView onExit={() => setView('today')} />}
-                {view === 'automations' && <AutomationsView />}
-                {view === 'forms' && <FormsView />}
-                {view === 'reports' && <ReportsView />}
-                {view === 'project' && project && <ProjectView project={project} onOpenTask={setOpenTask} />}
-              </Suspense>
-            </ErrorBoundary>
+          <div
+            className={cn(
+              'shrink-0 transition-transform z-50',
+              mobileSidebarOpen ? 'fixed inset-y-0 left-0 translate-x-0' : 'hidden md:flex md:translate-x-0',
+              mobileSidebarOpen && 'flex'
+            )}
+          >
+            <Sidebar
+              view={view}
+              activeProjectId={activeProjectId}
+              onNavigate={(v, p) => {
+                onNavigate(v, p);
+                setMobileSidebarOpen(false);
+              }}
+              onOpenCommand={() => setCmdOpen(true)}
+              onExitToHome={() => setEntered(false)}
+            />
           </div>
-        </main>
+          <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+            <TopBar
+              breadcrumb={breadcrumb}
+              onOpenCommand={() => setCmdOpen(true)}
+              onToggleSidebar={() => setMobileSidebarOpen(true)}
+            />
+            <div className="flex-1 overflow-y-auto">
+              <ErrorBoundary>
+                <Suspense fallback={<ViewSkeleton />}>
+                  {view === 'today' && <TodayView onOpenTask={setOpenTask} onNavigate={onNavigate} />}
+                  {view === 'inbox' && <InboxView onOpenTask={setOpenTask} />}
+                  {view === 'goals' && <GoalsView />}
+                  {view === 'dashboards' && <DashboardView />}
+                  {view === 'focus' && <FocusView onExit={() => setView('today')} />}
+                  {view === 'automations' && <AutomationsView />}
+                  {view === 'forms' && <FormsView />}
+                  {view === 'reports' && <ReportsView />}
+                  {view === 'project' && project && (
+                    <ProjectView project={project} onOpenTask={setOpenTask} />
+                  )}
+                </Suspense>
+              </ErrorBoundary>
+            </div>
+          </main>
 
-        <CommandMenu open={cmdOpen} onClose={() => setCmdOpen(false)} onNavigate={onNavigate} />
-        <TaskDetailDrawer task={openTask} onClose={() => setOpenTask(null)} />
-        <ModalRoot />
-        <Toaster />
+          <CommandMenu open={cmdOpen} onClose={() => setCmdOpen(false)} onNavigate={onNavigate} />
+          <TaskDetailDrawer task={openTask} onClose={() => setOpenTask(null)} />
+          <ModalRoot />
+          <Toaster />
+        </div>
       </div>
     </ErrorBoundary>
+  );
+}
+
+/**
+ * Banner shown when hydrate bailed to offline mock data because
+ * Supabase REST is unreachable. The cockpit functions normally for
+ * UI navigation but mutations don't persist.
+ */
+function DegradedBanner() {
+  return (
+    <div className="bg-signal-yellow/15 border-b border-signal-yellow/30 px-4 py-2 flex items-center justify-center gap-3 text-xs">
+      <span className="inline-flex items-center gap-1.5 text-signal-yellow font-light tracking-wide uppercase text-2xs">
+        <Sparkles className="w-3 h-3" />
+        Mode démo · données en mémoire
+      </span>
+      <span className="text-atlas-fg-2 font-light hidden sm:inline">
+        Supabase REST inaccessible depuis votre réseau. Vos modifications ne seront pas sauvegardées.
+      </span>
+      <button
+        onClick={() => window.location.reload()}
+        className="text-2xs uppercase tracking-wider text-atlas-sage-deep hover:text-atlas-sage-deeper font-light underline underline-offset-2"
+      >
+        Réessayer
+      </button>
+    </div>
   );
 }
 
