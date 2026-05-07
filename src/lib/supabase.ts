@@ -71,6 +71,23 @@ export type CjTable =
 // since we use a hybrid jsonb schema (`id + data` per table), runtime shapes
 // vary by entity. Instead, we keep the client untyped and rely on the
 // repo.ts adapter to enforce shape.
+/**
+ * Custom fetch with a hard 15s timeout via AbortController. Any request
+ * that hangs longer than that aborts and surfaces a normal AbortError —
+ * MUCH preferable to a silent infinite hang. We hit this in production
+ * when a corporate proxy / browser extension was selectively dropping
+ * the response on /rest/v1 requests.
+ */
+const fetchWithTimeout: typeof fetch = (input, init) => {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15_000);
+  // If the caller already passed a signal, chain it.
+  if (init?.signal) {
+    init.signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+  }
+  return fetch(input, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+};
+
 export const supabase: SupabaseClient = createClient(
   SUPABASE_URL ?? 'https://placeholder.invalid',
   SUPABASE_ANON_KEY ?? 'placeholder',
@@ -81,6 +98,9 @@ export const supabase: SupabaseClient = createClient(
       detectSessionInUrl: true, // magic link redirect handling
       flowType: 'pkce',
       storageKey: 'cj-supabase-auth',
+    },
+    global: {
+      fetch: fetchWithTimeout,
     },
   }
 );
