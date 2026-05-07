@@ -158,28 +158,20 @@ export async function verifyEmailOtp(email: string, token: string) {
   return data;
 }
 
-/**
- * Dev-only quick login: signs in as the fixed `dev@cockpitjourney.local`
- * user that's been provisioned via SQL migration `cj_dev_user_for_quick_login`.
- * Avoids the email roundtrip and doesn't require enabling anonymous auth
- * in the Supabase dashboard.
- *
- * The dev user is RLS-isolated like any other authenticated user, so it
- * cannot read or modify data belonging to real users.
- */
-export const DEV_USER_EMAIL = 'dev@cockpitjourney.local';
-const DEV_USER_PASSWORD = 'cockpit-dev-2026';
-
-export async function signInAsDev() {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: DEV_USER_EMAIL,
-    password: DEV_USER_PASSWORD,
-  });
-  if (error) throw error;
-  return data;
-}
-
 export const DEV_MODE = import.meta.env.DEV;
+
+/**
+ * Dev convenience: previously this signed in as a fixed
+ * `dev@cockpitjourney.local` SQL-provisioned user. That user has been
+ * decommissioned to remove hardcoded credentials from production. To
+ * test in local dev, use the OTP code flow with your real e-mail
+ * (Resend SMTP works) — or re-provision a dev user under a separate
+ * Supabase dev project.
+ */
+export const DEV_USER_EMAIL = '';
+export async function signInAsDev() {
+  throw new Error('Dev quick-login désactivé pour la prod. Utilisez le flow OTP par e-mail.');
+}
 
 export async function signOut() {
   await supabase.auth.signOut();

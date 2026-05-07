@@ -30,26 +30,43 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../stores/appStore';
 import { useState } from 'react';
+import {
+  useLandingContent,
+  formatPrice,
+  type HeroContent,
+  type StatsContent,
+  type FeaturesContent,
+  type PricingContent,
+  type TestimonialsContent,
+  type FaqContent,
+  type CtaContent,
+} from '../../lib/landingContent';
 
 const ATLAS_STUDIO_URL = 'https://atlas-studio.org';
 const TRIAL_URL = 'https://atlas-studio.org/portal/apps?app=cockpitjourney';
 
 export function LandingPage() {
+  // Fetch all sections from the Atlas Studio shared CMS (table:
+  // public.app_landing_content). Marketing edits this from the admin
+  // console; the page reads it at load time. Hardcoded fallbacks below
+  // ensure the page renders even if CMS is empty/unreachable.
+  const { content } = useLandingContent();
+
   return (
     <div className="min-h-screen w-full bg-atlas-cream text-atlas-fg-1 overflow-x-hidden">
       <Nav />
-      <Hero />
-      <StatsBanner />
+      <Hero cms={content.hero} />
+      <StatsBanner cms={content.stats} />
       <ProblemSolution />
-      <ValueProps />
+      <ValueProps cms={content.features} />
       <PropheticBlock />
       <Modules />
       <Comparison />
-      <Testimonials />
-      <Pricing />
-      <FAQ />
+      <Testimonials cms={content.testimonials} />
+      <Pricing cms={content.pricing} />
+      <FAQ cms={content.faq} />
       <AtlasFamily />
-      <CTA />
+      <CTA cms={content.cta} />
       <Footer />
     </div>
   );
@@ -116,61 +133,71 @@ function Nav() {
 
 /* ─────────────── Hero ─────────────── */
 
-function Hero() {
+function Hero({ cms }: { cms?: HeroContent }) {
+  // Hardcoded fallbacks (only used if CMS row missing/unreachable)
+  const badge = cms?.badges?.[0] ?? '13e produit du catalogue Atlas Studio';
+  const subtitle =
+    cms?.subtitle ??
+    "Le compagnon quotidien des dirigeants — propulsé par PROPH3T, l'IA d'Atlas Studio. Daily Brief intelligent, automations sans code, goals alignés.";
+  const ctaPrimary = cms?.cta_primary ?? { text: 'Essai gratuit · 14 jours', url: TRIAL_URL };
+  const ctaSecondary = cms?.cta_secondary ?? { text: 'Voir comment ça marche', url: '#features' };
+  const trust = cms?.trust_inline ?? ['Sans carte bancaire', 'IA gratuite incluse', 'Données chiffrées RLS'];
+
+  // Title is special: keep the typographic "journée" accent regardless of CMS.
+  // If CMS sends a title with the word "journée", we accent it; else fall back.
+  const titleRaw = cms?.title ?? 'Pilotez votre journée.';
+  const titleParts = titleRaw.split('journée');
+
   return (
     <section className="relative pt-16 pb-24 sm:pt-24 sm:pb-32 px-6">
       <div className="absolute inset-0 bg-aurora opacity-60 pointer-events-none" aria-hidden="true" />
       <div className="relative max-w-6xl mx-auto">
         <div className="grid lg:grid-cols-12 gap-10 items-center">
-          {/* Copy */}
           <div className="lg:col-span-6 text-center lg:text-left">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-atlas-sage/10 border border-atlas-sage/20 mb-7">
               <Sparkles className="w-3.5 h-3.5 text-atlas-sage-deep" />
               <span className="text-2xs uppercase tracking-[0.2em] text-atlas-sage-deeper font-light">
-                13e produit du catalogue Atlas Studio
+                {badge}
               </span>
             </div>
             <h1 className="font-logo text-5xl sm:text-6xl md:text-7xl text-atlas-fg-1 leading-[1.05] mb-6">
-              Pilotez votre <span className="text-atlas-sage-deep">journée</span>.
+              {titleParts.length > 1 ? (
+                <>
+                  {titleParts[0]}
+                  <span className="text-atlas-sage-deep">journée</span>
+                  {titleParts[1]}
+                </>
+              ) : (
+                titleRaw
+              )}
             </h1>
             <p className="max-w-xl mx-auto lg:mx-0 text-lg text-atlas-fg-2 leading-relaxed font-light mb-8">
-              Le compagnon quotidien des dirigeants — propulsé par{' '}
-              <strong className="font-normal text-atlas-sage-deep">PROPH3T</strong>, l'IA d'Atlas Studio.
-              Daily Brief intelligent, automations sans code, goals alignés. Cessez d'orchestrer, commencez à
-              décider.
+              {subtitle}
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3">
               <a
-                href={TRIAL_URL}
+                href={ctaPrimary.url}
                 className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-atlas-sage-deep text-white font-light tracking-wider hover:bg-atlas-sage-deeper transition shadow-amber-deep text-sm"
               >
-                Essai gratuit · 14 jours
+                {ctaPrimary.text}
                 <ArrowRight className="w-4 h-4" />
               </a>
               <a
-                href="#features"
+                href={ctaSecondary.url}
                 className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl border border-atlas-line bg-white hover:border-atlas-sage-deep/40 hover:bg-atlas-sage/5 transition text-sm font-light tracking-wider text-atlas-fg-1"
               >
-                Voir comment ça marche
+                {ctaSecondary.text}
               </a>
             </div>
             <div className="mt-6 flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-2 text-2xs text-atlas-fg-3 font-light">
-              <span className="inline-flex items-center gap-1.5">
-                <Check className="w-3 h-3 text-atlas-sage-deep" />
-                Sans carte bancaire
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Check className="w-3 h-3 text-atlas-sage-deep" />
-                IA gratuite incluse
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Check className="w-3 h-3 text-atlas-sage-deep" />
-                Données chiffrées RLS
-              </span>
+              {trust.map((t, i) => (
+                <span key={i} className="inline-flex items-center gap-1.5">
+                  <Check className="w-3 h-3 text-atlas-sage-deep" />
+                  {t}
+                </span>
+              ))}
             </div>
           </div>
-
-          {/* Mockup */}
           <div className="lg:col-span-6">
             <CockpitMockup />
           </div>
@@ -277,8 +304,8 @@ function CockpitMockup() {
 
 /* ─────────────── Stats banner ─────────────── */
 
-function StatsBanner() {
-  const stats = [
+function StatsBanner({ cms }: { cms?: StatsContent }) {
+  const stats = cms?.items ?? [
     { value: '8h', label: 'libérées par semaine', sub: 'en moyenne sur 90 jours' },
     { value: '±15%', label: 'précision PROPH3T', sub: 'vs ±50% au démarrage' },
     { value: '247', label: 'automations exécutées', sub: 'taux de succès 99.2%' },
@@ -287,13 +314,13 @@ function StatsBanner() {
   return (
     <section className="py-12 sm:py-16 px-6 bg-white border-y border-atlas-line">
       <div className="max-w-6xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-12">
-        {stats.map((s) => (
-          <div key={s.label} className="text-center">
+        {stats.map((s, i) => (
+          <div key={`${s.label}-${i}`} className="text-center">
             <div className="font-logo text-5xl sm:text-6xl text-atlas-sage-deep leading-none mb-3">
               {s.value}
             </div>
             <div className="text-sm font-light text-atlas-fg-1 mb-1">{s.label}</div>
-            <div className="text-2xs text-atlas-fg-3 font-light">{s.sub}</div>
+            {s.sub && <div className="text-2xs text-atlas-fg-3 font-light">{s.sub}</div>}
           </div>
         ))}
       </div>
@@ -376,42 +403,74 @@ function ProblemSolution() {
 
 /* ─────────────── Value props (3 colonnes) ─────────────── */
 
-function ValueProps() {
-  const features = [
+// Map of CMS-friendly string icon names → lucide components.
+// CMS rows can specify `icon: "sunrise"` and we resolve at render time.
+const ICON_MAP: Record<string, typeof Sunrise> = {
+  sunrise: Sunrise,
+  target: Target,
+  workflow: Workflow,
+  listchecks: ListChecks,
+  layoutdashboard: LayoutDashboard,
+  inbox: Inbox,
+  timer: Timer,
+  filetext: FileText,
+  mail: Mail,
+  zap: Zap,
+  wand2: Wand2,
+  brain: Brain,
+  shieldcheck: ShieldCheck,
+  sparkles: Sparkles,
+  globe: Globe,
+  trendingup: TrendingUp,
+  flame: Flame,
+  clock: Clock,
+  compass: Compass,
+};
+
+function resolveIcon(name?: string, fallback: typeof Sunrise = Sparkles): typeof Sunrise {
+  if (!name) return fallback;
+  return ICON_MAP[name.toLowerCase()] ?? fallback;
+}
+
+function ValueProps({ cms }: { cms?: FeaturesContent }) {
+  const fallbackFeatures = [
     {
-      icon: Sunrise,
+      icon: 'sunrise',
       title: 'Daily Brief PROPH3T',
       body: 'Chaque matin à 7h, un brief généré par IA : top 3 priorités, risques, fenêtre Deep Work, suggestions de réordonnancement basées sur vos patterns.',
     },
     {
-      icon: Workflow,
+      icon: 'workflow',
       title: 'Automations sans code',
       body: 'Quand un statut passe à "En revue" → notification WhatsApp. Échéance dépassée + Critique → escalade auto. 0 ligne de code, 100% configuré dans l\'UI.',
     },
     {
-      icon: Target,
+      icon: 'target',
       title: 'Goals & OKRs alignés',
       body: 'Cap stratégique par niveau (workspace / équipe / personnel). Liez vos tâches aux goals, suivez le progrès en temps réel, alertes si dérive.',
     },
   ];
+  const features = cms?.items ?? fallbackFeatures;
+  const eyebrow = 'Pourquoi CockpitJourney';
+  const title = cms?.title ?? 'Conçu pour ceux qui décident, pas pour ceux qui exécutent.';
 
   return (
     <section id="features" className="py-20 sm:py-28 px-6 bg-white border-y border-atlas-line">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-14">
           <span className="text-2xs uppercase tracking-[0.22em] text-atlas-sage-deep font-light">
-            Pourquoi CockpitJourney
+            {cms?.subtitle ?? eyebrow}
           </span>
           <h2 className="mt-3 text-3xl sm:text-4xl text-atlas-fg-1 font-light leading-tight max-w-2xl mx-auto">
-            Conçu pour ceux qui décident, pas pour ceux qui exécutent.
+            {title}
           </h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {features.map((f) => {
-            const Icon = f.icon;
+          {features.map((f, i) => {
+            const Icon = resolveIcon(f.icon, Sparkles);
             return (
               <div
-                key={f.title}
+                key={`${f.title}-${i}`}
                 className="p-7 rounded-2xl border border-atlas-line bg-atlas-panel-2 hover:border-atlas-sage-deep/30 hover:shadow-panel transition"
               >
                 <div className="w-12 h-12 rounded-xl bg-atlas-sage/15 grid place-items-center mb-5">
@@ -656,57 +715,61 @@ function Comparison() {
 
 /* ─────────────── Testimonials ─────────────── */
 
-function Testimonials() {
-  const testimonials = [
+function Testimonials({ cms }: { cms?: TestimonialsContent }) {
+  // Hardcoded fallback = anonymous placeholders. Marketing replaces them
+  // via the CMS once we have real customer quotes.
+  const fallbackTestimonials = [
     {
       quote:
-        "Le Daily Brief PROPH3T me fait gagner deux heures chaque matin. Je n'ouvre plus l'inbox avant 11h, je commence par l'essentiel.",
-      name: 'Pamela A.',
-      role: 'CEO · Atlas Studio',
-      initials: 'PA',
+        '« À remplir avec un vrai témoignage utilisateur — bénéfice concret du Daily Brief PROPH3T, mesurable en heures gagnées par jour. »',
+      name: 'Prénom N.',
+      role: 'Rôle · Entreprise',
+      initials: '··',
       color: '#95B07D',
     },
     {
       quote:
-        "L'automation 'Approbation prioritaire' m'envoie un WhatsApp dès qu'une tâche atteint mon stade. Je débloque mon équipe en 30 secondes au lieu de 30 minutes.",
-      name: 'Koffi J.',
-      role: 'Lead Designer',
-      initials: 'KJ',
+        "« À remplir avec un vrai témoignage — focus sur les automations sans code et le gain de temps sur la coordination d'équipe. »",
+      name: 'Prénom N.',
+      role: 'Rôle · Entreprise',
+      initials: '··',
       color: '#8AA6C4',
     },
     {
       quote:
-        'Les rapports trimestriels que je passais 4h à compiler dans Excel, PROPH3T les rédige en 30 secondes avec une narration de qualité CoDir.',
-      name: 'Aminata D.',
-      role: 'Engineering Manager',
-      initials: 'AD',
+        '« À remplir — feedback sur les rapports IA, la narration exécutive PROPH3T, ou la qualité des décisions prises grâce au cockpit. »',
+      name: 'Prénom N.',
+      role: 'Rôle · Entreprise',
+      initials: '··',
       color: '#A290C2',
     },
   ];
+  const testimonials = cms?.items ?? fallbackTestimonials;
+  const eyebrow = cms?.subtitle ?? 'Ils pilotent déjà';
+  const heading = cms?.title ?? 'La parole à ceux qui décident chaque jour.';
+  const rating = cms?.rating ?? '4.9/5 · sur 100+ équipes Atlas Studio';
 
   return (
     <section className="py-20 sm:py-28 px-6 bg-white border-y border-atlas-line">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-14">
           <span className="text-2xs uppercase tracking-[0.22em] text-atlas-sage-deep font-light">
-            Ils pilotent déjà
+            {eyebrow}
           </span>
           <h2 className="mt-3 text-3xl sm:text-4xl text-atlas-fg-1 font-light leading-tight max-w-2xl mx-auto">
-            La parole à ceux qui décident chaque jour.
+            {heading}
           </h2>
           <div className="mt-4 inline-flex items-center gap-1">
             {[1, 2, 3, 4, 5].map((i) => (
               <Star key={i} className="w-4 h-4 fill-atlas-sage-deep text-atlas-sage-deep" />
             ))}
-            <span className="ml-2 text-xs text-atlas-fg-3 font-light">
-              4.9/5 · sur 100+ équipes Atlas Studio
-            </span>
+            <span className="ml-2 text-xs text-atlas-fg-3 font-light">{rating}</span>
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {testimonials.map((t) => (
+          {testimonials.map((t, i) => (
             <div
-              key={t.name}
+              key={`${t.name}-${i}`}
               className="p-6 rounded-2xl border border-atlas-line bg-atlas-panel-2 hover:shadow-panel transition"
             >
               <Quote className="w-5 h-5 text-atlas-sage-deep/40 mb-3" />
@@ -733,28 +796,34 @@ function Testimonials() {
 
 /* ─────────────── Pricing ─────────────── */
 
-function Pricing() {
-  const plans = [
+function Pricing({ cms }: { cms?: PricingContent }) {
+  // Fallback plans (used only if CMS row missing). Pricing is FCFA — the
+  // CMS row carries the canonical 25 000 FCFA price; here we mirror that
+  // so the page is correct even if Supabase is unreachable.
+  const fallbackPlans = [
     {
       name: 'Solo',
-      price: 'Gratuit',
-      sub: 'pour démarrer',
-      perks: [
+      price: 0,
+      currency: 'FCFA',
+      tagline: 'pour démarrer',
+      features: [
         '1 utilisateur',
         '3 projets',
         '~30 tâches démo',
         'Daily Brief PROPH3T (Groq)',
         'Pas de carte bancaire',
       ],
-      cta: 'Commencer',
-      ctaHref: TRIAL_URL,
-      featured: false,
+      cta_text: 'Commencer',
+      cta_url: TRIAL_URL,
+      is_popular: false,
     },
     {
       name: 'Pro',
-      price: '29€',
-      sub: 'par mois · paiement annuel',
-      perks: [
+      price: 25000,
+      currency: 'FCFA',
+      period: 'mois',
+      tagline: 'par mois · paiement annuel',
+      features: [
         'Utilisateurs illimités (équipe)',
         'Projets illimités',
         'Automations sans limite',
@@ -763,83 +832,93 @@ function Pricing() {
         'Tous les modèles IA (Groq, OpenRouter, Ollama)',
         'Support prioritaire',
       ],
-      cta: 'Essai gratuit 14j',
-      ctaHref: TRIAL_URL,
-      featured: true,
+      cta_text: 'Essai gratuit 14j',
+      cta_url: TRIAL_URL,
+      is_popular: true,
     },
     {
       name: 'Atlas Suite',
-      price: 'Sur mesure',
-      sub: 'tous les produits Atlas',
-      perks: [
+      price: null,
+      currency: 'FCFA',
+      tagline: 'tous les produits Atlas',
+      features: [
         'CockpitJourney + 12 autres produits',
         'SSO Atlas Studio (cookies partagés)',
         'Comptabilité OHADA, signature, CRM…',
         'Account manager dédié',
         'SLA 99.9%',
       ],
-      cta: 'Nous contacter',
-      ctaHref: ATLAS_STUDIO_URL,
-      featured: false,
+      cta_text: 'Nous contacter',
+      cta_url: ATLAS_STUDIO_URL,
+      is_popular: false,
     },
   ];
+  const plans = cms?.plans ?? fallbackPlans;
+  const eyebrow = cms?.subtitle ?? 'Tarifs · clairs · sans piège';
+  const heading = cms?.title ?? 'Démarrez gratuitement. Évoluez quand vous voulez.';
 
   return (
     <section id="pricing" className="py-20 sm:py-28 px-6 bg-atlas-cream">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-14">
           <span className="text-2xs uppercase tracking-[0.22em] text-atlas-sage-deep font-light">
-            Tarifs · clairs · sans piège
+            {eyebrow}
           </span>
           <h2 className="mt-3 text-3xl sm:text-4xl text-atlas-fg-1 font-light leading-tight max-w-2xl mx-auto">
-            Démarrez gratuitement. Évoluez quand vous voulez.
+            {heading}
           </h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {plans.map((p) => (
-            <div
-              key={p.name}
-              className={
-                p.featured
-                  ? 'relative p-8 rounded-2xl border-2 border-atlas-sage-deep bg-white shadow-amber-glow md:scale-[1.02]'
-                  : 'p-8 rounded-2xl border border-atlas-line bg-white hover:shadow-panel transition'
-              }
-            >
-              {p.featured && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-atlas-sage-deep text-white text-2xs uppercase tracking-wider font-light">
-                  Recommandé
-                </span>
-              )}
-              <div className="text-2xs uppercase tracking-[0.2em] text-atlas-sage-deep font-light mb-2">
-                {p.name}
-              </div>
-              <div className="flex items-baseline gap-2 mb-1">
-                <span className="font-logo text-5xl text-atlas-fg-1 leading-none">{p.price}</span>
-              </div>
-              <div className="text-2xs text-atlas-fg-3 font-light mb-6">{p.sub}</div>
-              <ul className="space-y-2.5 mb-7">
-                {p.perks.map((perk, i) => (
-                  <li key={i} className="flex items-start gap-2.5 text-sm font-light text-atlas-fg-1">
-                    <Check className="w-3.5 h-3.5 text-atlas-sage-deep mt-1 shrink-0" />
-                    <span className="leading-relaxed">{perk}</span>
-                  </li>
-                ))}
-              </ul>
-              <a
-                href={p.ctaHref}
+          {plans.map((p, i) => {
+            const featured = !!p.is_popular;
+            const priceLabel = formatPrice(p.price, p.currency);
+            return (
+              <div
+                key={`${p.name}-${i}`}
                 className={
-                  p.featured
-                    ? 'block text-center px-4 py-3 rounded-xl bg-atlas-sage-deep text-white font-light text-sm tracking-wider hover:bg-atlas-sage-deeper transition shadow-amber-deep'
-                    : 'block text-center px-4 py-3 rounded-xl border border-atlas-line bg-atlas-panel-2 hover:border-atlas-sage-deep/40 text-atlas-fg-1 font-light text-sm tracking-wider transition'
+                  featured
+                    ? 'relative p-8 rounded-2xl border-2 border-atlas-sage-deep bg-white shadow-amber-glow md:scale-[1.02]'
+                    : 'p-8 rounded-2xl border border-atlas-line bg-white hover:shadow-panel transition'
                 }
               >
-                {p.cta}
-              </a>
-            </div>
-          ))}
+                {featured && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-atlas-sage-deep text-white text-2xs uppercase tracking-wider font-light">
+                    Recommandé
+                  </span>
+                )}
+                <div className="text-2xs uppercase tracking-[0.2em] text-atlas-sage-deep font-light mb-2">
+                  {p.name}
+                </div>
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span className="font-logo text-4xl sm:text-5xl text-atlas-fg-1 leading-none break-words">
+                    {priceLabel}
+                  </span>
+                </div>
+                <div className="text-2xs text-atlas-fg-3 font-light mb-6">{p.tagline}</div>
+                <ul className="space-y-2.5 mb-7">
+                  {(p.features ?? []).map((perk, j) => (
+                    <li key={j} className="flex items-start gap-2.5 text-sm font-light text-atlas-fg-1">
+                      <Check className="w-3.5 h-3.5 text-atlas-sage-deep mt-1 shrink-0" />
+                      <span className="leading-relaxed">{perk}</span>
+                    </li>
+                  ))}
+                </ul>
+                <a
+                  href={p.cta_url ?? TRIAL_URL}
+                  className={
+                    featured
+                      ? 'block text-center px-4 py-3 rounded-xl bg-atlas-sage-deep text-white font-light text-sm tracking-wider hover:bg-atlas-sage-deeper transition shadow-amber-deep'
+                      : 'block text-center px-4 py-3 rounded-xl border border-atlas-line bg-atlas-panel-2 hover:border-atlas-sage-deep/40 text-atlas-fg-1 font-light text-sm tracking-wider transition'
+                  }
+                >
+                  {p.cta_text ?? 'Commencer'}
+                </a>
+              </div>
+            );
+          })}
         </div>
         <p className="mt-8 text-center text-xs text-atlas-fg-3 font-light">
-          Annulation à tout moment · sans engagement · facturation en € ou XOF
+          Annulation à tout moment · sans engagement · facturation en FCFA (XOF) ou €
         </p>
       </div>
     </section>
@@ -866,8 +945,8 @@ function FAQItem({ q, a }: { q: string; a: string }) {
   );
 }
 
-function FAQ() {
-  const faqs = [
+function FAQ({ cms }: { cms?: FaqContent }) {
+  const fallbackFaqs = [
     {
       q: 'Comment PROPH3T peut être gratuit ? Quel modèle est utilisé ?',
       a: "PROPH3T fonctionne avec n'importe quel modèle compatible OpenAI. Par défaut on utilise Groq (Llama 3.3 70B, gratuit, 30 req/minute). Vous pouvez aussi configurer OpenRouter (modèles open-source gratuits) ou Ollama auto-hébergé. La clé API est stockée localement dans votre navigateur, jamais sur nos serveurs.",
@@ -893,17 +972,18 @@ function FAQ() {
       a: "Atlas Studio édite une suite cockpit pour dirigeants : comptabilité OHADA (CockpitFnA), signature électronique, CRM, analyse bancaire (AtlasBanx), et 9 autres produits métiers. CockpitJourney est le 13e — celui qui orchestre votre journée de pilotage au-dessus des outils métier. Une seule connexion SSO pour tout l'écosystème.",
     },
   ];
+  const faqs = cms?.items ?? fallbackFaqs;
+  const eyebrow = cms?.subtitle ?? 'Questions fréquentes';
+  const heading = cms?.title ?? "Tout ce que vous voulez savoir avant l'essai.";
 
   return (
     <section id="faq" className="py-20 sm:py-28 px-6 bg-white border-y border-atlas-line">
       <div className="max-w-3xl mx-auto">
         <div className="text-center mb-12">
           <span className="text-2xs uppercase tracking-[0.22em] text-atlas-sage-deep font-light">
-            Questions fréquentes
+            {eyebrow}
           </span>
-          <h2 className="mt-3 text-3xl sm:text-4xl text-atlas-fg-1 font-light leading-tight">
-            Tout ce que vous voulez savoir avant l'essai.
-          </h2>
+          <h2 className="mt-3 text-3xl sm:text-4xl text-atlas-fg-1 font-light leading-tight">{heading}</h2>
         </div>
         <div className="border-t border-atlas-line">
           {faqs.map((f, i) => (
@@ -946,21 +1026,35 @@ function AtlasFamily() {
 
 /* ─────────────── CTA final ─────────────── */
 
-function CTA() {
+function CTA({ cms }: { cms?: CtaContent }) {
+  const heading = cms?.title ?? 'Prêt à piloter votre journée ?';
+  const subtitle =
+    cms?.subtitle ??
+    "14 jours d'essai gratuit. Aucune carte bancaire. PROPH3T inclus. Vos données restent isolées sur votre cockpit, partagées avec personne.";
+  const ctaText = cms?.cta_text ?? 'Démarrer mon essai';
+  const ctaUrl = cms?.cta_url ?? TRIAL_URL;
+  const fallbackBadges = [
+    { icon: 'shieldcheck', label: 'RLS Postgres par utilisateur' },
+    { icon: 'globe', label: 'Conforme OHADA · RGPD' },
+    { icon: 'brain', label: 'IA gratuite (Groq)' },
+    { icon: 'trendingup', label: '13e produit Atlas Studio' },
+    { icon: 'flame', label: 'Hébergé en EU (Supabase eu-west-1)' },
+  ];
+  const badges = cms?.trust_badges ?? fallbackBadges;
+
   return (
     <section className="py-20 sm:py-28 px-6 bg-gradient-to-br from-atlas-sage-deep via-atlas-sage-deeper to-atlas-fg-1 text-white">
       <div className="max-w-4xl mx-auto text-center">
-        <h2 className="font-logo text-5xl sm:text-6xl mb-6 leading-tight">Prêt à piloter votre journée ?</h2>
+        <h2 className="font-logo text-5xl sm:text-6xl mb-6 leading-tight">{heading}</h2>
         <p className="text-base sm:text-lg text-white/80 leading-relaxed font-light mb-10 max-w-xl mx-auto">
-          14 jours d'essai gratuit. Aucune carte bancaire. PROPH3T inclus. Vos données restent isolées sur
-          votre cockpit, partagées avec personne.
+          {subtitle}
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <a
-            href={TRIAL_URL}
+            href={ctaUrl}
             className="inline-flex items-center gap-2 px-7 py-4 rounded-xl bg-white text-atlas-sage-deeper font-light tracking-wider hover:bg-atlas-cream transition text-sm shadow-2xl"
           >
-            Démarrer mon essai
+            {ctaText}
             <ArrowRight className="w-4 h-4" />
           </a>
           <Link
@@ -971,26 +1065,15 @@ function CTA() {
           </Link>
         </div>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-6 text-xs text-white/60 font-light">
-          <span className="inline-flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            RLS Postgres par utilisateur
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Globe className="w-3.5 h-3.5" />
-            Conforme OHADA · RGPD
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Brain className="w-3.5 h-3.5" />
-            IA gratuite (Groq)
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <TrendingUp className="w-3.5 h-3.5" />
-            13e produit Atlas Studio
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Flame className="w-3.5 h-3.5" />
-            Hébergé en EU (Supabase eu-west-1)
-          </span>
+          {badges.map((b, i) => {
+            const Icon = resolveIcon(b.icon, ShieldCheck);
+            return (
+              <span key={`${b.label}-${i}`} className="inline-flex items-center gap-1.5">
+                <Icon className="w-3.5 h-3.5" />
+                {b.label}
+              </span>
+            );
+          })}
         </div>
       </div>
     </section>

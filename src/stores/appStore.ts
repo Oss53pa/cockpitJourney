@@ -388,11 +388,25 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
     return;
   }
 
-  // Offline fallback: load demo data from mockData directly into memory,
-  // namespaced for this user. Mutations stay in-memory only — the app
-  // is fully usable but won't persist until Supabase REST is reachable.
+  // Offline fallback: ONLY in development mode.
+  // In prod, if Supabase REST is unreachable we DO NOT silently load
+  // mockData (that would mean showing fake data to a real user).
+  // Instead, we sign the user out and let them retry via the login flow.
   const goOffline = (reason: string) => {
-    console.warn('[hydrate] entering OFFLINE mode —', reason);
+    if (!import.meta.env.DEV) {
+      console.warn('[hydrate] Supabase unreachable in production —', reason);
+      console.warn('[hydrate] falling back to signed_out (NO offline mockData in prod).');
+      setCurrentAuthUserId(null);
+      set({
+        authStatus: 'signed_out',
+        ready: false,
+        authEmail: undefined,
+        currentProfileId: undefined,
+        degraded: false,
+      });
+      return;
+    }
+    console.warn('[hydrate] entering OFFLINE/DEV mode —', reason);
     const offline = buildOfflineSnapshot(authUserId);
     set({
       users: offline.users,
@@ -419,7 +433,7 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
       ready: true,
       degraded: true,
     });
-    console.info('[hydrate] DONE (offline) — ready=true, degraded=true');
+    console.info('[hydrate] DONE (offline/DEV) — ready=true, degraded=true');
   };
 
   hydrateInFlight = (async () => {

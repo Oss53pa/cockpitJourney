@@ -1,13 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Mail, Loader2, ArrowRight, Sparkles, KeyRound, Zap, ExternalLink } from 'lucide-react';
-import {
-  sendEmailOtp,
-  verifyEmailOtp,
-  signInAsDev,
-  DEV_MODE,
-  DEV_USER_EMAIL,
-  SUPABASE_CONFIGURED,
-} from '../../lib/supabase';
+import { Mail, Loader2, ArrowRight, Sparkles, KeyRound, ExternalLink } from 'lucide-react';
+import { sendEmailOtp, verifyEmailOtp, SUPABASE_CONFIGURED } from '../../lib/supabase';
 
 const ATLAS_STUDIO_URL = 'https://atlas-studio.org';
 
@@ -16,28 +9,26 @@ type Step = 'email' | 'code' | 'verifying';
 /**
  * Map raw Supabase auth errors to actionable French messages. The default
  * Supabase SMTP has a tight rate limit (~4 emails/hour) and gives a generic
- * "Error sending magic link email" — we surface the underlying cause and
- * always nudge the user toward the dev login fallback.
+ * "Error sending magic link email" — we surface the underlying cause so
+ * the user knows whether to retry, change e-mail, or contact us.
  */
 function humanizeAuthError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   const lower = raw.toLowerCase();
-  // Specific Resend cause we hit on this Supabase project: the sender
-  // domain (atlasstudio.org) isn't verified yet on resend.com/domains.
   if (lower.includes('domain') && lower.includes('not verified')) {
-    return "Le domaine expéditeur n'est pas vérifié sur Resend. Vérifiez atlasstudio.org sur resend.com/domains, ou utilisez la connexion développeur ci-dessous.";
+    return "Le domaine expéditeur n'est pas vérifié sur Resend. Réessayez dans quelques instants ou contactez le support.";
   }
   if (lower.includes('rate') || lower.includes('too many')) {
-    return 'Limite d’envoi atteinte. Réessayez dans 1–2 minutes ou utilisez la connexion développeur ci-dessous.';
+    return 'Limite d’envoi atteinte. Réessayez dans 1–2 minutes.';
   }
   if (lower.includes('error sending') || lower.includes('smtp') || lower.includes('email')) {
-    return "Le service e-mail (Resend via Supabase) n'a pas pu envoyer le code. Vérifiez le domaine expéditeur dans resend.com/domains, ou utilisez la connexion développeur ci-dessous.";
+    return "Le service e-mail n'a pas pu envoyer le code. Réessayez dans quelques instants.";
   }
   if (lower.includes('invalid') && lower.includes('email')) {
     return 'Adresse e-mail invalide.';
   }
   if (lower.includes('signup') && lower.includes('disable')) {
-    return 'Les inscriptions par e-mail sont désactivées sur ce projet Supabase. Activez-les dans Auth → Providers → Email.';
+    return 'Les inscriptions par e-mail sont désactivées sur ce projet Supabase.';
   }
   return raw || 'Erreur inconnue';
 }
@@ -47,7 +38,6 @@ export function LoginView() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [sending, setSending] = useState(false);
-  const [devLoading, setDevLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const codeInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -98,18 +88,6 @@ export function LoginView() {
       setError(humanizeAuthError(err));
     } finally {
       setSending(false);
-    }
-  };
-
-  const handleDevLogin = async () => {
-    setDevLoading(true);
-    setError(null);
-    try {
-      await signInAsDev();
-      // onAuthStateChange takes over from here.
-    } catch (err) {
-      setError(humanizeAuthError(err));
-      setDevLoading(false);
     }
   };
 
@@ -224,38 +202,9 @@ export function LoginView() {
                   </button>
                 </form>
 
-                {/* Dev-only quick login */}
-                {DEV_MODE && (
-                  <>
-                    <div className="my-5 flex items-center gap-3 text-2xs uppercase tracking-[0.18em] text-atlas-fg-3">
-                      <div className="flex-1 h-px bg-black/10" />
-                      ou (dev)
-                      <div className="flex-1 h-px bg-black/10" />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleDevLogin}
-                      disabled={devLoading}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-atlas-sage-deep/30 bg-atlas-sage/10 text-atlas-sage-deeper font-light hover:bg-atlas-sage/20 transition disabled:opacity-50"
-                    >
-                      {devLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Connexion…
-                        </>
-                      ) : (
-                        <>
-                          <Zap className="w-4 h-4" />
-                          Connexion développeur
-                        </>
-                      )}
-                    </button>
-                    <p className="mt-2 text-2xs text-atlas-fg-3 leading-relaxed">
-                      Connexion instantanée comme <code className="font-mono">{DEV_USER_EMAIL}</code> —
-                      cockpit isolé par RLS, parfait pour le dev local.
-                    </p>
-                  </>
-                )}
+                {/* Dev quick-login removed — no hardcoded credentials in
+                    production. Use the OTP code flow with a real e-mail
+                    (Resend SMTP works in local dev too). */}
               </>
             )}
 
