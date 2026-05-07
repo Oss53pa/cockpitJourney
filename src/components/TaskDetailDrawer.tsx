@@ -118,14 +118,30 @@ export function TaskDetailDrawer({ task: liveTaskRef, onClose }: Props) {
   ];
 
   return (
-    <div className="fixed inset-0 z-40 flex animate-fade-in">
-      <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-40 flex flex-col sm:flex-row animate-fade-in">
+      {/* Backdrop — full screen on mobile (above the sheet), side panel on desktop */}
+      <div className="flex-1 bg-black/30 backdrop-blur-sm hidden sm:block" onClick={onClose} />
+      {/* Mobile-only top backdrop (covers the area above the bottom sheet) */}
+      <div className="flex-1 bg-black/30 backdrop-blur-sm sm:hidden" onClick={onClose} aria-hidden="true" />
       <aside
         className={cn(
-          'bg-atlas-panel border-l border-atlas-line shadow-soft-pop flex flex-col animate-fade-in-up transition-all',
-          expanded ? 'w-full max-w-[1100px]' : 'w-full max-w-[760px]'
+          // Mobile: bottom sheet — sticks to bottom, takes most of viewport height,
+          // rounded top corners. Desktop: right-side drawer.
+          'bg-atlas-panel shadow-soft-pop flex flex-col transition-all',
+          'rounded-t-2xl sm:rounded-none border-t sm:border-t-0 sm:border-l border-atlas-line',
+          'max-h-[88vh] sm:max-h-none h-auto sm:h-full',
+          'animate-fade-in-up',
+          expanded ? 'w-full sm:max-w-[1100px]' : 'w-full sm:max-w-[760px]'
         )}
       >
+        {/* Mobile drag handle hint */}
+        <div
+          className="sm:hidden flex justify-center pt-2 pb-1 cursor-grab"
+          onClick={onClose}
+          aria-hidden="true"
+        >
+          <span className="w-10 h-1 rounded-full bg-atlas-line-2" />
+        </div>
         {/* Header */}
         <header className="flex items-center justify-between px-6 h-14 border-b border-black/[0.05] shrink-0">
           <div className="flex items-center gap-2 min-w-0">

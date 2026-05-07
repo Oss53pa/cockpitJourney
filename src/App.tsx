@@ -283,6 +283,7 @@ function CockpitShell() {
               }}
               onOpenCommand={() => setCmdOpen(true)}
               onExitToHome={() => setEntered(false)}
+              onCloseMobile={() => setMobileSidebarOpen(false)}
             />
           </div>
           <main className="flex-1 flex flex-col overflow-hidden min-w-0">

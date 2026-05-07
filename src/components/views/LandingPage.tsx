@@ -801,7 +801,7 @@ function Pricing() {
               key={p.name}
               className={
                 p.featured
-                  ? 'relative p-8 rounded-2xl border-2 border-atlas-sage-deep bg-white shadow-amber-glow scale-[1.02]'
+                  ? 'relative p-8 rounded-2xl border-2 border-atlas-sage-deep bg-white shadow-amber-glow md:scale-[1.02]'
                   : 'p-8 rounded-2xl border border-atlas-line bg-white hover:shadow-panel transition'
               }
             >

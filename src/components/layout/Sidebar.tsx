@@ -25,6 +25,7 @@ import {
   Sunrise,
   BookOpen,
   LogOut,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import { Logo } from '../ui/Logo';
@@ -52,9 +53,17 @@ interface Props {
   onNavigate: (view: ViewKey, projectId?: string) => void;
   onOpenCommand: () => void;
   onExitToHome: () => void;
+  onCloseMobile?: () => void;
 }
 
-export function Sidebar({ view, activeProjectId, onNavigate, onOpenCommand, onExitToHome }: Props) {
+export function Sidebar({
+  view,
+  activeProjectId,
+  onNavigate,
+  onOpenCommand,
+  onExitToHome,
+  onCloseMobile,
+}: Props) {
   const folders = useApp((s) => s.folders);
   const projects = useApp((s) => s.projects);
   const tasks = useApp((s) => s.tasks);
@@ -92,7 +101,17 @@ export function Sidebar({ view, activeProjectId, onNavigate, onOpenCommand, onEx
   ];
 
   return (
-    <aside className="w-[260px] shrink-0 h-full flex flex-col bg-atlas-ink/80 backdrop-blur-2xl border-r border-black/[0.05]">
+    <aside className="w-[280px] sm:w-[260px] shrink-0 h-full flex flex-col bg-atlas-ink/80 backdrop-blur-2xl border-r border-black/[0.05]">
+      {/* Mobile-only close button at top-right */}
+      {onCloseMobile && (
+        <button
+          onClick={onCloseMobile}
+          aria-label="Fermer le menu"
+          className="md:hidden absolute top-3 right-3 z-10 w-9 h-9 rounded-lg bg-white border border-atlas-line flex items-center justify-center text-atlas-fg-2 hover:text-atlas-fg-1"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      )}
       <div className="px-4 pt-5 pb-4">
         <button
           onClick={onExitToHome}

@@ -460,7 +460,10 @@ function KanbanBoard({
       onDragEnd={onDragEnd}
       onDragCancel={() => setDraggingId(null)}
     >
-      <div className="grid grid-flow-col auto-cols-[320px] gap-4 overflow-x-auto pb-4 -mx-1 px-1">
+      <div
+        className="grid grid-flow-col auto-cols-[280px] sm:auto-cols-[320px] gap-3 sm:gap-4 overflow-x-auto pb-4 -mx-1 px-1 snap-x snap-mandatory scroll-smooth"
+        style={{ scrollPaddingLeft: '0.25rem' }}
+      >
         {sections.map((section) => {
           const colTasks = tasks.filter((t) => t.sectionId === section.id);
           return (
@@ -505,7 +508,7 @@ function KanbanColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        'flex flex-col bg-atlas-panel/80 backdrop-blur-md border rounded-2xl overflow-hidden transition-colors',
+        'flex flex-col bg-atlas-panel/80 backdrop-blur-md border rounded-2xl overflow-hidden transition-colors snap-start',
         isOver ? 'border-atlas-amber/60 ring-2 ring-atlas-amber/20' : 'border-atlas-line'
       )}
     >
