@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Sidebar } from './components/layout/Sidebar';
 import { TopBar } from './components/layout/TopBar';
 import { CommandMenu } from './components/layout/CommandMenu';
@@ -6,6 +7,7 @@ import { TodayView } from './components/views/TodayView';
 import { TaskDetailDrawer } from './components/TaskDetailDrawer';
 import { HomeView } from './components/views/HomeView';
 import { LoginView } from './components/views/LoginView';
+import { AuthCallback } from './components/AuthCallback';
 import { ModalRoot } from './components/modals/ModalRoot';
 import { Toaster } from './components/ui/Toaster';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -47,7 +49,6 @@ function ConnectingSplash() {
 
   const hardReset = () => {
     try {
-      // Clear any cached Supabase auth (PKCE verifier, refresh token, etc.)
       Object.keys(localStorage)
         .filter((k) => k.startsWith('cj-supabase-auth') || k.startsWith('sb-'))
         .forEach((k) => localStorage.removeItem(k));
@@ -63,7 +64,7 @@ function ConnectingSplash() {
         <div className="font-logo text-5xl text-atlas-fg-1 mb-4">
           Cockpit<span className="text-atlas-sage-deep">Journey</span>
         </div>
-        <div className="text-2xs uppercase tracking-[0.2em] text-atlas-fg-3 font-medium">
+        <div className="text-2xs uppercase tracking-[0.2em] text-atlas-fg-3 font-light">
           Connexion à Supabase…
         </div>
         <div className="mt-5 mx-auto w-32 h-1 rounded-full bg-black/[0.05] overflow-hidden">
@@ -78,7 +79,7 @@ function ConnectingSplash() {
             </p>
             <button
               onClick={hardReset}
-              className="text-xs uppercase tracking-wider text-atlas-sage-deep hover:text-atlas-sage-deeper transition font-medium underline underline-offset-4"
+              className="text-xs uppercase tracking-wider text-atlas-sage-deep hover:text-atlas-sage-deeper transition font-light underline underline-offset-4"
             >
               Réinitialiser et réessayer
             </button>
@@ -103,7 +104,22 @@ function ViewSkeleton() {
   );
 }
 
-function App() {
+/**
+ * The authenticated cockpit shell. Mounted under the /dashboard route once
+ * the user is signed in AND the snapshot has been loaded from Supabase.
+ *
+ * Internal navigation between views (Today, Inbox, Project Kanban, Goals,
+ * Dashboards, Focus, Reports, Forms, Automations) stays state-based — we
+ * intentionally don't push every view to a URL because:
+ *   - cockpit views compose freely (drawer over project view + command menu
+ *     over everything) and URL routing for that overhead-bloats the UX
+ *   - the user lands on /dashboard and stays there — they don't bookmark
+ *     individual cockpit views
+ *
+ * If we later want shareable URLs for specific tasks ("send your CEO a
+ * link to task X"), we'll add nested routes here.
+ */
+function CockpitShell() {
   const [entered, setEntered] = useState(false);
   const [view, setView] = useState<ViewKey>('today');
   const [activeProjectId, setActiveProjectId] = useState<string | undefined>(undefined);
@@ -111,18 +127,10 @@ function App() {
   const [cmdOpen, setCmdOpen] = useState(false);
 
   const ready = useApp((s) => s.ready);
-  const authStatus = useApp((s) => s.authStatus);
-  const bootstrap = useApp((s) => s.bootstrap);
   const projects = useApp((s) => s.projects);
   const openModal = useApp((s) => s.openModal);
   const tickFocus = useApp((s) => s.tickFocus);
   const focusRunning = useApp((s) => s.focus.running);
-  const theme = useApp((s) => s.settings.theme);
-
-  // Subscribe to Supabase auth + hydrate snapshot on session change
-  useEffect(() => {
-    void bootstrap();
-  }, [bootstrap]);
 
   // Once snapshot is loaded, default the active project to the user's
   // first project (their namespace, no global hardcoded id).
@@ -132,28 +140,10 @@ function App() {
     }
   }, [ready, projects, activeProjectId]);
 
-  // Apply theme dark mode
-  useEffect(() => {
-    const apply = () => {
-      const root = document.documentElement;
-      const isDark =
-        theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-      root.classList.toggle('dark', isDark);
-      root.style.colorScheme = isDark ? 'dark' : 'light';
-    };
-    apply();
-    if (theme === 'auto') {
-      const mq = window.matchMedia('(prefers-color-scheme: dark)');
-      mq.addEventListener('change', apply);
-      return () => mq.removeEventListener('change', apply);
-    }
-  }, [theme]);
-
   // Global keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey;
-      // Ignore inputs/textareas
       const target = e.target as HTMLElement | null;
       const inField =
         target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
@@ -226,22 +216,7 @@ function App() {
     setMobileSidebarOpen(false);
   }, [view, activeProjectId]);
 
-  // 1. Still resolving session → splash (with escape hatch after 4s)
-  if (authStatus === 'loading') {
-    return <ConnectingSplash />;
-  }
-
-  // 2. Not signed in → login screen
-  if (authStatus === 'signed_out') {
-    return (
-      <ErrorBoundary>
-        <LoginView />
-        <Toaster />
-      </ErrorBoundary>
-    );
-  }
-
-  // 3. Signed in but snapshot not yet loaded → loading screen
+  // Snapshot still loading → loading screen
   if (!ready) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-atlas-cream">
@@ -249,7 +224,7 @@ function App() {
           <div className="font-logo text-5xl text-atlas-fg-1 mb-4">
             Cockpit<span className="text-atlas-sage-deep">Journey</span>
           </div>
-          <div className="text-2xs uppercase tracking-[0.2em] text-atlas-fg-3 font-medium">
+          <div className="text-2xs uppercase tracking-[0.2em] text-atlas-fg-3 font-light">
             Chargement de votre cockpit…
           </div>
           <div className="mt-5 mx-auto w-32 h-1 rounded-full bg-black/[0.05] overflow-hidden">
@@ -280,14 +255,12 @@ function App() {
   return (
     <ErrorBoundary>
       <div className="flex h-screen w-screen overflow-hidden text-atlas-fg-1 bg-atlas-black bg-noise">
-        {/* Mobile backdrop */}
         {mobileSidebarOpen && (
           <div
             className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
             onClick={() => setMobileSidebarOpen(false)}
           />
         )}
-        {/* Sidebar (hidden on mobile unless open) */}
         <div
           className={cn(
             'shrink-0 transition-transform z-50',
@@ -336,6 +309,106 @@ function App() {
       </div>
     </ErrorBoundary>
   );
+}
+
+/**
+ * Routes dispatcher. Bootstraps Supabase auth once, applies global theme,
+ * then delegates rendering to the right route:
+ *
+ *   /auth        → SSO / magic-link callback (claims session, → /dashboard)
+ *   /login       → LoginView (OTP code, dev login, or "via Atlas Studio")
+ *   /dashboard   → CockpitShell (the actual app, requires auth)
+ *   /*           → redirects to /dashboard if signed in, else /login
+ */
+function App() {
+  const authStatus = useApp((s) => s.authStatus);
+  const bootstrap = useApp((s) => s.bootstrap);
+  const theme = useApp((s) => s.settings.theme);
+
+  // Subscribe to Supabase auth + hydrate snapshot on session change
+  useEffect(() => {
+    void bootstrap();
+  }, [bootstrap]);
+
+  // Apply theme dark mode (global)
+  useEffect(() => {
+    const apply = () => {
+      const root = document.documentElement;
+      const isDark =
+        theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      root.classList.toggle('dark', isDark);
+      root.style.colorScheme = isDark ? 'dark' : 'light';
+    };
+    apply();
+    if (theme === 'auto') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      mq.addEventListener('change', apply);
+      return () => mq.removeEventListener('change', apply);
+    }
+  }, [theme]);
+
+  // While auth is resolving, show splash regardless of which route the
+  // user landed on (except /auth which has its own progress UI).
+  if (authStatus === 'loading' && window.location.pathname !== '/auth') {
+    return <ConnectingSplash />;
+  }
+
+  return (
+    <Routes>
+      <Route path="/auth" element={<AuthCallback />} />
+      <Route
+        path="/login"
+        element={
+          authStatus === 'signed_in' ? (
+            <Navigate to={consumePostLoginTarget()} replace />
+          ) : (
+            <ErrorBoundary>
+              <LoginView />
+              <Toaster />
+            </ErrorBoundary>
+          )
+        }
+      />
+      <Route
+        path="/dashboard"
+        element={authStatus === 'signed_in' ? <CockpitShell /> : <SignedOutRedirect />}
+      />
+      <Route
+        path="*"
+        element={authStatus === 'signed_in' ? <Navigate to="/dashboard" replace /> : <SignedOutRedirect />}
+      />
+    </Routes>
+  );
+}
+
+/**
+ * Redirect to /login while preserving the original target (so after login
+ * the user lands back where they wanted to go, not always on /dashboard).
+ */
+function SignedOutRedirect() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const target = window.location.pathname + window.location.search;
+    if (target !== '/login' && target !== '/') {
+      sessionStorage.setItem('cj-post-login-redirect', target);
+    }
+    navigate('/login', { replace: true });
+  }, [navigate]);
+  return null;
+}
+
+/** Read-then-clear the post-login redirect target. Defaults to /dashboard. */
+function consumePostLoginTarget(): string {
+  try {
+    const target = sessionStorage.getItem('cj-post-login-redirect');
+    if (target) {
+      sessionStorage.removeItem('cj-post-login-redirect');
+      return target;
+    }
+  } catch {
+    /* sessionStorage may be unavailable */
+  }
+  return '/dashboard';
 }
 
 export default App;

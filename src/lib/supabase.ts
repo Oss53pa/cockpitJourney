@@ -111,13 +111,18 @@ export async function sendEmailOtp(email: string) {
     email: email.trim().toLowerCase(),
     options: {
       shouldCreateUser: true,
+      // The email contains BOTH a 6-digit code (preferred path, no
+      // redirect needed) AND a "Click to sign in" button. If the user
+      // clicks the button, Supabase sends them back to /auth with the
+      // session tokens in the URL hash; AuthCallback claims them and
+      // forwards to /dashboard. The redirect URL must be whitelisted
+      // in Supabase Auth → URL Configuration → Redirect URLs.
+      emailRedirectTo: `${window.location.origin}/auth`,
       data: {
         app: APP_ID,
         app_tagline: APP_TAGLINE,
         app_url: APP_URL,
       },
-      // omit emailRedirectTo on purpose: the user enters the code in-app,
-      // no browser redirect needed.
     },
   });
   if (error) throw error;

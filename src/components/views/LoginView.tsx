@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Mail, Loader2, ArrowRight, Sparkles, KeyRound, Zap } from 'lucide-react';
+import { Mail, Loader2, ArrowRight, Sparkles, KeyRound, Zap, ExternalLink } from 'lucide-react';
 import {
   sendEmailOtp,
   verifyEmailOtp,
@@ -8,6 +8,8 @@ import {
   DEV_USER_EMAIL,
   SUPABASE_CONFIGURED,
 } from '../../lib/supabase';
+
+const ATLAS_STUDIO_URL = 'https://atlas-studio.org';
 
 type Step = 'email' | 'code' | 'verifying';
 
@@ -141,13 +143,33 @@ export function LoginView() {
             </div>
           </div>
 
+          {/* SSO entry point — primary path in production */}
+          {step === 'email' && (
+            <a
+              href={ATLAS_STUDIO_URL}
+              className="block mb-3 px-4 py-3 rounded-xl border border-atlas-line bg-white hover:border-atlas-sage-deep/40 hover:bg-atlas-sage/5 transition group"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-2xs uppercase tracking-[0.18em] text-atlas-fg-3 font-light mb-0.5">
+                    Vous avez déjà un compte
+                  </div>
+                  <div className="text-sm text-atlas-fg-1 font-light">
+                    Se connecter via <span className="font-normal">Atlas Studio</span>
+                  </div>
+                </div>
+                <ExternalLink className="w-4 h-4 text-atlas-sage-deep opacity-60 group-hover:opacity-100 transition" />
+              </div>
+            </a>
+          )}
+
           {/* Login card */}
           <div className="bg-white rounded-2xl shadow-card-hover border border-black/5 p-6 sm:p-8">
             {step === 'email' && (
               <>
                 <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-atlas-sage-deep font-light mb-3">
                   <Sparkles className="w-3.5 h-3.5" />
-                  Connexion sécurisée
+                  Connexion par e-mail
                 </div>
                 <h1 className="text-xl sm:text-2xl text-atlas-fg-1 mb-2 leading-tight">
                   Recevez un code de connexion

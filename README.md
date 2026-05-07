@@ -83,6 +83,54 @@ Alternatives gratuites supportées : OpenRouter (free models) ou Ollama auto-hé
 
 ---
 
+## 🔗 SSO Atlas Studio (cross-subdomain)
+
+CockpitJourney est conçu pour vivre sous un sous-domaine `*.atlas-studio.org` et **partager la session Supabase** avec les autres produits Atlas (FnA, Banx…) via cookies cross-subdomain.
+
+Routes définies dans `src/App.tsx` :
+
+| Route | Composant | Rôle |
+|---|---|---|
+| `/auth` | `AuthCallback` | Callback SSO + magic-link. Détecte la session posée dans l'URL (hash ou query), redirige vers `/dashboard`. Fail-safe 6 s. |
+| `/login` | `LoginView` | Page de connexion. Bouton "Se connecter via Atlas Studio" en premier (parcours principal en prod), OTP code et bouton dev en fallback. |
+| `/dashboard` | `CockpitShell` | Le cockpit lui-même (Today, Project, Goals, Reports…). Protégé : redirige vers `/login` si non authentifié, en mémorisant l'URL d'origine. |
+| `/*` | redirect | `/dashboard` si authentifié, `/login` sinon. |
+
+**Flow SSO en prod (cookies partagés)** :
+
+1. L'utilisateur se connecte sur `atlas-studio.org`
+2. La session Supabase est posée dans un cookie scopé `.atlas-studio.org`
+3. L'utilisateur navigue vers `cockpit.atlas-studio.org` → le cookie est partagé
+4. `supabase.auth.getSession()` retourne la session immédiatement → CockpitShell se charge
+
+**Flow magic-link en local dev** :
+
+1. L'utilisateur entre son e-mail sur `/login`
+2. Reçoit un OTP code (et un bouton "Me connecter en un clic" qui redirige vers `/auth`)
+3. Tape le code OU clique le bouton → session établie → redirection vers `/dashboard`
+
+### Configuration Supabase Auth (à faire 1× par environnement)
+
+Dans **Supabase Dashboard → Authentication → URL Configuration → Redirect URLs**, ajouter :
+
+```
+http://localhost:5400/auth
+http://localhost:5400/**
+https://cockpitjourney.app/auth
+https://cockpitjourney.app/**
+```
+
+Si vous déployez sous `cockpit.atlas-studio.org` :
+
+```
+https://cockpit.atlas-studio.org/auth
+https://cockpit.atlas-studio.org/**
+```
+
+Sans ce whitelist, Supabase rejettera la redirection magic-link.
+
+---
+
 ## 📧 Email d'authentification (multi-app)
 
 Plusieurs produits Atlas Studio partagent **un seul projet Supabase**. Pour que les emails de connexion (OTP code) affichent un branding différent par produit, on utilise un pattern conditionnel :
