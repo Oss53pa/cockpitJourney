@@ -2,13 +2,6 @@ import { create } from 'zustand';
 import { persist as dbPersist, loadSnapshot, wipeDatabase, setCurrentAuthUserId } from '../lib/repo';
 import { seedDatabaseIfEmpty, linkAuthUserToProfile } from '../lib/seed';
 import { supabase, SUPABASE_CONFIGURED } from '../lib/supabase';
-
-// Module-level guards: React StrictMode runs effects twice in dev, which
-// would subscribe to onAuthStateChange twice and run hydrateFromSupabase
-// concurrently. We guard at the module level (NOT in store state) so the
-// second invocation literally cannot start.
-let bootstrapStarted = false;
-let hydrateInFlight: Promise<void> | null = null;
 import type {
   User,
   Project,
@@ -22,6 +15,13 @@ import type {
   Priority,
   TaskStatus,
 } from '../types';
+
+// Module-level guards: React StrictMode runs effects twice in dev, which
+// would subscribe to onAuthStateChange twice and run hydrateFromSupabase
+// concurrently. We guard at the module level (NOT in store state) so the
+// second invocation literally cannot start.
+let bootstrapStarted = false;
+let hydrateInFlight: Promise<void> | null = null;
 
 export type ToastKind = 'success' | 'info' | 'warning' | 'error';
 export interface Toast {
