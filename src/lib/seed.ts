@@ -346,49 +346,80 @@ function nsClone<T>(value: T, prefix: string): T {
  * every login.
  */
 export async function seedDatabaseIfEmpty(): Promise<boolean> {
-  if (!(await isEmpty())) return false;
+  console.info('[seed] checking isEmpty()');
+  if (!(await isEmpty())) {
+    console.info('[seed] not empty — skip');
+    return false;
+  }
 
-  // Find the current authenticated user
+  console.info('[seed] reading auth session');
   const { data: sessionData } = await supabase.auth.getSession();
   const authUserId = sessionData.session?.user.id;
-  if (!authUserId) return false;
+  if (!authUserId) {
+    console.warn('[seed] no auth session — abort');
+    return false;
+  }
 
   const prefix = authUserId.slice(0, 8);
-
-  // Set the self-profile id EARLY so any indexed-col fallback in repo.ts
-  // (e.g. notifications.user_id) resolves correctly during seeding.
-  // The profile row itself is inserted in the very first bulkPut below.
   setCurrentProfileId(`${prefix}_u_pame`);
+  console.info('[seed] prefix:', prefix);
 
-  // Notifications have no `userId` field in the mock data — annotate
-  // them with the current user as recipient before nsClone rewrites IDs.
-  const notificationsWithRecipient = notifications.map((n) => ({
-    ...n,
-    userId: 'u_pame',
-  }));
+  const notificationsWithRecipient = notifications.map((n) => ({ ...n, userId: 'u_pame' }));
 
-  // Insert in FK-safe order with namespaced IDs.
-  await persist.bulkPut('users', nsClone(users, prefix));
-  await persist.bulkPut('folders', nsClone(folders, prefix));
-  await persist.bulkPut('projects', nsClone(projects, prefix));
-  await persist.bulkPut('sections', nsClone(sections, prefix));
-  await persist.bulkPut('tasks', nsClone(tasks, prefix));
-  await persist.bulkPut('goals', nsClone(goals, prefix));
-  await persist.bulkPut('comments', nsClone(comments, prefix));
-  await persist.bulkPut('notifications', nsClone(notificationsWithRecipient, prefix));
-  await persist.bulkPut('insights', nsClone(insights, prefix));
-  await persist.bulkPut('automations', nsClone(automations, prefix));
-  await persist.bulkPut('forms', nsClone(forms, prefix));
-  await persist.bulkPut('attachments', nsClone(attachments, prefix));
-  await persist.bulkPut('dependencies', nsClone(dependencies, prefix));
-  await persist.bulkPut('activity', nsClone(activity, prefix));
-  await persist.bulkPut('subtasks', nsClone(subtasks, prefix));
-  await persist.bulkPut('notes', nsClone(notes, prefix));
+  // bulkPut with a per-step watchdog: if a single Supabase upsert takes
+  // longer than 8s, we log a warning and move on (the in-flight write
+  // remains in flight via the writeQueue, but we no longer await it).
+  // This prevents the seed from blocking the entire bootstrap when one
+  // insert is unusually slow (cold Postgres, network glitch, etc.).
+  const stepWithTimeout = async (label: string, work: () => Promise<unknown>) => {
+    console.info('[seed] →', label);
+    const t0 = performance.now();
+    let watchdog: ReturnType<typeof setTimeout> | null = null;
+    const watchdogPromise = new Promise<'__timeout__'>((resolve) => {
+      watchdog = setTimeout(() => {
+        console.warn(`[seed] ⚠ ${label} > 8s — moving on (write may still complete)`);
+        resolve('__timeout__');
+      }, 8000);
+    });
+    try {
+      const result = await Promise.race([work(), watchdogPromise]);
+      const ms = Math.round(performance.now() - t0);
+      if (result === '__timeout__') {
+        console.warn(`[seed] ${label} timed out after ${ms}ms`);
+      } else {
+        console.info(`[seed] ✓ ${label} (${ms}ms)`);
+      }
+    } catch (err) {
+      console.error(`[seed] ✗ ${label} failed`, err);
+    } finally {
+      if (watchdog) clearTimeout(watchdog);
+    }
+  };
 
-  // Default settings — currentProfileId already bound above.
+  await stepWithTimeout('users (cj_profiles)', () => persist.bulkPut('users', nsClone(users, prefix)));
+  await stepWithTimeout('folders', () => persist.bulkPut('folders', nsClone(folders, prefix)));
+  await stepWithTimeout('projects', () => persist.bulkPut('projects', nsClone(projects, prefix)));
+  await stepWithTimeout('sections', () => persist.bulkPut('sections', nsClone(sections, prefix)));
+  await stepWithTimeout('tasks', () => persist.bulkPut('tasks', nsClone(tasks, prefix)));
+  await stepWithTimeout('goals', () => persist.bulkPut('goals', nsClone(goals, prefix)));
+  await stepWithTimeout('comments', () => persist.bulkPut('comments', nsClone(comments, prefix)));
+  await stepWithTimeout('notifications', () =>
+    persist.bulkPut('notifications', nsClone(notificationsWithRecipient, prefix))
+  );
+  await stepWithTimeout('insights', () => persist.bulkPut('insights', nsClone(insights, prefix)));
+  await stepWithTimeout('automations', () => persist.bulkPut('automations', nsClone(automations, prefix)));
+  await stepWithTimeout('forms', () => persist.bulkPut('forms', nsClone(forms, prefix)));
+  await stepWithTimeout('attachments', () => persist.bulkPut('attachments', nsClone(attachments, prefix)));
+  await stepWithTimeout('dependencies', () => persist.bulkPut('dependencies', nsClone(dependencies, prefix)));
+  await stepWithTimeout('activity', () => persist.bulkPut('activity', nsClone(activity, prefix)));
+  await stepWithTimeout('subtasks', () => persist.bulkPut('subtasks', nsClone(subtasks, prefix)));
+  await stepWithTimeout('notes', () => persist.bulkPut('notes', nsClone(notes, prefix)));
+
+  console.info('[seed] → settings (per-key)');
   for (const [key, value] of Object.entries(defaultSettings)) {
     await persist.setSetting(key, value);
   }
+  console.info('[seed] DONE');
 
   return true;
 }
