@@ -357,11 +357,10 @@ function App() {
 
   return (
     <Routes>
-      {/* Public landing — pre-login marketing page (distincte de HomeView interne). */}
-      <Route
-        path="/"
-        element={authStatus === 'signed_in' ? <Navigate to="/dashboard" replace /> : <LandingPage />}
-      />
+      {/* Public landing — ALWAYS shown at root URL, even for signed-in users.
+          (Standard SaaS pattern: Linear, Notion, etc. — / is marketing, not
+          the app shell. Signed-in users get a "Mon cockpit" CTA in the nav.) */}
+      <Route path="/" element={<LandingPage />} />
 
       {/* SSO callback (Atlas Studio token handoff or magic-link redirect) */}
       <Route path="/auth" element={<AuthCallback />} />

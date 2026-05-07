@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Github,
 } from 'lucide-react';
+import { useApp } from '../../stores/appStore';
 
 const ATLAS_STUDIO_URL = 'https://atlas-studio.org';
 const TRIAL_URL = 'https://atlas-studio.org/portal/apps?app=cockpitjourney';
@@ -84,6 +85,8 @@ export function LandingPage() {
 /* ─────────────── Top nav ─────────────── */
 
 function Nav() {
+  const isSignedIn = useApp((s) => s.authStatus === 'signed_in');
+
   return (
     <nav className="sticky top-0 z-50 backdrop-blur-md bg-atlas-cream/80 border-b border-atlas-line">
       <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -107,19 +110,31 @@ function Nav() {
           </a>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            to="/login"
-            className="text-xs uppercase tracking-wider font-light text-atlas-fg-2 hover:text-atlas-fg-1 transition px-3 py-2"
-          >
-            Se connecter
-          </Link>
-          <a
-            href={TRIAL_URL}
-            className="inline-flex items-center gap-2 text-xs uppercase tracking-wider font-light text-white bg-atlas-sage-deep hover:bg-atlas-sage-deeper transition px-4 py-2 rounded-xl shadow-amber-deep"
-          >
-            Essai gratuit
-            <ArrowRight className="w-3.5 h-3.5" />
-          </a>
+          {isSignedIn ? (
+            <Link
+              to="/dashboard"
+              className="inline-flex items-center gap-2 text-xs uppercase tracking-wider font-light text-white bg-atlas-sage-deep hover:bg-atlas-sage-deeper transition px-4 py-2 rounded-xl shadow-amber-deep"
+            >
+              Mon cockpit
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          ) : (
+            <>
+              <Link
+                to="/login"
+                className="text-xs uppercase tracking-wider font-light text-atlas-fg-2 hover:text-atlas-fg-1 transition px-3 py-2"
+              >
+                Se connecter
+              </Link>
+              <a
+                href={TRIAL_URL}
+                className="inline-flex items-center gap-2 text-xs uppercase tracking-wider font-light text-white bg-atlas-sage-deep hover:bg-atlas-sage-deeper transition px-4 py-2 rounded-xl shadow-amber-deep"
+              >
+                Essai gratuit
+                <ArrowRight className="w-3.5 h-3.5" />
+              </a>
+            </>
+          )}
         </div>
       </div>
     </nav>
