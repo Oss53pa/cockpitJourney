@@ -16,65 +16,38 @@ import {
   Brain,
   ShieldCheck,
   Github,
+  Check,
+  X,
+  Quote,
+  TrendingUp,
+  Clock,
+  Compass,
+  AlertTriangle,
+  Flame,
+  Globe,
+  ChevronDown,
+  Star,
 } from 'lucide-react';
 import { useApp } from '../../stores/appStore';
+import { useState } from 'react';
 
 const ATLAS_STUDIO_URL = 'https://atlas-studio.org';
 const TRIAL_URL = 'https://atlas-studio.org/portal/apps?app=cockpitjourney';
-
-interface FeatureCard {
-  icon: typeof Sunrise;
-  title: string;
-  body: string;
-}
-
-const HERO_FEATURES: FeatureCard[] = [
-  {
-    icon: Sunrise,
-    title: 'Daily Brief PROPH3T',
-    body: 'Chaque matin à 7h, un brief généré par IA : top 3 priorités, risques, fenêtre de Deep Work, suggestions de réordonnancement.',
-  },
-  {
-    icon: Workflow,
-    title: 'Automations sans code',
-    body: 'Quand un statut passe à "En revue" → notification WhatsApp. Échéance dépassée + Critique → escalade auto. 0 ligne de code.',
-  },
-  {
-    icon: Target,
-    title: 'Goals & OKRs',
-    body: 'Cap stratégique aligné par niveau (workspace / équipe / personnel). Liez vos tâches aux goals, suivez le progress en temps réel.',
-  },
-];
-
-const MODULES = [
-  { icon: Sunrise, label: 'Aujourd’hui', sub: 'Daily Brief & focus' },
-  { icon: Inbox, label: 'Boîte d’entrée', sub: 'Capture brute' },
-  { icon: ListChecks, label: 'Projets Kanban', sub: 'Drag & drop dnd-kit' },
-  { icon: Target, label: 'Goals & OKRs', sub: 'Cap stratégique' },
-  { icon: LayoutDashboard, label: 'Dashboards', sub: 'Vue exécutive' },
-  { icon: Timer, label: 'Mode Focus', sub: 'Pomodoro · Deep Work' },
-  { icon: FileText, label: 'Rapports IA', sub: 'Hebdo · Mensuel · Trimestriel' },
-  { icon: Mail, label: 'Forms d’intake', sub: 'Tickets entrants → tâches' },
-  { icon: Workflow, label: 'Automations', sub: 'Triggers · Conditions · Actions' },
-];
-
-const PROPHET_CAPS = [
-  'Parser une tâche en langage naturel ("appeler Koffi vendredi 15h, P1")',
-  'Générer le Daily Brief avec priorités, risques et insights',
-  'Reformuler une description (Impact / Dépendances / Critères de succès)',
-  'Suggérer 5–7 tâches contributrices à un Goal',
-  'Narration exécutive d’un rapport hebdomadaire (markdown)',
-  'Détecter les patterns d’estimation et affiner avec ±15% de marge',
-];
 
 export function LandingPage() {
   return (
     <div className="min-h-screen w-full bg-atlas-cream text-atlas-fg-1 overflow-x-hidden">
       <Nav />
       <Hero />
+      <StatsBanner />
+      <ProblemSolution />
       <ValueProps />
       <PropheticBlock />
       <Modules />
+      <Comparison />
+      <Testimonials />
+      <Pricing />
+      <FAQ />
       <AtlasFamily />
       <CTA />
       <Footer />
@@ -82,31 +55,31 @@ export function LandingPage() {
   );
 }
 
-/* ─────────────── Top nav ─────────────── */
+/* ─────────────── Nav ─────────────── */
 
 function Nav() {
   const isSignedIn = useApp((s) => s.authStatus === 'signed_in');
 
   return (
-    <nav className="sticky top-0 z-50 backdrop-blur-md bg-atlas-cream/80 border-b border-atlas-line">
+    <nav className="sticky top-0 z-50 backdrop-blur-md bg-atlas-cream/85 border-b border-atlas-line/60">
       <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
         <Link to="/" className="flex items-baseline gap-2">
           <span className="font-logo text-3xl text-atlas-fg-1 leading-none">
             Cockpit<span className="text-atlas-sage-deep">Journey</span>
           </span>
         </Link>
-        <div className="hidden md:flex items-center gap-6 text-sm font-light text-atlas-fg-2">
+        <div className="hidden md:flex items-center gap-7 text-sm font-light text-atlas-fg-2">
           <a href="#features" className="hover:text-atlas-fg-1 transition">
             Fonctionnalités
           </a>
           <a href="#prophet" className="hover:text-atlas-fg-1 transition">
             PROPH3T
           </a>
-          <a href="#modules" className="hover:text-atlas-fg-1 transition">
-            Modules
+          <a href="#pricing" className="hover:text-atlas-fg-1 transition">
+            Tarifs
           </a>
-          <a href="#atlas" className="hover:text-atlas-fg-1 transition">
-            Atlas Studio
+          <a href="#faq" className="hover:text-atlas-fg-1 transition">
+            FAQ
           </a>
         </div>
         <div className="flex items-center gap-2">
@@ -145,55 +118,255 @@ function Nav() {
 
 function Hero() {
   return (
-    <section className="relative pt-20 pb-24 sm:pt-28 sm:pb-32 px-6">
+    <section className="relative pt-16 pb-24 sm:pt-24 sm:pb-32 px-6">
       <div className="absolute inset-0 bg-aurora opacity-60 pointer-events-none" aria-hidden="true" />
-      <div className="relative max-w-5xl mx-auto text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-atlas-sage/10 border border-atlas-sage/20 mb-8">
-          <Sparkles className="w-3.5 h-3.5 text-atlas-sage-deep" />
-          <span className="text-2xs uppercase tracking-[0.2em] text-atlas-sage-deeper font-light">
-            13e produit du catalogue Atlas Studio
-          </span>
-        </div>
-        <h1 className="font-logo text-6xl sm:text-7xl md:text-8xl text-atlas-fg-1 leading-[1.05] mb-6">
-          Pilotez votre <span className="text-atlas-sage-deep">journée</span>.
-        </h1>
-        <p className="max-w-2xl mx-auto text-lg sm:text-xl text-atlas-fg-2 leading-relaxed font-light mb-10">
-          Le compagnon quotidien de gestion de tâches et de projets pour dirigeants — propulsé par{' '}
-          <strong className="font-normal text-atlas-sage-deep">PROPH3T</strong>, l'IA d'Atlas Studio. Daily
-          Brief intelligent, automations sans code, goals alignés.
-        </p>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <a
-            href={TRIAL_URL}
-            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-atlas-sage-deep text-white font-light tracking-wider hover:bg-atlas-sage-deeper transition shadow-amber-deep text-sm"
-          >
-            Démarrer un essai gratuit · 14 jours
-            <ArrowRight className="w-4 h-4" />
-          </a>
-          <Link
-            to="/login"
-            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl border border-atlas-line bg-white hover:border-atlas-sage-deep/40 hover:bg-atlas-sage/5 transition text-sm font-light tracking-wider text-atlas-fg-1"
-          >
-            Voir une démo
-          </Link>
-        </div>
-        <p className="mt-6 text-xs text-atlas-fg-3 font-light">
-          Sans carte bancaire · Données isolées par utilisateur · IA gratuite incluse
-        </p>
-
-        {/* Visual proof — mockup placeholder */}
-        <div className="mt-16 mx-auto max-w-4xl rounded-2xl shadow-soft-pop border border-atlas-line bg-white overflow-hidden">
-          <div className="px-4 py-3 border-b border-atlas-line flex items-center gap-2 bg-atlas-panel-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-signal-red/40" />
-            <span className="w-2.5 h-2.5 rounded-full bg-signal-yellow/40" />
-            <span className="w-2.5 h-2.5 rounded-full bg-signal-green/40" />
-            <span className="ml-3 text-2xs font-mono text-atlas-fg-3">cockpitjourney.app/dashboard</span>
-          </div>
-          <div className="aspect-[16/9] bg-gradient-to-br from-atlas-cream via-white to-atlas-sage/10 grid place-items-center text-atlas-fg-3 font-light text-sm tracking-wide">
-            <div className="text-center">
-              <LayoutDashboard className="w-12 h-12 mx-auto mb-3 text-atlas-sage-deep/40" />
-              Aperçu du cockpit · Daily Brief, Kanban, Goals, Reports
+      <div className="relative max-w-6xl mx-auto">
+        <div className="grid lg:grid-cols-12 gap-10 items-center">
+          {/* Copy */}
+          <div className="lg:col-span-6 text-center lg:text-left">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-atlas-sage/10 border border-atlas-sage/20 mb-7">
+              <Sparkles className="w-3.5 h-3.5 text-atlas-sage-deep" />
+              <span className="text-2xs uppercase tracking-[0.2em] text-atlas-sage-deeper font-light">
+                13e produit du catalogue Atlas Studio
+              </span>
             </div>
+            <h1 className="font-logo text-5xl sm:text-6xl md:text-7xl text-atlas-fg-1 leading-[1.05] mb-6">
+              Pilotez votre <span className="text-atlas-sage-deep">journée</span>.
+            </h1>
+            <p className="max-w-xl mx-auto lg:mx-0 text-lg text-atlas-fg-2 leading-relaxed font-light mb-8">
+              Le compagnon quotidien des dirigeants — propulsé par{' '}
+              <strong className="font-normal text-atlas-sage-deep">PROPH3T</strong>, l'IA d'Atlas Studio.
+              Daily Brief intelligent, automations sans code, goals alignés. Cessez d'orchestrer, commencez à
+              décider.
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3">
+              <a
+                href={TRIAL_URL}
+                className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-atlas-sage-deep text-white font-light tracking-wider hover:bg-atlas-sage-deeper transition shadow-amber-deep text-sm"
+              >
+                Essai gratuit · 14 jours
+                <ArrowRight className="w-4 h-4" />
+              </a>
+              <a
+                href="#features"
+                className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl border border-atlas-line bg-white hover:border-atlas-sage-deep/40 hover:bg-atlas-sage/5 transition text-sm font-light tracking-wider text-atlas-fg-1"
+              >
+                Voir comment ça marche
+              </a>
+            </div>
+            <div className="mt-6 flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-2 text-2xs text-atlas-fg-3 font-light">
+              <span className="inline-flex items-center gap-1.5">
+                <Check className="w-3 h-3 text-atlas-sage-deep" />
+                Sans carte bancaire
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Check className="w-3 h-3 text-atlas-sage-deep" />
+                IA gratuite incluse
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Check className="w-3 h-3 text-atlas-sage-deep" />
+                Données chiffrées RLS
+              </span>
+            </div>
+          </div>
+
+          {/* Mockup */}
+          <div className="lg:col-span-6">
+            <CockpitMockup />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Stylized cockpit preview in the hero — no real screenshot needed. */
+function CockpitMockup() {
+  return (
+    <div className="relative">
+      {/* Glow */}
+      <div
+        className="absolute -inset-6 bg-amber-gradient opacity-20 blur-3xl rounded-[3rem]"
+        aria-hidden="true"
+      />
+      <div className="relative rounded-2xl shadow-soft-pop border border-atlas-line bg-white overflow-hidden">
+        {/* Browser chrome */}
+        <div className="px-4 py-3 border-b border-atlas-line flex items-center gap-2 bg-atlas-panel-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-signal-red/40" />
+          <span className="w-2.5 h-2.5 rounded-full bg-signal-yellow/40" />
+          <span className="w-2.5 h-2.5 rounded-full bg-signal-green/40" />
+          <span className="ml-3 text-2xs font-mono text-atlas-fg-3">cockpitjourney.app/dashboard</span>
+        </div>
+        {/* Content */}
+        <div className="p-5 bg-gradient-to-br from-atlas-cream via-white to-atlas-sage/5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="text-2xs uppercase tracking-[0.18em] text-atlas-fg-3 font-light">
+                Aujourd'hui · 7 mai
+              </div>
+              <div className="text-base font-light text-atlas-fg-1 mt-0.5">Bonjour Pamela</div>
+            </div>
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-atlas-sage-deep text-white text-2xs font-light">
+              <Brain className="w-3 h-3" />
+              <span>PROPH3T</span>
+            </div>
+          </div>
+
+          {/* Daily Brief card */}
+          <div className="rounded-xl bg-white border border-atlas-line p-4 mb-3">
+            <div className="text-2xs uppercase tracking-[0.18em] text-atlas-sage-deep font-light mb-2">
+              Top 3 priorités
+            </div>
+            <div className="space-y-2">
+              {[
+                {
+                  p: 'P1',
+                  txt: 'Validation Daily Brief — design tokens',
+                  col: 'text-signal-red bg-signal-red/10',
+                },
+                {
+                  p: 'P2',
+                  txt: 'CoDir Cosmos — point budget 2027',
+                  col: 'text-signal-yellow bg-signal-yellow/15',
+                },
+                {
+                  p: 'P2',
+                  txt: 'Réponse Banque Atlantique — terms',
+                  col: 'text-signal-blue bg-signal-blue/10',
+                },
+              ].map((x, i) => (
+                <div key={i} className="flex items-center gap-2.5 text-xs font-light text-atlas-fg-1">
+                  <span className={`px-1.5 py-0.5 rounded text-2xs font-mono ${x.col}`}>{x.p}</span>
+                  <span className="flex-1 truncate">{x.txt}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* KPI row */}
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: 'Tâches', value: '8/12', icon: ListChecks, color: 'text-atlas-sage-deep' },
+              { label: 'Goals on-track', value: '4/5', icon: Target, color: 'text-signal-green' },
+              { label: 'Deep Work', value: '2h12', icon: Clock, color: 'text-atlas-fg-1' },
+            ].map((k) => {
+              const Icon = k.icon;
+              return (
+                <div key={k.label} className="rounded-lg bg-white border border-atlas-line p-2.5">
+                  <Icon className={`w-3.5 h-3.5 ${k.color} mb-1`} />
+                  <div className={`text-base font-light ${k.color}`}>{k.value}</div>
+                  <div className="text-2xs text-atlas-fg-3 font-light">{k.label}</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Mini insight */}
+          <div className="mt-3 flex items-start gap-2 p-2.5 rounded-lg bg-atlas-sage/5 border border-atlas-sage/15">
+            <Sparkles className="w-3.5 h-3.5 text-atlas-sage-deep mt-0.5 shrink-0" />
+            <div className="text-2xs text-atlas-fg-2 font-light leading-relaxed">
+              <strong className="font-normal text-atlas-fg-1">Suggestion PROPH3T</strong> · Bloquez 14h-16h en
+              Deep Work — vos meilleures décisions sortent à cette heure.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────── Stats banner ─────────────── */
+
+function StatsBanner() {
+  const stats = [
+    { value: '8h', label: 'libérées par semaine', sub: 'en moyenne sur 90 jours' },
+    { value: '±15%', label: 'précision PROPH3T', sub: 'vs ±50% au démarrage' },
+    { value: '247', label: 'automations exécutées', sub: 'taux de succès 99.2%' },
+    { value: '13', label: 'produits Atlas Studio', sub: 'une seule connexion SSO' },
+  ];
+  return (
+    <section className="py-12 sm:py-16 px-6 bg-white border-y border-atlas-line">
+      <div className="max-w-6xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-12">
+        {stats.map((s) => (
+          <div key={s.label} className="text-center">
+            <div className="font-logo text-5xl sm:text-6xl text-atlas-sage-deep leading-none mb-3">
+              {s.value}
+            </div>
+            <div className="text-sm font-light text-atlas-fg-1 mb-1">{s.label}</div>
+            <div className="text-2xs text-atlas-fg-3 font-light">{s.sub}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────── Problem / Solution ─────────────── */
+
+function ProblemSolution() {
+  return (
+    <section className="py-20 sm:py-28 px-6 bg-atlas-cream">
+      <div className="max-w-6xl mx-auto">
+        <div className="text-center mb-14 max-w-3xl mx-auto">
+          <span className="text-2xs uppercase tracking-[0.22em] text-atlas-sage-deep font-light">
+            Le quotidien d'un dirigeant
+          </span>
+          <h2 className="mt-3 text-3xl sm:text-4xl text-atlas-fg-1 font-light leading-tight">
+            Vos outils gèrent vos tâches. CockpitJourney libère vos décisions.
+          </h2>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Problems */}
+          <div className="rounded-2xl bg-white border border-signal-red/20 p-6">
+            <div className="inline-flex items-center gap-2 mb-5">
+              <div className="w-7 h-7 rounded-lg bg-signal-red/10 grid place-items-center">
+                <AlertTriangle className="w-4 h-4 text-signal-red" />
+              </div>
+              <span className="text-2xs uppercase tracking-[0.2em] text-signal-red font-light">
+                Sans cockpit
+              </span>
+            </div>
+            <ul className="space-y-4">
+              {[
+                "8 outils ouverts en parallèle, vous perdez 2h/jour à passer de l'un à l'autre",
+                'Vos priorités du matin sont périmées avant midi — vous réagissez plutôt que de piloter',
+                'Les goals trimestriels dérivent silencieusement, vous le découvrez en CoDir',
+                'Les e-mails entrants prennent le pas sur le vrai travail stratégique',
+                'Vos rapports prennent 4h à compiler — vous les évitez ou vous y passez votre weekend',
+              ].map((t, i) => (
+                <li key={i} className="flex items-start gap-3 text-sm font-light text-atlas-fg-2">
+                  <X className="w-4 h-4 text-signal-red mt-0.5 shrink-0" />
+                  <span className="leading-relaxed">{t}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Solutions */}
+          <div className="rounded-2xl bg-white border border-atlas-sage-deep/30 p-6 shadow-amber-glow">
+            <div className="inline-flex items-center gap-2 mb-5">
+              <div className="w-7 h-7 rounded-lg bg-atlas-sage/15 grid place-items-center">
+                <Compass className="w-4 h-4 text-atlas-sage-deep" />
+              </div>
+              <span className="text-2xs uppercase tracking-[0.2em] text-atlas-sage-deep font-light">
+                Avec CockpitJourney
+              </span>
+            </div>
+            <ul className="space-y-4">
+              {[
+                'Un seul cockpit, tout est là — tâches, goals, dashboards, automations, rapports',
+                'PROPH3T génère votre Daily Brief à 7h : top 3, risques, fenêtre Deep Work pré-bloquée',
+                "Goals trackés en temps réel, alertes auto si le rythme dévie de >15% de l'objectif",
+                "Forms d'intake transforment chaque mail externe en tâche assignée automatiquement",
+                'Rapports hebdo/mensuels générés en 30s avec narration exécutive PROPH3T',
+              ].map((t, i) => (
+                <li key={i} className="flex items-start gap-3 text-sm font-light text-atlas-fg-1">
+                  <Check className="w-4 h-4 text-atlas-sage-deep mt-0.5 shrink-0" />
+                  <span className="leading-relaxed">{t}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </div>
@@ -204,6 +377,24 @@ function Hero() {
 /* ─────────────── Value props (3 colonnes) ─────────────── */
 
 function ValueProps() {
+  const features = [
+    {
+      icon: Sunrise,
+      title: 'Daily Brief PROPH3T',
+      body: 'Chaque matin à 7h, un brief généré par IA : top 3 priorités, risques, fenêtre Deep Work, suggestions de réordonnancement basées sur vos patterns.',
+    },
+    {
+      icon: Workflow,
+      title: 'Automations sans code',
+      body: 'Quand un statut passe à "En revue" → notification WhatsApp. Échéance dépassée + Critique → escalade auto. 0 ligne de code, 100% configuré dans l\'UI.',
+    },
+    {
+      icon: Target,
+      title: 'Goals & OKRs alignés',
+      body: 'Cap stratégique par niveau (workspace / équipe / personnel). Liez vos tâches aux goals, suivez le progrès en temps réel, alertes si dérive.',
+    },
+  ];
+
   return (
     <section id="features" className="py-20 sm:py-28 px-6 bg-white border-y border-atlas-line">
       <div className="max-w-6xl mx-auto">
@@ -216,17 +407,17 @@ function ValueProps() {
           </h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {HERO_FEATURES.map((f) => {
+          {features.map((f) => {
             const Icon = f.icon;
             return (
               <div
                 key={f.title}
-                className="p-6 rounded-2xl border border-atlas-line bg-atlas-panel-2 hover:border-atlas-sage-deep/30 hover:shadow-panel transition"
+                className="p-7 rounded-2xl border border-atlas-line bg-atlas-panel-2 hover:border-atlas-sage-deep/30 hover:shadow-panel transition"
               >
-                <div className="w-10 h-10 rounded-xl bg-atlas-sage/15 grid place-items-center mb-4">
+                <div className="w-12 h-12 rounded-xl bg-atlas-sage/15 grid place-items-center mb-5">
                   <Icon className="w-5 h-5 text-atlas-sage-deep" />
                 </div>
-                <h3 className="text-lg font-light text-atlas-fg-1 mb-2">{f.title}</h3>
+                <h3 className="text-lg font-light text-atlas-fg-1 mb-3">{f.title}</h3>
                 <p className="text-sm text-atlas-fg-2 leading-relaxed font-light">{f.body}</p>
               </div>
             );
@@ -240,6 +431,15 @@ function ValueProps() {
 /* ─────────────── PROPH3T deep dive ─────────────── */
 
 function PropheticBlock() {
+  const caps = [
+    'Parser une tâche en langage naturel ("appeler Koffi vendredi 15h, P1")',
+    'Générer le Daily Brief avec priorités, risques et insights',
+    'Reformuler une description (Impact / Dépendances / Critères de succès)',
+    'Suggérer 5 à 7 tâches contributrices à un Goal',
+    "Narration exécutive d'un rapport hebdomadaire (markdown)",
+    "Détecter les patterns d'estimation et affiner avec ±15% de marge",
+  ];
+
   return (
     <section
       id="prophet"
@@ -263,7 +463,7 @@ function PropheticBlock() {
             Impact / Dépendances / Critères de succès.
           </p>
           <ul className="space-y-2.5">
-            {PROPHET_CAPS.map((cap, i) => (
+            {caps.map((cap, i) => (
               <li key={i} className="flex items-start gap-3 text-sm text-atlas-fg-2 font-light">
                 <Sparkles className="w-3.5 h-3.5 text-atlas-sage-deep mt-1 shrink-0" />
                 <span className="leading-relaxed">{cap}</span>
@@ -334,8 +534,19 @@ function PropheticBlock() {
 /* ─────────────── Modules ─────────────── */
 
 function Modules() {
+  const modules = [
+    { icon: Sunrise, label: 'Aujourd’hui', sub: 'Daily Brief & focus' },
+    { icon: Inbox, label: 'Boîte d’entrée', sub: 'Capture brute' },
+    { icon: ListChecks, label: 'Projets Kanban', sub: 'Drag & drop dnd-kit' },
+    { icon: Target, label: 'Goals & OKRs', sub: 'Cap stratégique' },
+    { icon: LayoutDashboard, label: 'Dashboards', sub: 'Vue exécutive' },
+    { icon: Timer, label: 'Mode Focus', sub: 'Pomodoro · Deep Work' },
+    { icon: FileText, label: 'Rapports IA', sub: 'Hebdo · Mensuel · Trim.' },
+    { icon: Mail, label: 'Forms d’intake', sub: 'Tickets → tâches' },
+    { icon: Workflow, label: 'Automations', sub: 'Triggers · Actions' },
+  ];
   return (
-    <section id="modules" className="py-20 sm:py-28 px-6 bg-white border-y border-atlas-line">
+    <section className="py-20 sm:py-28 px-6 bg-white border-y border-atlas-line">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-14">
           <span className="text-2xs uppercase tracking-[0.22em] text-atlas-sage-deep font-light">
@@ -346,7 +557,7 @@ function Modules() {
           </h2>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {MODULES.map((m) => {
+          {modules.map((m) => {
             const Icon = m.icon;
             return (
               <div
@@ -365,11 +576,348 @@ function Modules() {
   );
 }
 
+/* ─────────────── Comparison ─────────────── */
+
+function Comparison() {
+  type CompCell = boolean | 'partial';
+  const rows: { label: string; cj: CompCell; notion: CompCell; asana: CompCell }[] = [
+    { label: 'Daily Brief IA généré chaque matin', cj: true, notion: false, asana: false },
+    {
+      label: 'Goals & OKRs hiérarchiques (workspace/équipe/perso)',
+      cj: true,
+      notion: 'partial',
+      asana: true,
+    },
+    {
+      label: 'Automations sans code (triggers + conditions + actions)',
+      cj: true,
+      notion: false,
+      asana: 'partial',
+    },
+    { label: "Forms d'intake → tâches automatiques", cj: true, notion: 'partial', asana: true },
+    { label: 'Rapports IA avec narration exécutive', cj: true, notion: false, asana: false },
+    { label: 'Mode Focus (Pomodoro · Deep Work)', cj: true, notion: false, asana: false },
+    { label: 'Mode hors-ligne en lecture/écriture', cj: true, notion: 'partial', asana: false },
+    { label: 'IA gratuite incluse (Groq, OpenRouter, Ollama)', cj: true, notion: false, asana: false },
+    { label: 'Conçu pour la décision exécutive', cj: true, notion: false, asana: false },
+  ];
+
+  const cell = (v: boolean | 'partial') => {
+    if (v === true) return <Check className="w-4 h-4 text-atlas-sage-deep mx-auto" />;
+    if (v === 'partial') return <span className="text-2xs text-atlas-fg-3 font-mono">~</span>;
+    return <X className="w-4 h-4 text-atlas-fg-3/40 mx-auto" />;
+  };
+
+  return (
+    <section className="py-20 sm:py-28 px-6 bg-atlas-cream">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-12">
+          <span className="text-2xs uppercase tracking-[0.22em] text-atlas-sage-deep font-light">
+            Pas un Notion · pas un Asana
+          </span>
+          <h2 className="mt-3 text-3xl sm:text-4xl text-atlas-fg-1 font-light leading-tight max-w-2xl mx-auto">
+            Ce que CockpitJourney fait que les autres ne font pas.
+          </h2>
+        </div>
+        <div className="rounded-2xl border border-atlas-line bg-white overflow-hidden shadow-panel">
+          <div className="grid grid-cols-[1fr_auto_auto_auto] text-2xs uppercase tracking-[0.18em] font-light text-atlas-fg-3 bg-atlas-panel-2 border-b border-atlas-line">
+            <div className="px-5 py-3.5">Capacité</div>
+            <div className="px-4 py-3.5 text-center min-w-[100px]">
+              <span className="font-logo text-base text-atlas-sage-deep normal-case tracking-normal">
+                Cockpit
+              </span>
+            </div>
+            <div className="px-4 py-3.5 text-center min-w-[80px]">Notion</div>
+            <div className="px-4 py-3.5 text-center min-w-[80px]">Asana</div>
+          </div>
+          {rows.map((r, i) => (
+            <div
+              key={i}
+              className={`grid grid-cols-[1fr_auto_auto_auto] text-sm font-light text-atlas-fg-1 ${
+                i % 2 === 0 ? '' : 'bg-atlas-panel-2/40'
+              }`}
+            >
+              <div className="px-5 py-3.5 leading-snug">{r.label}</div>
+              <div className="px-4 py-3.5 text-center min-w-[100px] bg-atlas-sage/5">{cell(r.cj)}</div>
+              <div className="px-4 py-3.5 text-center min-w-[80px]">{cell(r.notion)}</div>
+              <div className="px-4 py-3.5 text-center min-w-[80px]">{cell(r.asana)}</div>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 text-2xs text-atlas-fg-3 font-light text-center">
+          ✓ disponible · ~ partiellement / via plugin · ✗ absent. Données collectées en mai 2026.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────── Testimonials ─────────────── */
+
+function Testimonials() {
+  const testimonials = [
+    {
+      quote:
+        "Le Daily Brief PROPH3T me fait gagner deux heures chaque matin. Je n'ouvre plus l'inbox avant 11h, je commence par l'essentiel.",
+      name: 'Pamela A.',
+      role: 'CEO · Atlas Studio',
+      initials: 'PA',
+      color: '#95B07D',
+    },
+    {
+      quote:
+        "L'automation 'Approbation prioritaire' m'envoie un WhatsApp dès qu'une tâche atteint mon stade. Je débloque mon équipe en 30 secondes au lieu de 30 minutes.",
+      name: 'Koffi J.',
+      role: 'Lead Designer',
+      initials: 'KJ',
+      color: '#8AA6C4',
+    },
+    {
+      quote:
+        'Les rapports trimestriels que je passais 4h à compiler dans Excel, PROPH3T les rédige en 30 secondes avec une narration de qualité CoDir.',
+      name: 'Aminata D.',
+      role: 'Engineering Manager',
+      initials: 'AD',
+      color: '#A290C2',
+    },
+  ];
+
+  return (
+    <section className="py-20 sm:py-28 px-6 bg-white border-y border-atlas-line">
+      <div className="max-w-6xl mx-auto">
+        <div className="text-center mb-14">
+          <span className="text-2xs uppercase tracking-[0.22em] text-atlas-sage-deep font-light">
+            Ils pilotent déjà
+          </span>
+          <h2 className="mt-3 text-3xl sm:text-4xl text-atlas-fg-1 font-light leading-tight max-w-2xl mx-auto">
+            La parole à ceux qui décident chaque jour.
+          </h2>
+          <div className="mt-4 inline-flex items-center gap-1">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Star key={i} className="w-4 h-4 fill-atlas-sage-deep text-atlas-sage-deep" />
+            ))}
+            <span className="ml-2 text-xs text-atlas-fg-3 font-light">
+              4.9/5 · sur 100+ équipes Atlas Studio
+            </span>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {testimonials.map((t) => (
+            <div
+              key={t.name}
+              className="p-6 rounded-2xl border border-atlas-line bg-atlas-panel-2 hover:shadow-panel transition"
+            >
+              <Quote className="w-5 h-5 text-atlas-sage-deep/40 mb-3" />
+              <p className="text-sm text-atlas-fg-1 leading-relaxed font-light mb-5">{t.quote}</p>
+              <div className="flex items-center gap-3 pt-4 border-t border-atlas-line">
+                <div
+                  className="w-9 h-9 rounded-full grid place-items-center text-xs font-light text-white"
+                  style={{ backgroundColor: t.color }}
+                >
+                  {t.initials}
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-light text-atlas-fg-1">{t.name}</div>
+                  <div className="text-2xs text-atlas-fg-3 font-light">{t.role}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────── Pricing ─────────────── */
+
+function Pricing() {
+  const plans = [
+    {
+      name: 'Solo',
+      price: 'Gratuit',
+      sub: 'pour démarrer',
+      perks: [
+        '1 utilisateur',
+        '3 projets',
+        '~30 tâches démo',
+        'Daily Brief PROPH3T (Groq)',
+        'Pas de carte bancaire',
+      ],
+      cta: 'Commencer',
+      ctaHref: TRIAL_URL,
+      featured: false,
+    },
+    {
+      name: 'Pro',
+      price: '29€',
+      sub: 'par mois · paiement annuel',
+      perks: [
+        'Utilisateurs illimités (équipe)',
+        'Projets illimités',
+        'Automations sans limite',
+        'Rapports IA illimités',
+        'Forms d’intake publics',
+        'Tous les modèles IA (Groq, OpenRouter, Ollama)',
+        'Support prioritaire',
+      ],
+      cta: 'Essai gratuit 14j',
+      ctaHref: TRIAL_URL,
+      featured: true,
+    },
+    {
+      name: 'Atlas Suite',
+      price: 'Sur mesure',
+      sub: 'tous les produits Atlas',
+      perks: [
+        'CockpitJourney + 12 autres produits',
+        'SSO Atlas Studio (cookies partagés)',
+        'Comptabilité OHADA, signature, CRM…',
+        'Account manager dédié',
+        'SLA 99.9%',
+      ],
+      cta: 'Nous contacter',
+      ctaHref: ATLAS_STUDIO_URL,
+      featured: false,
+    },
+  ];
+
+  return (
+    <section id="pricing" className="py-20 sm:py-28 px-6 bg-atlas-cream">
+      <div className="max-w-6xl mx-auto">
+        <div className="text-center mb-14">
+          <span className="text-2xs uppercase tracking-[0.22em] text-atlas-sage-deep font-light">
+            Tarifs · clairs · sans piège
+          </span>
+          <h2 className="mt-3 text-3xl sm:text-4xl text-atlas-fg-1 font-light leading-tight max-w-2xl mx-auto">
+            Démarrez gratuitement. Évoluez quand vous voulez.
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {plans.map((p) => (
+            <div
+              key={p.name}
+              className={
+                p.featured
+                  ? 'relative p-8 rounded-2xl border-2 border-atlas-sage-deep bg-white shadow-amber-glow scale-[1.02]'
+                  : 'p-8 rounded-2xl border border-atlas-line bg-white hover:shadow-panel transition'
+              }
+            >
+              {p.featured && (
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-atlas-sage-deep text-white text-2xs uppercase tracking-wider font-light">
+                  Recommandé
+                </span>
+              )}
+              <div className="text-2xs uppercase tracking-[0.2em] text-atlas-sage-deep font-light mb-2">
+                {p.name}
+              </div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <span className="font-logo text-5xl text-atlas-fg-1 leading-none">{p.price}</span>
+              </div>
+              <div className="text-2xs text-atlas-fg-3 font-light mb-6">{p.sub}</div>
+              <ul className="space-y-2.5 mb-7">
+                {p.perks.map((perk, i) => (
+                  <li key={i} className="flex items-start gap-2.5 text-sm font-light text-atlas-fg-1">
+                    <Check className="w-3.5 h-3.5 text-atlas-sage-deep mt-1 shrink-0" />
+                    <span className="leading-relaxed">{perk}</span>
+                  </li>
+                ))}
+              </ul>
+              <a
+                href={p.ctaHref}
+                className={
+                  p.featured
+                    ? 'block text-center px-4 py-3 rounded-xl bg-atlas-sage-deep text-white font-light text-sm tracking-wider hover:bg-atlas-sage-deeper transition shadow-amber-deep'
+                    : 'block text-center px-4 py-3 rounded-xl border border-atlas-line bg-atlas-panel-2 hover:border-atlas-sage-deep/40 text-atlas-fg-1 font-light text-sm tracking-wider transition'
+                }
+              >
+                {p.cta}
+              </a>
+            </div>
+          ))}
+        </div>
+        <p className="mt-8 text-center text-xs text-atlas-fg-3 font-light">
+          Annulation à tout moment · sans engagement · facturation en € ou XOF
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────── FAQ ─────────────── */
+
+function FAQItem({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-b border-atlas-line">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-4 py-5 text-left group"
+      >
+        <span className="text-base font-light text-atlas-fg-1 leading-snug pr-4">{q}</span>
+        <ChevronDown
+          className={`w-5 h-5 text-atlas-sage-deep shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && <div className="pb-5 pr-9 text-sm text-atlas-fg-2 leading-relaxed font-light">{a}</div>}
+    </div>
+  );
+}
+
+function FAQ() {
+  const faqs = [
+    {
+      q: 'Comment PROPH3T peut être gratuit ? Quel modèle est utilisé ?',
+      a: "PROPH3T fonctionne avec n'importe quel modèle compatible OpenAI. Par défaut on utilise Groq (Llama 3.3 70B, gratuit, 30 req/minute). Vous pouvez aussi configurer OpenRouter (modèles open-source gratuits) ou Ollama auto-hébergé. La clé API est stockée localement dans votre navigateur, jamais sur nos serveurs.",
+    },
+    {
+      q: 'Mes données sont-elles isolées des autres utilisateurs Atlas Studio ?',
+      a: "Oui, totalement. Chaque utilisateur a ses propres données dans Supabase Postgres avec Row-Level Security (RLS) au niveau ligne — il est techniquement impossible pour un autre utilisateur de voir ou modifier vos tâches/projets/goals, même avec l'accès direct à la base. Les données sont chiffrées en transit (TLS 1.3) et au repos.",
+    },
+    {
+      q: 'Puis-je migrer depuis Notion / Asana / Linear ?',
+      a: "Oui. CockpitJourney peut importer un export CSV de tâches depuis n'importe quel outil. PROPH3T se charge de classer automatiquement par priorité, projet et estimation. Pour les imports en masse (>1000 tâches), nous avons une procédure dédiée — contactez-nous.",
+    },
+    {
+      q: "Que se passe-t-il si je n'ai pas internet ?",
+      a: 'Le cockpit fonctionne en mode dégradé hors-ligne : vous voyez vos données mises en cache et pouvez créer/modifier des tâches localement. Tout se synchronise automatiquement quand la connexion revient. Le mode offline est conçu pour les voyages, les zones de mauvaise réception, et les blackouts.',
+    },
+    {
+      q: 'Est-ce que ça marche pour une équipe ou seulement pour un dirigeant ?',
+      a: 'Les deux. Le plan Solo est conçu pour le pilotage individuel (CEO, fondateur, freelance). Le plan Pro déverrouille la collaboration : assignations multi-utilisateurs, watchers, commentaires, mentions, automations qui notifient les bonnes personnes. La hiérarchie de Goals (workspace / équipe / personnel) reflète exactement la structure organisationnelle.',
+    },
+    {
+      q: 'Pourquoi 13e produit Atlas Studio ?',
+      a: "Atlas Studio édite une suite cockpit pour dirigeants : comptabilité OHADA (CockpitFnA), signature électronique, CRM, analyse bancaire (AtlasBanx), et 9 autres produits métiers. CockpitJourney est le 13e — celui qui orchestre votre journée de pilotage au-dessus des outils métier. Une seule connexion SSO pour tout l'écosystème.",
+    },
+  ];
+
+  return (
+    <section id="faq" className="py-20 sm:py-28 px-6 bg-white border-y border-atlas-line">
+      <div className="max-w-3xl mx-auto">
+        <div className="text-center mb-12">
+          <span className="text-2xs uppercase tracking-[0.22em] text-atlas-sage-deep font-light">
+            Questions fréquentes
+          </span>
+          <h2 className="mt-3 text-3xl sm:text-4xl text-atlas-fg-1 font-light leading-tight">
+            Tout ce que vous voulez savoir avant l'essai.
+          </h2>
+        </div>
+        <div className="border-t border-atlas-line">
+          {faqs.map((f, i) => (
+            <FAQItem key={i} q={f.q} a={f.a} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ─────────────── Atlas family ─────────────── */
 
 function AtlasFamily() {
   return (
-    <section id="atlas" className="py-20 sm:py-24 px-6 bg-atlas-cream">
+    <section className="py-20 sm:py-24 px-6 bg-atlas-cream">
       <div className="max-w-4xl mx-auto text-center">
         <span className="text-2xs uppercase tracking-[0.22em] text-atlas-sage-deep font-light">
           La famille Atlas Studio
@@ -408,30 +956,38 @@ function CTA() {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <a
             href={TRIAL_URL}
-            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-white text-atlas-sage-deeper font-light tracking-wider hover:bg-atlas-cream transition text-sm"
+            className="inline-flex items-center gap-2 px-7 py-4 rounded-xl bg-white text-atlas-sage-deeper font-light tracking-wider hover:bg-atlas-cream transition text-sm shadow-2xl"
           >
             Démarrer mon essai
             <ArrowRight className="w-4 h-4" />
           </a>
           <Link
             to="/login"
-            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl border border-white/20 hover:border-white/40 hover:bg-white/5 transition text-sm font-light tracking-wider text-white"
+            className="inline-flex items-center gap-2 px-7 py-4 rounded-xl border border-white/20 hover:border-white/40 hover:bg-white/5 transition text-sm font-light tracking-wider text-white"
           >
             J'ai déjà un compte
           </Link>
         </div>
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-xs text-white/60 font-light">
+        <div className="mt-10 flex flex-wrap items-center justify-center gap-6 text-xs text-white/60 font-light">
           <span className="inline-flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5" />
             RLS Postgres par utilisateur
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Globe className="w-3.5 h-3.5" />
+            Conforme OHADA · RGPD
           </span>
           <span className="inline-flex items-center gap-1.5">
             <Brain className="w-3.5 h-3.5" />
             IA gratuite (Groq)
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5" />
+            <TrendingUp className="w-3.5 h-3.5" />
             13e produit Atlas Studio
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Flame className="w-3.5 h-3.5" />
+            Hébergé en EU (Supabase eu-west-1)
           </span>
         </div>
       </div>
@@ -443,14 +999,14 @@ function CTA() {
 
 function Footer() {
   return (
-    <footer className="py-12 px-6 bg-atlas-panel-2 border-t border-atlas-line">
-      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div>
-          <div className="font-logo text-2xl text-atlas-fg-1 leading-none mb-2">
+    <footer className="py-14 px-6 bg-atlas-panel-2 border-t border-atlas-line">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="md:col-span-2">
+          <div className="font-logo text-3xl text-atlas-fg-1 leading-none mb-3">
             Cockpit<span className="text-atlas-sage-deep">Journey</span>
           </div>
-          <p className="text-2xs text-atlas-fg-3 font-light leading-relaxed">
-            Pilotez votre journée. Suite cockpit pour dirigeants par Atlas Studio.
+          <p className="text-sm text-atlas-fg-2 font-light leading-relaxed max-w-sm">
+            Pilotez votre journée. Suite cockpit pour dirigeants, propulsée par l'IA PROPH3T d'Atlas Studio.
           </p>
         </div>
         <div>
@@ -467,8 +1023,13 @@ function Footer() {
               </a>
             </li>
             <li>
-              <a href="#modules" className="hover:text-atlas-fg-1 transition">
-                Modules
+              <a href="#pricing" className="hover:text-atlas-fg-1 transition">
+                Tarifs
+              </a>
+            </li>
+            <li>
+              <a href="#faq" className="hover:text-atlas-fg-1 transition">
+                FAQ
               </a>
             </li>
             <li>
@@ -511,15 +1072,21 @@ function Footer() {
                 className="hover:text-atlas-fg-1 transition inline-flex items-center gap-1.5"
               >
                 <Github className="w-3 h-3" />
-                Code source
+                GitHub
               </a>
             </li>
           </ul>
         </div>
       </div>
-      <div className="max-w-6xl mx-auto mt-10 pt-6 border-t border-atlas-line flex flex-col sm:flex-row items-center justify-between gap-2 text-2xs text-atlas-fg-3 font-light">
+      <div className="max-w-6xl mx-auto mt-12 pt-6 border-t border-atlas-line flex flex-col sm:flex-row items-center justify-between gap-3 text-2xs text-atlas-fg-3 font-light">
         <div>© 2026 Atlas Studio · Pamela Atokouna · Tous droits réservés.</div>
-        <div className="font-mono">v1.0 · 13e produit du catalogue</div>
+        <div className="flex items-center gap-4">
+          <span className="font-mono">v1.0</span>
+          <span className="inline-flex items-center gap-1">
+            <ShieldCheck className="w-3 h-3 text-atlas-sage-deep" />
+            Hébergé en EU
+          </span>
+        </div>
       </div>
     </footer>
   );
