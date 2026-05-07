@@ -529,9 +529,6 @@ function PropheticBlock() {
               </li>
             ))}
           </ul>
-          <p className="mt-6 text-xs text-atlas-fg-3 font-light">
-            Compatible Groq (gratuit) · OpenRouter · Ollama auto-hébergé
-          </p>
         </div>
         <div className="relative">
           <div className="rounded-2xl border border-atlas-line bg-white shadow-soft-pop p-6">
@@ -802,27 +799,11 @@ function Pricing({ cms }: { cms?: PricingContent }) {
   // so the page is correct even if Supabase is unreachable.
   const fallbackPlans = [
     {
-      name: 'Solo',
-      price: 0,
-      currency: 'FCFA',
-      tagline: 'pour démarrer',
-      features: [
-        '1 utilisateur',
-        '3 projets',
-        '~30 tâches démo',
-        'Daily Brief PROPH3T (Groq)',
-        'Pas de carte bancaire',
-      ],
-      cta_text: 'Commencer',
-      cta_url: TRIAL_URL,
-      is_popular: false,
-    },
-    {
       name: 'Pro',
       price: 25000,
       currency: 'FCFA',
       period: 'mois',
-      tagline: 'par mois · paiement annuel',
+      tagline: 'paiement mensuel',
       features: [
         'Utilisateurs illimités (équipe)',
         'Projets illimités',
@@ -830,6 +811,7 @@ function Pricing({ cms }: { cms?: PricingContent }) {
         'Rapports IA illimités',
         'Forms d’intake publics',
         'Tous les modèles IA (Groq, OpenRouter, Ollama)',
+        'Daily Brief PROPH3T quotidien',
         'Support prioritaire',
       ],
       cta_text: 'Essai gratuit 14j',
@@ -855,7 +837,10 @@ function Pricing({ cms }: { cms?: PricingContent }) {
   ];
   const plans = cms?.plans ?? fallbackPlans;
   const eyebrow = cms?.subtitle ?? 'Tarifs · clairs · sans piège';
-  const heading = cms?.title ?? 'Démarrez gratuitement. Évoluez quand vous voulez.';
+  const heading = cms?.title ?? 'Un plan tout-inclus. Ou la suite Atlas complète.';
+  // Grid columns adapt to the number of plans returned by the CMS
+  // (2 plans → 2-column centered, 3 plans → classic 3-column).
+  const gridCols = plans.length === 2 ? 'md:grid-cols-2 max-w-4xl mx-auto' : 'md:grid-cols-3';
 
   return (
     <section id="pricing" className="py-20 sm:py-28 px-6 bg-atlas-cream">
@@ -868,7 +853,7 @@ function Pricing({ cms }: { cms?: PricingContent }) {
             {heading}
           </h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className={`grid grid-cols-1 ${gridCols} gap-5`}>
           {plans.map((p, i) => {
             const featured = !!p.is_popular;
             const priceLabel = formatPrice(p.price, p.currency);
