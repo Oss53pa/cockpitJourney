@@ -12,6 +12,7 @@ import { LandingPage } from './components/views/LandingPage';
 import { AuthCallback } from './components/AuthCallback';
 import { ModalRoot } from './components/modals/ModalRoot';
 const TeamSettingsPage = lazy(() => import('./pages/settings/TeamSettingsPage'));
+const IntegrationsSettingsPage = lazy(() => import('./pages/settings/IntegrationsSettingsPage'));
 import { Toaster } from './components/ui/Toaster';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useApp } from './stores/appStore';
@@ -405,6 +406,20 @@ function App() {
           authStatus === 'signed_in' ? (
             <Suspense fallback={<ViewSkeleton />}>
               <TeamSettingsPage />
+            </Suspense>
+          ) : (
+            <SignedOutRedirect />
+          )
+        }
+      />
+
+      {/* Integrations settings — Personal Access Tokens for Claude Cowork & MCP clients */}
+      <Route
+        path="/settings/integrations"
+        element={
+          authStatus === 'signed_in' ? (
+            <Suspense fallback={<ViewSkeleton />}>
+              <IntegrationsSettingsPage />
             </Suspense>
           ) : (
             <SignedOutRedirect />
