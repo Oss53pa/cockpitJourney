@@ -845,23 +845,42 @@ function Testimonials({ cms }: { cms?: TestimonialsContent }) {
 
 function Pricing({ cms }: { cms?: PricingContent }) {
   // Fallback plans (used only if CMS row missing). Pricing is FCFA — the
-  // CMS row carries the canonical 25 000 FCFA price; here we mirror that
-  // so the page is correct even if Supabase is unreachable.
+  // CMS row carries the canonical values; here we mirror them so the
+  // page is correct even if Supabase is unreachable.
   const fallbackPlans = [
     {
-      name: 'Pro',
-      price: 25000,
+      name: 'Particulier',
+      price: 12000,
       currency: 'FCFA',
       period: 'mois',
-      tagline: 'paiement mensuel',
+      tagline: 'pour le dirigeant solo',
       features: [
-        'Utilisateurs illimités (équipe)',
+        '1 utilisateur',
         'Projets illimités',
-        'Automations sans limite',
-        'Rapports IA illimités',
+        'Daily Brief PROPH3T quotidien',
+        'Goals & OKRs personnels',
         'Forms d’intake publics',
         'Tous les modèles IA (Groq, OpenRouter, Ollama)',
-        'Daily Brief PROPH3T quotidien',
+        'Mode Focus · Pomodoro · Deep Work',
+      ],
+      cta_text: 'Essai gratuit 14j',
+      cta_url: TRIAL_URL,
+      is_popular: false,
+    },
+    {
+      name: 'Entreprise',
+      price: 25000,
+      currency: 'FCFA',
+      period: 'mois · par utilisateur',
+      tagline: 'pour les équipes 2-50',
+      features: [
+        'Utilisateurs illimités (équipe)',
+        'Tout du plan Particulier',
+        'Automations sans limite',
+        'Rapports IA hebdo / mensuels / trim.',
+        'Goals hiérarchiques (équipe + perso)',
+        'Mentions, watchers, commentaires',
+        'Console Admin + invitations',
         'Support prioritaire',
       ],
       cta_text: 'Essai gratuit 14j',
@@ -879,6 +898,7 @@ function Pricing({ cms }: { cms?: PricingContent }) {
         'Comptabilité OHADA, signature, CRM…',
         'Account manager dédié',
         'SLA 99.9%',
+        'Onboarding sur site',
       ],
       cta_text: 'Nous contacter',
       cta_url: ATLAS_STUDIO_URL,
@@ -887,7 +907,7 @@ function Pricing({ cms }: { cms?: PricingContent }) {
   ];
   const plans = cms?.plans ?? fallbackPlans;
   const eyebrow = cms?.subtitle ?? 'Tarifs · clairs · sans piège';
-  const heading = cms?.title ?? 'Un plan tout-inclus. Ou la suite Atlas complète.';
+  const heading = cms?.title ?? 'Un plan pour chaque échelle. Du dirigeant solo à la suite Atlas complète.';
   // Grid columns adapt to the number of plans returned by the CMS
   // (2 plans → 2-column centered, 3 plans → classic 3-column).
   const gridCols = plans.length === 2 ? 'md:grid-cols-2 max-w-4xl mx-auto' : 'md:grid-cols-3';
@@ -924,12 +944,15 @@ function Pricing({ cms }: { cms?: PricingContent }) {
                 <div className="text-2xs uppercase tracking-[0.2em] text-atlas-sage-deep font-light mb-2">
                   {p.name}
                 </div>
-                <div className="flex items-baseline gap-2 mb-1">
+                <div className="flex items-baseline gap-2 mb-1 flex-wrap">
                   <span className="font-logo text-4xl sm:text-5xl text-atlas-fg-1 leading-none break-words">
                     {priceLabel}
                   </span>
+                  {p.period && p.price !== null && p.price !== undefined && p.price !== 0 && (
+                    <span className="text-2xs text-atlas-fg-3 font-light">/ {p.period}</span>
+                  )}
                 </div>
-                <div className="text-2xs text-atlas-fg-3 font-light mb-6">{p.tagline}</div>
+                {p.tagline && <div className="text-2xs text-atlas-fg-3 font-light mb-6">{p.tagline}</div>}
                 <ul className="space-y-2.5 mb-7">
                   {(p.features ?? []).map((perk, j) => (
                     <li key={j} className="flex items-start gap-2.5 text-sm font-light text-atlas-fg-1">
