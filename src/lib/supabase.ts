@@ -204,25 +204,6 @@ export async function signUpWithPassword(opts: { email: string; password: string
 }
 
 /**
- * Trigger Google OAuth. Supabase redirects to Google's consent screen,
- * then back to /auth which sets the session and redirects to /dashboard.
- *
- * Requires the Google provider enabled in Supabase Auth → Providers
- * (client_id + client_secret from Google Cloud Console).
- */
-export async function signInWithGoogle() {
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth` : undefined,
-      queryParams: { access_type: 'offline', prompt: 'consent' },
-    },
-  });
-  if (error) throw error;
-  return data;
-}
-
-/**
  * Send the "Reset your password" email. The link lands the user on
  * /reset-password where they enter the new value.
  */
