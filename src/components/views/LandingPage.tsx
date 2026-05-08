@@ -887,27 +887,10 @@ function Pricing({ cms }: { cms?: PricingContent }) {
       cta_url: TRIAL_URL,
       is_popular: true,
     },
-    {
-      name: 'Atlas Suite',
-      price: null,
-      currency: 'FCFA',
-      tagline: 'tous les produits Atlas',
-      features: [
-        'CockpitJourney + 12 autres produits',
-        'SSO Atlas Studio (cookies partagés)',
-        'Comptabilité OHADA, signature, CRM…',
-        'Account manager dédié',
-        'SLA 99.9%',
-        'Onboarding sur site',
-      ],
-      cta_text: 'Nous contacter',
-      cta_url: ATLAS_STUDIO_URL,
-      is_popular: false,
-    },
   ];
   const plans = cms?.plans ?? fallbackPlans;
   const eyebrow = cms?.subtitle ?? 'Tarifs · clairs · sans piège';
-  const heading = cms?.title ?? 'Un plan pour chaque échelle. Du dirigeant solo à la suite Atlas complète.';
+  const heading = cms?.title ?? 'Un plan pour vous. Un autre pour votre équipe.';
   // Grid columns adapt to the number of plans returned by the CMS
   // (2 plans → 2-column centered, 3 plans → classic 3-column).
   const gridCols = plans.length === 2 ? 'md:grid-cols-2 max-w-4xl mx-auto' : 'md:grid-cols-3';
