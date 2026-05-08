@@ -27,6 +27,9 @@ import {
   Globe,
   ChevronDown,
   Star,
+  Sun,
+  Moon,
+  Play,
 } from 'lucide-react';
 import { useApp } from '../../stores/appStore';
 import { useState } from 'react';
@@ -76,21 +79,33 @@ export function LandingPage() {
 
 function Nav() {
   const isSignedIn = useApp((s) => s.authStatus === 'signed_in');
+  const theme = useApp((s) => s.settings.theme);
+  const updateSettings = useApp((s) => s.updateSettings);
+
+  const isDark =
+    theme === 'dark' ||
+    (theme === 'auto' &&
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const toggleTheme = () => updateSettings({ theme: isDark ? 'light' : 'dark' });
 
   return (
     <nav className="sticky top-0 z-50 backdrop-blur-md bg-atlas-cream/85 border-b border-atlas-line/60">
-      <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-        <Link to="/" className="flex items-baseline gap-2">
+      <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
+        {/* Logo */}
+        <Link to="/" className="flex items-baseline gap-2 shrink-0">
           <span className="font-logo text-3xl text-atlas-fg-1 leading-none">
             Cockpit<span className="text-atlas-sage-deep">Journey</span>
           </span>
         </Link>
-        <div className="hidden md:flex items-center gap-7 text-sm font-light text-atlas-fg-2">
+
+        {/* Center links */}
+        <div className="hidden lg:flex items-center gap-7 text-sm font-light text-atlas-fg-2">
           <a href="#features" className="hover:text-atlas-fg-1 transition">
             Fonctionnalités
           </a>
-          <a href="#prophet" className="hover:text-atlas-fg-1 transition">
-            PROPH3T
+          <a href="#demo" className="hover:text-atlas-fg-1 transition">
+            Démo
           </a>
           <a href="#pricing" className="hover:text-atlas-fg-1 transition">
             Tarifs
@@ -98,8 +113,29 @@ function Nav() {
           <a href="#faq" className="hover:text-atlas-fg-1 transition">
             FAQ
           </a>
+          <a
+            href={ATLAS_STUDIO_URL}
+            className="hover:text-atlas-fg-1 transition"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Atlas Studio
+          </a>
         </div>
+
+        {/* Right cluster */}
         <div className="flex items-center gap-2">
+          {/* Theme toggle */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={isDark ? 'Passer en mode clair' : 'Passer en mode sombre'}
+            title={isDark ? 'Passer en mode clair' : 'Passer en mode sombre'}
+            className="hidden sm:inline-flex items-center justify-center w-9 h-9 rounded-xl text-atlas-fg-2 hover:text-atlas-fg-1 hover:bg-atlas-sage/10 transition"
+          >
+            {isDark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+          </button>
+
           {isSignedIn ? (
             <Link
               to="/dashboard"
@@ -110,17 +146,29 @@ function Nav() {
             </Link>
           ) : (
             <>
+              {/* Login */}
               <Link
                 to="/login"
                 className="text-xs uppercase tracking-wider font-light text-atlas-fg-2 hover:text-atlas-fg-1 transition px-3 py-2"
               >
                 Se connecter
               </Link>
+
+              {/* Démo (secondary CTA) */}
+              <a
+                href="#demo"
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs uppercase tracking-wider font-light text-atlas-fg-1 bg-atlas-panel border border-atlas-line hover:border-atlas-sage-deep/40 hover:bg-atlas-sage/5 transition px-3.5 py-2 rounded-xl"
+              >
+                <Play className="w-3 h-3 fill-current" />
+                Démo
+              </a>
+
+              {/* Souscrire (primary CTA) */}
               <a
                 href={TRIAL_URL}
                 className="inline-flex items-center gap-2 text-xs uppercase tracking-wider font-light text-white bg-atlas-sage-deep hover:bg-atlas-sage-deeper transition px-4 py-2 rounded-xl shadow-amber-deep"
               >
-                Essai gratuit
+                Souscrire
                 <ArrowRight className="w-3.5 h-3.5" />
               </a>
             </>
@@ -501,9 +549,11 @@ function PropheticBlock() {
 
   return (
     <section
-      id="prophet"
+      id="demo"
       className="py-20 sm:py-28 px-6 bg-gradient-to-br from-atlas-cream via-white to-atlas-sage/5"
     >
+      {/* Anchor backwards-compat: anciens liens #prophet redirigent ici. */}
+      <span id="prophet" className="block -mt-20 pt-20" aria-hidden="true" />
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-atlas-sage-deep text-white mb-6">
