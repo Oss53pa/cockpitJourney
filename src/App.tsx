@@ -8,6 +8,9 @@ import { TodayView } from './components/views/TodayView';
 import { TaskDetailDrawer } from './components/TaskDetailDrawer';
 import { HomeView } from './components/views/HomeView';
 import { LoginView } from './components/views/LoginView';
+import { SignupView } from './components/views/SignupView';
+import { ForgotPasswordView } from './components/views/ForgotPasswordView';
+import { ResetPasswordView } from './components/views/ResetPasswordView';
 import { LandingPage } from './components/views/LandingPage';
 import { AuthCallback } from './components/AuthCallback';
 import { ModalRoot } from './components/modals/ModalRoot';
@@ -427,7 +430,9 @@ function App() {
         }
       />
 
-      {/* Login (OTP code + dev login + Atlas Studio link) */}
+      {/* Login (email + password OR Google OAuth). Magic-link OTP a
+          été retiré au profit du flow password — la création de compte
+          passe par /signup, le reset par /forgot-password. */}
       <Route
         path="/login"
         element={
@@ -439,6 +444,47 @@ function App() {
               <Toaster />
             </ErrorBoundary>
           )
+        }
+      />
+
+      {/* Sign-up (création compte avec email + mot de passe + nom) */}
+      <Route
+        path="/signup"
+        element={
+          authStatus === 'signed_in' ? (
+            <Navigate to="/dashboard" replace />
+          ) : (
+            <ErrorBoundary>
+              <SignupView />
+              <Toaster />
+            </ErrorBoundary>
+          )
+        }
+      />
+
+      {/* Forgot password — déclenche l'envoi de l'e-mail de récupération */}
+      <Route
+        path="/forgot-password"
+        element={
+          authStatus === 'signed_in' ? (
+            <Navigate to="/dashboard" replace />
+          ) : (
+            <ErrorBoundary>
+              <ForgotPasswordView />
+              <Toaster />
+            </ErrorBoundary>
+          )
+        }
+      />
+
+      {/* Reset password — landing page après clic du lien recovery */}
+      <Route
+        path="/reset-password"
+        element={
+          <ErrorBoundary>
+            <ResetPasswordView />
+            <Toaster />
+          </ErrorBoundary>
         }
       />
 

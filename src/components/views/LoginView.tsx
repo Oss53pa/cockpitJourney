@@ -1,299 +1,219 @@
-import { useEffect, useRef, useState } from 'react';
-import { Mail, Loader2, ArrowRight, Sparkles, KeyRound, ExternalLink } from 'lucide-react';
-import { sendEmailOtp, verifyEmailOtp, SUPABASE_CONFIGURED } from '../../lib/supabase';
-
-const ATLAS_STUDIO_URL = 'https://atlas-studio.org';
-
-type Step = 'email' | 'code' | 'verifying';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Mail, Loader2, ArrowRight, Lock } from 'lucide-react';
+import { signInWithPassword, signInWithGoogle, SUPABASE_CONFIGURED } from '../../lib/supabase';
+import { AuthLayout, AuthErrorBanner } from '../auth/AuthLayout';
 
 /**
- * Map raw Supabase auth errors to actionable French messages. The default
- * Supabase SMTP has a tight rate limit (~4 emails/hour) and gives a generic
- * "Error sending magic link email" — we surface the underlying cause so
- * the user knows whether to retry, change e-mail, or contact us.
+ * Map raw Supabase auth errors to clear French messages. The default
+ * Supabase responses are accurate but generic — we surface the underlying
+ * cause so the user knows whether to retry, change e-mail, fix typo, or
+ * use the recovery flow.
  */
 function humanizeAuthError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   const lower = raw.toLowerCase();
-  if (lower.includes('domain') && lower.includes('not verified')) {
-    return "Le domaine expéditeur n'est pas vérifié sur Resend. Réessayez dans quelques instants ou contactez le support.";
+  if (lower.includes('invalid login credentials') || lower.includes('invalid grant')) {
+    return 'Email ou mot de passe incorrect.';
+  }
+  if (lower.includes('email not confirmed')) {
+    return "Cliquez d'abord sur le lien de confirmation envoyé par e-mail.";
   }
   if (lower.includes('rate') || lower.includes('too many')) {
-    return 'Limite d’envoi atteinte. Réessayez dans 1–2 minutes.';
+    return 'Trop de tentatives. Réessayez dans 1–2 minutes.';
   }
-  if (lower.includes('error sending') || lower.includes('smtp') || lower.includes('email')) {
-    return "Le service e-mail n'a pas pu envoyer le code. Réessayez dans quelques instants.";
+  if (lower.includes('provider is not enabled')) {
+    return "Connexion Google non encore activée. Utilisez l'e-mail / mot de passe pour le moment.";
   }
   if (lower.includes('invalid') && lower.includes('email')) {
     return 'Adresse e-mail invalide.';
-  }
-  if (lower.includes('signup') && lower.includes('disable')) {
-    return 'Les inscriptions par e-mail sont désactivées sur ce projet Supabase.';
   }
   return raw || 'Erreur inconnue';
 }
 
 export function LoginView() {
-  const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [sending, setSending] = useState(false);
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const codeInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Autofocus the code input on step transition
-  useEffect(() => {
-    if (step === 'code') codeInputRef.current?.focus();
-  }, [step]);
-
-  const handleSendEmail = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
-    setSending(true);
+    if (!email.trim() || !password) return;
+    setLoading(true);
     setError(null);
     try {
-      await sendEmailOtp(email);
-      setStep('code');
+      await signInWithPassword(email, password);
+      // onAuthStateChange in appStore picks it up → /dashboard.
     } catch (err) {
       setError(humanizeAuthError(err));
-    } finally {
-      setSending(false);
+      setLoading(false);
     }
   };
 
-  const handleVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const token = code.replace(/\s+/g, '').trim();
-    if (token.length < 6) {
-      setError('Le code fait 6 chiffres.');
-      return;
-    }
-    setStep('verifying');
+  const handleGoogle = async () => {
+    setGoogleLoading(true);
     setError(null);
     try {
-      await verifyEmailOtp(email, token);
-      // onAuthStateChange in appStore will pick it up and hydrate the app.
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Code invalide');
-      setStep('code');
-    }
-  };
-
-  const handleResend = async () => {
-    setSending(true);
-    setError(null);
-    try {
-      await sendEmailOtp(email);
+      await signInWithGoogle();
+      // Supabase redirects to Google then back to /auth — no further action here.
     } catch (err) {
       setError(humanizeAuthError(err));
-    } finally {
-      setSending(false);
+      setGoogleLoading(false);
     }
   };
 
   if (!SUPABASE_CONFIGURED) {
     return (
-      <div className="min-h-screen flex items-start justify-center bg-atlas-cream px-6 py-12">
-        <div className="max-w-lg w-full bg-white rounded-2xl shadow-card-hover border border-black/5 p-8 mt-12">
-          <div className="text-signal-red font-light mb-2">Supabase non configuré</div>
+      <AuthLayout>
+        <div className="text-center">
+          <div className="text-signal-red font-light mb-2 text-base">Supabase non configuré</div>
           <div className="text-sm text-atlas-fg-2 leading-relaxed">
             Cette installation n'a pas accès à la base de données. Copiez{' '}
-            <code className="px-1.5 py-0.5 bg-atlas-cream rounded text-atlas-sage-deep">.env.example</code>{' '}
-            vers <code className="px-1.5 py-0.5 bg-atlas-cream rounded text-atlas-sage-deep">.env.local</code>{' '}
-            et renseignez vos clés Supabase, puis redémarrez le serveur de dev.
+            <code className="px-1.5 py-0.5 bg-atlas-cream rounded text-atlas-sage-deep font-mono text-2xs">
+              .env.example
+            </code>{' '}
+            vers{' '}
+            <code className="px-1.5 py-0.5 bg-atlas-cream rounded text-atlas-sage-deep font-mono text-2xs">
+              .env.local
+            </code>{' '}
+            et renseignez vos clés Supabase, puis redémarrez le serveur.
           </div>
         </div>
-      </div>
+      </AuthLayout>
     );
   }
 
   return (
-    <div className="min-h-screen w-full overflow-y-auto bg-gradient-to-br from-atlas-cream via-white to-atlas-sage/10">
-      <div className="min-h-screen flex items-start sm:items-center justify-center px-4 sm:px-6 py-8 sm:py-12">
-        <div className="max-w-md w-full">
-          {/* Brand mark */}
-          <div className="text-center mb-6 sm:mb-8">
-            <div className="font-logo text-4xl sm:text-5xl text-atlas-fg-1 leading-none mb-2 sm:mb-3">
-              Cockpit<span className="text-atlas-sage-deep">Journey</span>
-            </div>
-            <div className="text-2xs sm:text-xs uppercase tracking-[0.22em] text-atlas-fg-3 font-light">
-              Pilotez votre journée · propulsé par PROPH3T
-            </div>
-          </div>
+    <AuthLayout>
+      <h1 className="text-center text-base font-light text-atlas-fg-1 mb-6">Connexion</h1>
 
-          {/* SSO entry point — primary path in production */}
-          {step === 'email' && (
-            <a
-              href={ATLAS_STUDIO_URL}
-              className="block mb-3 px-4 py-3 rounded-xl border border-atlas-line bg-white hover:border-atlas-sage-deep/40 hover:bg-atlas-sage/5 transition group"
+      {error && <AuthErrorBanner message={error} onDismiss={() => setError(null)} />}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Email */}
+        <label className="block">
+          <span className="block text-2xs uppercase tracking-[0.18em] text-atlas-sage-deeper font-light mb-1.5">
+            E-mail
+          </span>
+          <div className="relative">
+            <Mail className="w-4 h-4 text-atlas-fg-3 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="email"
+              required
+              autoComplete="email"
+              autoFocus
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="vous@entreprise.com"
+              className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-atlas-cream border border-atlas-line focus:border-atlas-sage-deep focus:outline-none focus:ring-2 focus:ring-atlas-sage-deep/20 text-sm font-light text-atlas-fg-1 placeholder:text-atlas-fg-3 transition"
+            />
+          </div>
+        </label>
+
+        {/* Password */}
+        <label className="block">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-2xs uppercase tracking-[0.18em] text-atlas-sage-deeper font-light">
+              Mot de passe
+            </span>
+            <Link
+              to="/forgot-password"
+              className="text-2xs text-atlas-fg-3 hover:text-atlas-sage-deep transition font-light"
             >
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-2xs uppercase tracking-[0.18em] text-atlas-fg-3 font-light mb-0.5">
-                    Vous avez déjà un compte
-                  </div>
-                  <div className="text-sm text-atlas-fg-1 font-light">
-                    Se connecter via <span className="font-normal">Atlas Studio</span>
-                  </div>
-                </div>
-                <ExternalLink className="w-4 h-4 text-atlas-sage-deep opacity-60 group-hover:opacity-100 transition" />
-              </div>
-            </a>
-          )}
-
-          {/* Login card */}
-          <div className="bg-white rounded-2xl shadow-card-hover border border-black/5 p-6 sm:p-8">
-            {step === 'email' && (
-              <>
-                <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-atlas-sage-deep font-light mb-3">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Connexion par e-mail
-                </div>
-                <h1 className="text-xl sm:text-2xl text-atlas-fg-1 mb-2 leading-tight">
-                  Recevez un code de connexion
-                </h1>
-                <p className="text-sm text-atlas-fg-2 mb-5 leading-relaxed">
-                  Aucun mot de passe à retenir. Entrez votre adresse, recopiez le code à 6 chiffres reçu par
-                  e-mail.
-                </p>
-
-                <form onSubmit={handleSendEmail} className="space-y-3">
-                  <div>
-                    <label className="block text-xs uppercase tracking-wider text-atlas-fg-3 font-light mb-2">
-                      Adresse e-mail
-                    </label>
-                    <div className="relative">
-                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-atlas-fg-3" />
-                      <input
-                        autoFocus
-                        type="email"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="vous@example.com"
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-black/10 bg-white focus:outline-none focus:ring-2 focus:ring-atlas-sage-deep/30 focus:border-atlas-sage-deep transition"
-                        disabled={sending}
-                      />
-                    </div>
-                  </div>
-
-                  {error && (
-                    <div className="text-sm text-signal-red bg-signal-red/5 border border-signal-red/20 rounded-lg px-3 py-2">
-                      {error}
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={sending || !email.trim()}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-atlas-sage-deep text-white text-sm font-light tracking-wider hover:bg-atlas-sage-deeper transition disabled:opacity-50 disabled:cursor-not-allowed shadow-amber-deep"
-                  >
-                    {sending ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Envoi en cours…
-                      </>
-                    ) : (
-                      <>
-                        Recevoir le code
-                        <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
-                </form>
-
-                {/* Dev quick-login removed — no hardcoded credentials in
-                    production. Use the OTP code flow with a real e-mail
-                    (Resend SMTP works in local dev too). */}
-              </>
-            )}
-
-            {(step === 'code' || step === 'verifying') && (
-              <>
-                <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-atlas-sage-deep font-light mb-3">
-                  <KeyRound className="w-3.5 h-3.5" />
-                  Code de vérification
-                </div>
-                <h1 className="text-xl sm:text-2xl text-atlas-fg-1 mb-2 leading-tight">
-                  Vérifiez votre boîte
-                </h1>
-                <p className="text-sm text-atlas-fg-2 mb-5 leading-relaxed">
-                  Un code à 6 chiffres a été envoyé à{' '}
-                  <span className="font-light text-atlas-fg-1">{email}</span>. Recopiez-le ci-dessous.
-                </p>
-
-                <form onSubmit={handleVerifyCode} className="space-y-3">
-                  <div>
-                    <label className="block text-xs uppercase tracking-wider text-atlas-fg-3 font-light mb-2">
-                      Code à 6 chiffres
-                    </label>
-                    <input
-                      ref={codeInputRef}
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      autoComplete="one-time-code"
-                      maxLength={6}
-                      value={code}
-                      onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="••••••"
-                      className="w-full px-4 py-3 rounded-xl border border-black/10 bg-white focus:outline-none focus:ring-2 focus:ring-atlas-sage-deep/30 focus:border-atlas-sage-deep transition text-center text-xl tracking-[0.5em] font-mono"
-                      disabled={step === 'verifying'}
-                    />
-                  </div>
-
-                  {error && (
-                    <div className="text-sm text-signal-red bg-signal-red/5 border border-signal-red/20 rounded-lg px-3 py-2">
-                      {error}
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={step === 'verifying' || code.length < 6}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-atlas-sage-deep text-white text-sm font-light tracking-wider hover:bg-atlas-sage-deeper transition disabled:opacity-50 disabled:cursor-not-allowed shadow-amber-deep"
-                  >
-                    {step === 'verifying' ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Vérification…
-                      </>
-                    ) : (
-                      <>
-                        Valider
-                        <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
-
-                  <div className="flex items-center justify-between pt-1 text-2xs">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStep('email');
-                        setCode('');
-                        setError(null);
-                      }}
-                      className="uppercase tracking-wider text-atlas-fg-3 hover:text-atlas-fg-1 transition font-light"
-                    >
-                      ← Changer d'adresse
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleResend}
-                      disabled={sending || step === 'verifying'}
-                      className="uppercase tracking-wider text-atlas-sage-deep hover:text-atlas-sage-deeper transition font-light disabled:opacity-50"
-                    >
-                      {sending ? 'Envoi…' : 'Renvoyer le code'}
-                    </button>
-                  </div>
-                </form>
-              </>
-            )}
+              Oublié ?
+            </Link>
           </div>
+          <div className="relative">
+            <Lock className="w-4 h-4 text-atlas-fg-3 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="password"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-atlas-cream border border-atlas-line focus:border-atlas-sage-deep focus:outline-none focus:ring-2 focus:ring-atlas-sage-deep/20 text-sm font-light text-atlas-fg-1 placeholder:text-atlas-fg-3 transition"
+            />
+          </div>
+        </label>
 
-          <div className="text-center mt-5 text-2xs text-atlas-fg-3">Atlas Studio · CockpitJourney v1.0</div>
-        </div>
+        {/* Submit */}
+        <button
+          type="submit"
+          disabled={loading || !email || !password}
+          className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-atlas-sage-deep text-white font-light tracking-wider hover:bg-atlas-sage-deeper transition shadow-amber-deep text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Connexion…
+            </>
+          ) : (
+            <>
+              Se connecter
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
+        </button>
+      </form>
+
+      {/* Divider */}
+      <div className="my-6 flex items-center gap-3">
+        <div className="flex-1 h-px bg-atlas-line" />
+        <span className="text-2xs uppercase tracking-[0.2em] text-atlas-fg-3 font-light">ou</span>
+        <div className="flex-1 h-px bg-atlas-line" />
       </div>
-    </div>
+
+      {/* Google */}
+      <button
+        type="button"
+        onClick={handleGoogle}
+        disabled={googleLoading}
+        className="w-full inline-flex items-center justify-center gap-3 px-5 py-2.5 rounded-xl border border-atlas-line bg-atlas-panel hover:border-atlas-sage-deep/40 hover:bg-atlas-sage/5 transition text-sm font-light text-atlas-fg-1 disabled:opacity-50"
+      >
+        {googleLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <GoogleGlyph className="w-4 h-4" />}
+        Continuer avec Google
+      </button>
+
+      {/* Sign-up link */}
+      <p className="mt-6 text-center text-xs text-atlas-fg-3 font-light">
+        Pas encore de compte ?{' '}
+        <Link
+          to="/signup"
+          className="text-atlas-sage-deep hover:text-atlas-sage-deeper transition font-normal"
+        >
+          S'inscrire
+        </Link>
+      </p>
+    </AuthLayout>
+  );
+}
+
+/**
+ * Inline Google "G" glyph — official 4-color logo simplified to SVG so
+ * we don't pull a separate icon dep just for one button.
+ */
+function GoogleGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path
+        fill="#4285F4"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+      />
+    </svg>
   );
 }

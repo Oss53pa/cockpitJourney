@@ -158,6 +158,91 @@ export async function verifyEmailOtp(email: string, token: string) {
   return data;
 }
 
+/* ───────────── Password / OAuth flows ─────────────
+ *
+ * Sibling to the OTP flow above. Cockpit accounts are still primarily
+ * OTP-driven (zero-password onboarding), but the new login/signup pages
+ * also support classic email+password and Google OAuth so users coming
+ * from Cockpit FnA / TableSmart / etc. don't have to learn a new ritual.
+ */
+
+/** Sign in with email + password (Supabase Auth password grant). */
+export async function signInWithPassword(email: string, password: string) {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email.trim().toLowerCase(),
+    password,
+  });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Create a new account with email + password. Supabase sends the
+ * `confirmation` template (premium CockpitJourney version is already
+ * installed). The user must click the link in that e-mail before they
+ * can sign in.
+ *
+ * Tags the request with `data: { app: APP_ID }` so the Atlas Studio
+ * shared email template renders the CockpitJourney brand block.
+ */
+export async function signUpWithPassword(opts: { email: string; password: string; fullName?: string }) {
+  const { data, error } = await supabase.auth.signUp({
+    email: opts.email.trim().toLowerCase(),
+    password: opts.password,
+    options: {
+      emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth` : undefined,
+      data: {
+        app: APP_ID,
+        app_tagline: APP_TAGLINE,
+        app_url: APP_URL,
+        full_name: opts.fullName ?? null,
+      },
+    },
+  });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Trigger Google OAuth. Supabase redirects to Google's consent screen,
+ * then back to /auth which sets the session and redirects to /dashboard.
+ *
+ * Requires the Google provider enabled in Supabase Auth → Providers
+ * (client_id + client_secret from Google Cloud Console).
+ */
+export async function signInWithGoogle() {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth` : undefined,
+      queryParams: { access_type: 'offline', prompt: 'consent' },
+    },
+  });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Send the "Reset your password" email. The link lands the user on
+ * /reset-password where they enter the new value.
+ */
+export async function sendPasswordRecovery(email: string) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+    redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/reset-password` : undefined,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Set a new password for the currently-authenticated user. Used after
+ * the recovery click-through, and reusable from Settings → Security.
+ */
+export async function updatePassword(newPassword: string) {
+  const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+  return data;
+}
+
 export const DEV_MODE = import.meta.env.DEV;
 
 /**
