@@ -850,7 +850,7 @@ function Pricing({ cms }: { cms?: PricingContent }) {
   const fallbackPlans = [
     {
       name: 'Particulier',
-      price: 12000,
+      price: 15000,
       currency: 'FCFA',
       period: 'mois',
       tagline: 'pour le dirigeant solo',
