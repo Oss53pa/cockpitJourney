@@ -40,14 +40,39 @@ export function BriefModal({ onClose }: { onClose: () => void }) {
             <span className="text-2xs uppercase tracking-wider font-medium text-atlas-amber">Synthèse</span>
           </div>
           <p className="text-sm text-atlas-fg-1 leading-relaxed">
-            Vous avez <strong>{dueToday.length} priorités</strong> aujourd'hui dont
-            <strong> {dueToday.filter((t) => t.priority === 4).length} critiques</strong>. PROPH3T a libéré
-            <strong> 2h15 de Deep Work</strong> ce matin.{' '}
-            {insights.find((i) => i.kind === 'risk') && (
+            Vous avez{' '}
+            <strong>
+              {dueToday.length} priorité{dueToday.length > 1 ? 's' : ''}
+            </strong>{' '}
+            aujourd'hui
+            {dueToday.filter((t) => t.priority === 4).length > 0 && (
               <>
-                Un <strong className="text-signal-red">risque</strong> détecté sur Cosmos · Budget 2027.
+                {' '}
+                dont
+                <strong>
+                  {' '}
+                  {dueToday.filter((t) => t.priority === 4).length} critique
+                  {dueToday.filter((t) => t.priority === 4).length > 1 ? 's' : ''}
+                </strong>
               </>
             )}
+            .{' '}
+            {(() => {
+              const risk = insights.find((i) => i.kind === 'risk');
+              if (!risk) return null;
+              return (
+                <>
+                  Un <strong className="text-signal-red">risque</strong> détecté
+                  {risk.scope ? (
+                    <>
+                      {' '}
+                      sur <strong>{risk.scope}</strong>
+                    </>
+                  ) : null}
+                  .
+                </>
+              );
+            })()}
           </p>
         </div>
 

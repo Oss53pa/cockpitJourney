@@ -135,7 +135,7 @@ export interface AttentionPoint {
   severity: 'critical' | 'high' | 'medium';
   title: string;
   detail: string;
-  scope: string; // ex: "Cosmos · Budget 2027"
+  scope: string; // project name or area concerned (e.g. "Q3 marketing")
   recommendation?: string;
 }
 
@@ -1015,15 +1015,18 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     const section = get().sections.find((s) => s.projectId === f.projectId);
     if (!project || !section) return;
     // Generate a realistic task title from the form
+    // Generic placeholder text for the simulated submission — no fake
+    // person names that could be mistaken for real teammates. Real
+    // submissions populate the title from the form payload itself.
     const samples = [
       'Demande de support · ticket #',
       'Inscription · ',
       'Soumission · ',
       'Demande externe · ',
     ];
-    const names = ['Pamela A.', 'Koffi J.', 'Aminata D.', 'Moussa S.', 'Eva N.'];
-    const subject =
-      samples[Math.floor(Math.random() * samples.length)] + names[Math.floor(Math.random() * names.length)];
+    const ref =
+      'ext-' + Math.random().toString(36).slice(2, 6).toUpperCase() + '-' + String(Date.now()).slice(-4);
+    const subject = samples[Math.floor(Math.random() * samples.length)] + ref;
     get().createTask({
       title: `[${f.name}] ${subject}`,
       description: `Soumission reçue via le formulaire "${f.name}" (${f.publicUrl})`,

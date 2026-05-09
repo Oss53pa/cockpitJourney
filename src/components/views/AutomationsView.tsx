@@ -94,11 +94,11 @@ export function AutomationsView() {
           </Block>
           <Connector />
           <Block label="ET" tone="condition">
-            assigné = <strong className="text-atlas-fg-1">Pamela</strong>
+            assigné = <strong className="text-atlas-fg-1">moi</strong>
           </Block>
           <Connector />
           <Block label="ALORS" tone="action" icon={MessageSquare}>
-            envoyer <strong className="text-atlas-fg-1">WhatsApp</strong> à Pame
+            envoyer <strong className="text-atlas-fg-1">WhatsApp</strong>
           </Block>
           <Connector />
           <Block label="ET" tone="action" icon={Bell}>

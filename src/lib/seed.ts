@@ -341,14 +341,21 @@ function nsClone<T>(value: T, prefix: string): T {
 /* ───────────── Bootstrap (per-user) ───────────── */
 
 /**
- * If the current authenticated user has no cj_profiles row, populate
- * the demo data into their namespace. Idempotent — safe to call on
- * every login.
+ * On first login (no cj_profiles row yet), seed the user's namespace.
+ *
+ * In **production** this seeds a CLEAN minimal starter — the user's own
+ * profile + one "Mon premier projet" with 3 onboarding tasks. NO fake
+ * teammates, NO fake company names — the user only ever sees their
+ * own data.
+ *
+ * In **dev** (or when VITE_SEED_DEMO=1), we additionally clone the
+ * full mockData demo so the cockpit looks lived-in for screenshots /
+ * UX testing — the demo personas (Pamela, Koffi, Aminata, etc.) are
+ * useful to see the multi-user UI features but should NEVER appear in
+ * a production user's cockpit.
  */
 export async function seedDatabaseIfEmpty(): Promise<boolean> {
   console.info('[seed] checking isEmpty()');
-  // Watchdog the very first DB call too — if the network/CORS is
-  // misconfigured this is where we'll see it, not somewhere downstream.
   const isEmptyResult = await Promise.race([
     isEmpty(),
     new Promise<'__timeout__'>((resolve) => setTimeout(() => resolve('__timeout__'), 8000)),
@@ -366,43 +373,218 @@ export async function seedDatabaseIfEmpty(): Promise<boolean> {
 
   console.info('[seed] reading auth session');
   const { data: sessionData } = await supabase.auth.getSession();
-  const authUserId = sessionData.session?.user.id;
+  const session = sessionData.session;
+  const authUserId = session?.user.id;
   if (!authUserId) {
     console.warn('[seed] no auth session — abort');
     return false;
   }
 
+  const useFullDemo = import.meta.env.DEV || import.meta.env.VITE_SEED_DEMO === '1';
+  if (useFullDemo) {
+    return await seedFullDemo(authUserId, session.user.email ?? '');
+  }
+  return await seedCleanStarter(authUserId, session.user);
+}
+
+/**
+ * Production seed: just the user's profile + one starter project +
+ * three onboarding tasks. The user is the ONLY profile, the ONLY
+ * assignee, the ONLY owner. Zero hardcoded names from anyone else.
+ */
+async function seedCleanStarter(
+  authUserId: string,
+  user: { email?: string | null; user_metadata?: Record<string, unknown> }
+): Promise<boolean> {
+  const prefix = authUserId.slice(0, 8);
+  const meta = (user.user_metadata ?? {}) as { full_name?: string };
+  const email = user.email ?? '';
+  const fullName = meta.full_name?.trim() || extractNameFromEmail(email);
+  const initials = computeInitials(fullName);
+
+  const profileId = `${prefix}_u_me`;
+  setCurrentProfileId(profileId);
+  setCurrentAuthUserId(authUserId);
+
+  const now = new Date();
+  const isoNow = now.toISOString();
+  const today = new Date(now);
+  today.setHours(17, 0, 0, 0);
+  const inThreeDays = new Date(now);
+  inThreeDays.setDate(inThreeDays.getDate() + 3);
+  inThreeDays.setHours(17, 0, 0, 0);
+
+  const userProfile = {
+    id: profileId,
+    name: fullName,
+    initials,
+    email,
+    color: '#6E8B58', // atlas-sage-deep
+    role: 'admin' as const,
+    status: 'online' as const,
+    createdAt: isoNow,
+  };
+
+  const folder = {
+    id: `${prefix}_f_personal`,
+    name: 'Personnel',
+    color: '#6E8B58',
+    icon: 'briefcase',
+    order: 0,
+    createdAt: isoNow,
+  };
+
+  const project = {
+    id: `${prefix}_p_starter`,
+    name: 'Mon premier projet',
+    slug: 'mon-premier-projet',
+    description:
+      'Découvrez CockpitJourney en trois étapes. Cliquez sur chaque tâche pour voir comment elles s’éditent — ou créez les vôtres.',
+    color: '#6E8B58',
+    icon: 'target',
+    folderId: folder.id,
+    ownerId: profileId,
+    status: 'active' as const,
+    createdAt: isoNow,
+    updatedAt: isoNow,
+  };
+
+  const sectionTodo = {
+    id: `${prefix}_s_todo`,
+    projectId: project.id,
+    name: 'À faire',
+    order: 0,
+    createdAt: isoNow,
+    updatedAt: isoNow,
+  };
+  const sectionInProgress = {
+    id: `${prefix}_s_progress`,
+    projectId: project.id,
+    name: 'En cours',
+    order: 1,
+    createdAt: isoNow,
+    updatedAt: isoNow,
+  };
+  const sectionDone = {
+    id: `${prefix}_s_done`,
+    projectId: project.id,
+    name: 'Terminé',
+    order: 2,
+    createdAt: isoNow,
+    updatedAt: isoNow,
+  };
+
+  const onboardingTasks = [
+    {
+      id: `${prefix}_t_welcome`,
+      projectId: project.id,
+      sectionId: sectionTodo.id,
+      title: 'Bienvenue sur CockpitJourney',
+      description:
+        'Cliquez sur cette tâche pour voir le drawer latéral. Modifiez le titre, ajoutez une description, jouez avec les priorités et les tags. Marquez "Terminée" quand vous avez exploré.',
+      status: 'todo' as const,
+      priority: 3,
+      dueDate: today.toISOString(),
+      assignees: [profileId],
+      tags: ['onboarding'],
+      createdAt: isoNow,
+      updatedAt: isoNow,
+    },
+    {
+      id: `${prefix}_t_brief`,
+      projectId: project.id,
+      sectionId: sectionTodo.id,
+      title: 'Configurer mon Daily Brief PROPH3T',
+      description:
+        'Allez dans Paramètres → IA pour coller votre clé Groq (gratuite, 30 req/min). Ensuite, PROPH3T générera votre Daily Brief chaque matin à 7h avec les top 3 priorités, risques détectés et fenêtres Deep Work.',
+      status: 'todo' as const,
+      priority: 2,
+      dueDate: today.toISOString(),
+      assignees: [profileId],
+      tags: ['onboarding', 'PROPH3T'],
+      createdAt: isoNow,
+      updatedAt: isoNow,
+    },
+    {
+      id: `${prefix}_t_team`,
+      projectId: project.id,
+      sectionId: sectionTodo.id,
+      title: 'Inviter mon équipe',
+      description:
+        'CockpitJourney est meilleur en équipe. Allez dans Paramètres → Utilisateurs pour inviter vos collègues — ils recevront un e-mail et arriveront directement dans votre tenant.',
+      status: 'todo' as const,
+      priority: 3,
+      dueDate: inThreeDays.toISOString(),
+      assignees: [profileId],
+      tags: ['onboarding'],
+      createdAt: isoNow,
+      updatedAt: isoNow,
+    },
+  ];
+
+  const stepWithTimeout = async (label: string, work: () => Promise<unknown>) => {
+    console.info('[seed-clean] →', label);
+    try {
+      await Promise.race([
+        work(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+      ]);
+      console.info(`[seed-clean] ✓ ${label}`);
+    } catch (err) {
+      console.warn(`[seed-clean] ${label} failed:`, err);
+    }
+  };
+
+  await stepWithTimeout('profile', () => persist.bulkPut('users', [userProfile]));
+  await stepWithTimeout('folder', () => persist.bulkPut('folders', [folder]));
+  await stepWithTimeout('project', () => persist.bulkPut('projects', [project]));
+  await stepWithTimeout('sections', () =>
+    persist.bulkPut('sections', [sectionTodo, sectionInProgress, sectionDone])
+  );
+  await stepWithTimeout('tasks', () => persist.bulkPut('tasks', onboardingTasks));
+
+  console.info('[seed-clean] → settings (per-key)');
+  for (const [key, value] of Object.entries(defaultSettings)) {
+    try {
+      await persist.setSetting(key, value);
+    } catch {
+      /* best-effort — settings are non-critical for first render */
+    }
+  }
+  console.info('[seed-clean] DONE — clean starter deployed');
+  return true;
+}
+
+/**
+ * Dev-only seed: clone the full mockData demo into the user's
+ * namespace. Useful for screenshots, UX testing, multi-user feature
+ * demos. Never fires in production.
+ */
+async function seedFullDemo(authUserId: string, _email: string): Promise<boolean> {
+  void _email;
   const prefix = authUserId.slice(0, 8);
   setCurrentProfileId(`${prefix}_u_pame`);
-  console.info('[seed] prefix:', prefix);
+  console.info('[seed-demo] prefix:', prefix);
 
   const notificationsWithRecipient = notifications.map((n) => ({ ...n, userId: 'u_pame' }));
 
-  // bulkPut with a per-step watchdog: if a single Supabase upsert takes
-  // longer than 8s, we log a warning and move on (the in-flight write
-  // remains in flight via the writeQueue, but we no longer await it).
-  // This prevents the seed from blocking the entire bootstrap when one
-  // insert is unusually slow (cold Postgres, network glitch, etc.).
   const stepWithTimeout = async (label: string, work: () => Promise<unknown>) => {
-    console.info('[seed] →', label);
+    console.info('[seed-demo] →', label);
     const t0 = performance.now();
     let watchdog: ReturnType<typeof setTimeout> | null = null;
     const watchdogPromise = new Promise<'__timeout__'>((resolve) => {
       watchdog = setTimeout(() => {
-        console.warn(`[seed] ⚠ ${label} > 8s — moving on (write may still complete)`);
+        console.warn(`[seed-demo] ⚠ ${label} > 8s — moving on`);
         resolve('__timeout__');
       }, 8000);
     });
     try {
       const result = await Promise.race([work(), watchdogPromise]);
       const ms = Math.round(performance.now() - t0);
-      if (result === '__timeout__') {
-        console.warn(`[seed] ${label} timed out after ${ms}ms`);
-      } else {
-        console.info(`[seed] ✓ ${label} (${ms}ms)`);
-      }
+      if (result === '__timeout__') console.warn(`[seed-demo] ${label} timed out after ${ms}ms`);
+      else console.info(`[seed-demo] ✓ ${label} (${ms}ms)`);
     } catch (err) {
-      console.error(`[seed] ✗ ${label} failed`, err);
+      console.error(`[seed-demo] ✗ ${label} failed`, err);
     } finally {
       if (watchdog) clearTimeout(watchdog);
     }
@@ -427,13 +609,34 @@ export async function seedDatabaseIfEmpty(): Promise<boolean> {
   await stepWithTimeout('subtasks', () => persist.bulkPut('subtasks', nsClone(subtasks, prefix)));
   await stepWithTimeout('notes', () => persist.bulkPut('notes', nsClone(notes, prefix)));
 
-  console.info('[seed] → settings (per-key)');
+  console.info('[seed-demo] → settings (per-key)');
   for (const [key, value] of Object.entries(defaultSettings)) {
     await persist.setSetting(key, value);
   }
-  console.info('[seed] DONE');
-
+  console.info('[seed-demo] DONE');
   return true;
+}
+
+/** Best-effort name extraction from an e-mail address: "j.dupont@x.com" → "J. Dupont". */
+function extractNameFromEmail(email: string): string {
+  if (!email) return 'Vous';
+  const local = email.split('@')[0] || '';
+  return (
+    local
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map((part) =>
+        part.length === 1 ? part.toUpperCase() + '.' : part.charAt(0).toUpperCase() + part.slice(1)
+      )
+      .join(' ') || 'Vous'
+  );
+}
+
+function computeInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'V';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 /**

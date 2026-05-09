@@ -88,12 +88,20 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
   const projects = useApp((s) => s.projects);
   const insights = useApp((s) => s.insights);
   const goals = useApp((s) => s.goals);
+  const users = useApp((s) => s.users);
+  const currentProfileId = useApp((s) => s.currentProfileId);
   const dismissInsight = useApp((s) => s.dismissInsight);
   const regenerateBrief = useApp((s) => s.regenerateBrief);
   const startFocus = useApp((s) => s.startFocusSession);
   const openModal = useApp((s) => s.openModal);
   const createTask = useApp((s) => s.createTask);
   const pushToast = useApp((s) => s.pushToast);
+
+  // Real user's first name (no more "Pamela" hardcoded for everyone).
+  const me = currentProfileId ? users.find((u) => u.id === currentProfileId) : undefined;
+  const firstName = (me?.name ?? '').split(/\s+/)[0] || 'Vous';
+  // Latest risk insight (replaces the hardcoded "Cosmos · Budget 2027" mention).
+  const topRisk = insights.find((i) => i.kind === 'risk');
 
   const [capture, setCapture] = useState('');
   const [captureSource, setCaptureSource] = useState<'manual' | 'voice' | 'whatsapp' | 'email'>('manual');
@@ -229,18 +237,47 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
                 {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
               </div>
               <h1 className="mt-3 font-display text-4xl md:text-5xl font-medium tracking-tightest text-balance">
-                Bonjour <span className="text-gradient-amber">Pamela</span>.
+                Bonjour <span className="text-gradient-amber">{firstName}</span>.
               </h1>
               <p className="mt-3 max-w-2xl text-atlas-fg-2 text-pretty leading-relaxed">
-                Vous avez <strong className="text-atlas-fg-1">{dueToday.length} priorités</strong> aujourd'hui
-                dont
+                Vous avez{' '}
                 <strong className="text-atlas-fg-1">
-                  {' '}
-                  {dueToday.filter((t) => t.priority === 4).length} critiques
-                </strong>
-                . PROPH3T a libéré
-                <strong className="text-atlas-fg-1"> 2h15 de Deep Work</strong> ce matin et a détecté un{' '}
-                <strong className="text-signal-yellow">risque</strong> sur Cosmos · Budget 2027.
+                  {dueToday.length} priorité{dueToday.length > 1 ? 's' : ''}
+                </strong>{' '}
+                aujourd'hui
+                {dueToday.filter((t) => t.priority === 4).length > 0 && (
+                  <>
+                    {' '}
+                    dont{' '}
+                    <strong className="text-atlas-fg-1">
+                      {dueToday.filter((t) => t.priority === 4).length} critique
+                      {dueToday.filter((t) => t.priority === 4).length > 1 ? 's' : ''}
+                    </strong>
+                  </>
+                )}
+                .{' '}
+                {topRisk ? (
+                  <>
+                    PROPH3T a détecté un <strong className="text-signal-yellow">risque</strong>
+                    {topRisk.scope ? (
+                      <>
+                        {' '}
+                        sur <strong className="text-atlas-fg-1">{topRisk.scope}</strong>
+                      </>
+                    ) : null}
+                    .
+                  </>
+                ) : insights.length > 0 ? (
+                  <>
+                    PROPH3T a généré{' '}
+                    <strong className="text-atlas-fg-1">
+                      {insights.length} signal{insights.length > 1 ? 'aux' : ''}
+                    </strong>{' '}
+                    pour vous aujourd'hui.
+                  </>
+                ) : (
+                  <>Aucun risque détecté — bonne journée.</>
+                )}
               </p>
               <div className="mt-5 flex items-center gap-3 flex-wrap">
                 <button onClick={() => openModal('proph3t-brief')} className="btn-primary px-4 py-2 text-sm">
