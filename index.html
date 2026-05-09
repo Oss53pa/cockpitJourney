@@ -7,10 +7,19 @@
     <meta name="theme-color" content="#F4F2E9" />
     <meta name="description" content="CockpitJourney — Pilotez votre journée. Le compagnon quotidien de gestion de tâches et de projets, propulsé par PROPH3T." />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- iOS PWA support — Safari ignores SVG icons + needs PNG at 180×180.
+         The 192×192 PNG is close enough; iOS scales it down cleanly. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Cockpit" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <link rel="apple-touch-icon" href="/cj-icon.svg" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="/cj-icon-192.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/cj-icon-192.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/cj-icon-512.png" />
+    <!-- Tell Android Chrome we have a maskable icon so the system can
+         crop it cleanly into the launcher's adaptive shape. -->
+    <meta name="msapplication-TileColor" content="#6E8B58" />
+    <meta name="msapplication-TileImage" content="/cj-icon-192.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

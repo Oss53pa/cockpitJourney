@@ -1,16 +1,19 @@
 {
   "name": "CockpitJourney",
   "short_name": "Cockpit",
-  "description": "Compagnon quotidien de gestion de tâches et de projets — propulsé par PROPH3T (Atlas Studio).",
-  "start_url": "/",
+  "description": "Pilotez votre journée. Compagnon quotidien de gestion de tâches et de projets, propulsé par PROPH3T (Atlas Studio).",
+  "id": "/",
+  "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "orientation": "any",
   "background_color": "#F4F2E9",
   "theme_color": "#6E8B58",
   "lang": "fr",
   "dir": "ltr",
   "categories": ["productivity", "business", "lifestyle"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/cj-icon.svg",
@@ -22,13 +25,48 @@
       "src": "/cj-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/cj-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/cj-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/cj-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Aujourd'hui",
+      "short_name": "Aujourd'hui",
+      "description": "Daily Brief PROPH3T et focus du jour",
+      "url": "/dashboard?view=today",
+      "icons": [{ "src": "/cj-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Boîte d'entrée",
+      "short_name": "Inbox",
+      "description": "Capture rapide de tâches",
+      "url": "/dashboard?view=inbox",
+      "icons": [{ "src": "/cj-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Rapports",
+      "short_name": "Rapports",
+      "description": "Bilans hebdo / mensuels avec narration IA",
+      "url": "/dashboard?view=reports",
+      "icons": [{ "src": "/cj-icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

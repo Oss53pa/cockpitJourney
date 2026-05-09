@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../stores/appStore';
 import { useState } from 'react';
+import { InstallAppButton } from '../pwa/InstallAppModal';
 import {
   useLandingContent,
   formatPrice,
@@ -135,6 +136,9 @@ function Nav() {
           >
             {isDark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
           </button>
+
+          {/* Install PWA button — hidden when already running standalone or browser doesn't support it. */}
+          <InstallAppButton className="hidden md:inline-flex items-center gap-1.5 text-xs uppercase tracking-wider font-light text-atlas-fg-2 hover:text-atlas-fg-1 transition px-3 py-2" />
 
           {isSignedIn ? (
             <Link

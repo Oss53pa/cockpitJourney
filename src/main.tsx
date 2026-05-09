@@ -14,31 +14,38 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Service Worker is currently DISABLED.
+// PWA Service Worker registration.
 //
-// We previously shipped an offline-first SW (precache + cache-first for
-// static assets) that ended up trapping users on stale builds — most
-// notably during the Supabase migration, when the cached bundle had
-// undefined VITE_SUPABASE_URL and showed "Supabase non configuré"
-// indefinitely until the user manually wiped service workers in DevTools.
+// Strategy: register only in production builds, after the page has
+// finished loading (so the initial render isn't competing with the SW
+// install for bandwidth). The SW itself uses network-first for the app
+// shell and cache-first for hashed assets — see public/sw.js for the
+// full strategy + the cache-versioning that prevents the "stale
+// Supabase config" trap we hit before.
 //
-// Until we ship a proper PWA strategy (cache versioning + skip-waiting
-// with an in-app "update ready" banner), we actively unregister any SW
-// that's still registered from a previous build. This rescues browsers
-// that picked up the old SW and prevents new ones from being installed.
+// In dev (vite serve) we explicitly UNREGISTER any SW left over from a
+// previous prod visit on the same origin — otherwise the cached prod
+// bundle would shadow the dev server's hot-reloaded modules.
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker
-    .getRegistrations()
-    .then((registrations) => {
-      for (const reg of registrations) {
-        reg.unregister().then((ok) => {
-          if (ok) console.info('[CockpitJourney] unregistered stale service worker');
-        });
-      }
-    })
-    .catch(() => {
-      /* ignore — older browsers, etc. */
+  if (import.meta.env.PROD) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker
+        .register('/sw.js', { updateViaCache: 'none' })
+        .then((reg) => {
+          // Periodically check for an updated SW (every 30 min) so a
+          // long-lived tab eventually picks up new deploys.
+          setInterval(() => void reg.update(), 30 * 60_000);
+        })
+        .catch((err) => console.warn('[CockpitJourney] SW registration failed:', err));
     });
+  } else {
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((regs) => regs.forEach((r) => void r.unregister()))
+      .catch(() => {
+        /* dev-only cleanup, ignore failures */
+      });
+  }
 }
 
 createRoot(document.getElementById('root')!).render(
