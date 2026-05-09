@@ -1,19 +1,27 @@
 /**
- * DOCX exporter — uses the `docx` library.
+ * DOCX exporter — Big-4-style executive document.
  *
- * Produces an editable Word document with proper headings, tables, and
- * paragraph styles (no images — the Grand-Hotel logo isn't embedded
- * because docx doesn't support remote URLs reliably).
+ * Structure :
+ *   1. Cover page          — full-bleed sage + brand + title block
+ *   2. Sommaire (auto-TOC) — Word's TableOfContents field updates on
+ *                            open ("F9" or "Update field" right-click)
+ *   3. Section breaks      — page break before each major heading
+ *   4. Body                — headings, tables, paragraphs
+ *   5. Closing             — Merci · contact · classification
+ *
+ * Uses the `docx` library. Output is a .docx Blob.
  */
 import {
   AlignmentType,
   Document,
   HeadingLevel,
   Packer,
+  PageBreak,
   Paragraph,
   Table,
   TableCell,
   TableRow,
+  TableOfContents,
   TextRun,
   WidthType,
   BorderStyle,
@@ -25,39 +33,73 @@ import {
   filterTasks,
   formatDate,
   priorityLabel,
-  SECTION_LABELS,
   taskStatusLabel,
   type ExportPayload,
 } from './types';
+import { HX, COPY, buildToc, buildDocRef } from './design';
 
-const SAGE = '52693F';
-const FG = '1A1D17';
-const MUTED = '7A8071';
+const SAGE = HX.brand;
+const FG = HX.fg1;
+const FG2 = HX.fg2;
+const MUTED = HX.fg3;
+const VERY_MUTED = HX.fg4;
+const LINE = HX.line;
 
 /* ────────── helpers ────────── */
 
-function heading(text: string, level: 1 | 2 = 1): Paragraph {
+const PB = () => new Paragraph({ children: [new PageBreak()] });
+
+function eyebrow(text: string): Paragraph {
   return new Paragraph({
-    spacing: { before: level === 1 ? 280 : 200, after: 120 },
+    spacing: { before: 0, after: 60 },
     children: [
       new TextRun({
         text: text.toUpperCase(),
         bold: true,
         color: SAGE,
-        size: level === 1 ? 28 : 22, // half-points: 28 = 14pt
+        size: 18, // 9pt
+        characterSpacing: 30,
       }),
     ],
   });
 }
 
-function p(text: string, opts: { bold?: boolean; color?: string; size?: number } = {}): Paragraph {
+function h1(text: string): Paragraph {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_1,
+    spacing: { before: 240, after: 120 },
+    children: [new TextRun({ text, bold: true, color: FG, size: 44 })],
+  });
+}
+
+function h2(text: string): Paragraph {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_2,
+    spacing: { before: 200, after: 100 },
+    children: [new TextRun({ text, bold: true, color: FG, size: 28 })],
+  });
+}
+
+function h3(text: string): Paragraph {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_3,
+    spacing: { before: 160, after: 80 },
+    children: [new TextRun({ text, bold: true, color: FG, size: 22 })],
+  });
+}
+
+function p(
+  text: string,
+  opts: { bold?: boolean; color?: string; size?: number; italic?: boolean } = {}
+): Paragraph {
   return new Paragraph({
     spacing: { after: 100 },
     children: [
       new TextRun({
         text,
         bold: opts.bold,
-        color: opts.color ?? FG,
+        italics: opts.italic,
+        color: opts.color ?? FG2,
         size: opts.size ?? 20,
       }),
     ],
@@ -91,290 +133,538 @@ function cell(text: string, opts: { header?: boolean; align?: 'left' | 'center' 
 }
 
 function makeTable(header: string[], rows: string[][], widths: number[]): Table {
-  const totalWidth = 9000; // 5 inches in DXA-ish — `docx` will normalize
-  const colWidths = widths.map((w) => (w / 100) * totalWidth);
+  const total = 9000;
+  const colWidths = widths.map((w) => (w / 100) * total);
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     columnWidths: colWidths,
     borders: {
-      top: { style: BorderStyle.SINGLE, size: 4, color: 'DCD9CB' },
-      bottom: { style: BorderStyle.SINGLE, size: 4, color: 'DCD9CB' },
-      left: { style: BorderStyle.SINGLE, size: 4, color: 'DCD9CB' },
-      right: { style: BorderStyle.SINGLE, size: 4, color: 'DCD9CB' },
-      insideHorizontal: { style: BorderStyle.SINGLE, size: 2, color: 'DCD9CB' },
-      insideVertical: { style: BorderStyle.SINGLE, size: 2, color: 'DCD9CB' },
+      top: { style: BorderStyle.SINGLE, size: 4, color: LINE },
+      bottom: { style: BorderStyle.SINGLE, size: 4, color: LINE },
+      left: { style: BorderStyle.SINGLE, size: 4, color: LINE },
+      right: { style: BorderStyle.SINGLE, size: 4, color: LINE },
+      insideHorizontal: { style: BorderStyle.SINGLE, size: 2, color: LINE },
+      insideVertical: { style: BorderStyle.SINGLE, size: 2, color: LINE },
     },
     rows: [
       new TableRow({
         children: header.map((h) => cell(h, { header: true, align: 'center' })),
         tableHeader: true,
       }),
-      ...rows.map(
-        (r, i) =>
-          new TableRow({
-            children: r.map((c) => cell(c)),
-            cantSplit: false,
-            ...(i % 2 === 1
-              ? {
-                  // alternate row shading via cell shading
-                }
-              : {}),
-          })
-      ),
+      ...rows.map((r) => new TableRow({ children: r.map((c) => cell(c)) })),
     ],
   });
 }
 
-/** Strip markdown formatting → plain paragraphs. */
+/** Strip markdown to a list of paragraphs. */
 function paragraphsFromMarkdown(md: string): Paragraph[] {
   return md
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      if (line.startsWith('## ')) {
-        return new Paragraph({
-          heading: HeadingLevel.HEADING_2,
-          spacing: { before: 200, after: 100 },
-          children: [new TextRun({ text: line.slice(3), bold: true, color: FG, size: 22 })],
-        });
-      }
-      if (line.startsWith('### ')) {
-        return new Paragraph({
-          spacing: { before: 160, after: 80 },
-          children: [new TextRun({ text: line.slice(4), bold: true, color: FG, size: 20 })],
-        });
-      }
-      if (line.startsWith('- ') || line.startsWith('* ')) {
+      if (line.startsWith('## ')) return h2(line.slice(3));
+      if (line.startsWith('### ')) return h3(line.slice(4));
+      if (line.startsWith('- ') || line.startsWith('* '))
         return new Paragraph({
           bullet: { level: 0 },
           children: [new TextRun({ text: line.slice(2), size: 20, color: FG })],
         });
-      }
-      if (/^\d+\.\s/.test(line)) {
+      if (/^\d+\.\s/.test(line))
         return new Paragraph({
           numbering: { reference: 'numbered', level: 0 },
           children: [new TextRun({ text: line.replace(/^\d+\.\s/, ''), size: 20, color: FG })],
         });
-      }
-      // Plain paragraph — also handles **bold** inline.
       const parts = line.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
       return new Paragraph({
         spacing: { after: 100 },
-        children: parts.map((part) => {
-          if (part.startsWith('**')) {
-            return new TextRun({ text: part.slice(2, -2), bold: true, color: FG, size: 20 });
-          }
-          return new TextRun({ text: part, color: FG, size: 20 });
-        }),
+        children: parts.map((part) =>
+          part.startsWith('**')
+            ? new TextRun({ text: part.slice(2, -2), bold: true, color: FG, size: 20 })
+            : new TextRun({ text: part, color: FG2, size: 20 })
+        ),
       });
     });
+}
+
+function kindEyebrowText(kind: string): string {
+  switch (kind) {
+    case 'weekly':
+      return 'RAPPORT HEBDOMADAIRE';
+    case 'monthly':
+      return 'BILAN MENSUEL';
+    case 'quarterly':
+      return 'BILAN TRIMESTRIEL';
+    case 'annual':
+      return 'BILAN ANNUEL';
+    default:
+      return 'RAPPORT';
+  }
 }
 
 /* ────────── main ────────── */
 
 export async function exportToDocx(payload: ExportPayload): Promise<void> {
   const { report, options, projectNames } = payload;
+  const docRef = buildDocRef(report);
+  const toc = buildToc(options.sections);
 
   const blocks: (Paragraph | Table)[] = [];
 
-  /* Cover */
-  if (options.sections.includes('cover')) {
+  /* ─── 1. COVER ─── */
+  // Top brand line
+  blocks.push(
+    new Paragraph({
+      alignment: AlignmentType.LEFT,
+      spacing: { before: 0, after: 200 },
+      children: [
+        new TextRun({
+          text: COPY.brandLong.toUpperCase(),
+          bold: true,
+          color: SAGE,
+          size: 18,
+          characterSpacing: 30,
+        }),
+      ],
+    })
+  );
+  // Spacer
+  blocks.push(p('', { size: 24 }));
+  blocks.push(p('', { size: 24 }));
+  // Sage thin accent (we can't draw lines easily; use a row of em-dashes as visual)
+  blocks.push(
+    new Paragraph({
+      spacing: { before: 0, after: 100 },
+      children: [new TextRun({ text: '———', color: SAGE, bold: true, size: 28 })],
+    })
+  );
+  // Eyebrow
+  blocks.push(
+    new Paragraph({
+      spacing: { before: 0, after: 200 },
+      children: [
+        new TextRun({
+          text: kindEyebrowText(report.kind),
+          bold: true,
+          color: SAGE,
+          size: 22,
+          characterSpacing: 30,
+        }),
+      ],
+    })
+  );
+  // Big title
+  blocks.push(
+    new Paragraph({
+      heading: HeadingLevel.TITLE,
+      spacing: { after: 200 },
+      children: [new TextRun({ text: report.title, color: FG, bold: true, size: 72 })],
+    })
+  );
+  // Period
+  blocks.push(p(report.period, { color: MUTED, size: 28 }));
+
+  // Spacer
+  for (let i = 0; i < 8; i++) blocks.push(p(''));
+
+  // Bottom info table (Préparé par / Généré le)
+  blocks.push(
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: {
+        top: { style: BorderStyle.SINGLE, size: 4, color: LINE },
+        bottom: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+        left: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+        right: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+        insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+        insideVertical: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+      },
+      rows: [
+        new TableRow({
+          children: [
+            new TableCell({
+              children: [
+                new Paragraph({
+                  spacing: { before: 100, after: 60 },
+                  children: [
+                    new TextRun({
+                      text: COPY.preparedBy.toUpperCase(),
+                      bold: true,
+                      color: MUTED,
+                      size: 16,
+                      characterSpacing: 20,
+                    }),
+                  ],
+                }),
+                p(COPY.brand, { color: FG, size: 22 }),
+              ],
+              borders: {
+                top: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+                bottom: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+                left: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+                right: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+              },
+            }),
+            new TableCell({
+              children: [
+                new Paragraph({
+                  spacing: { before: 100, after: 60 },
+                  children: [
+                    new TextRun({
+                      text: COPY.generatedOn.toUpperCase(),
+                      bold: true,
+                      color: MUTED,
+                      size: 16,
+                      characterSpacing: 20,
+                    }),
+                  ],
+                }),
+                p(formatDate(report.generatedAt), { color: FG, size: 22 }),
+              ],
+              borders: {
+                top: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+                bottom: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+                left: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+                right: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+              },
+            }),
+          ],
+        }),
+      ],
+    })
+  );
+
+  // Classification stamp
+  blocks.push(p(''));
+  blocks.push(
+    new Paragraph({
+      spacing: { before: 200, after: 60 },
+      children: [
+        new TextRun({
+          text: COPY.classification,
+          bold: true,
+          color: SAGE,
+          size: 18,
+          characterSpacing: 30,
+        }),
+      ],
+    })
+  );
+  blocks.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: docRef,
+          color: MUTED,
+          font: 'Courier New',
+          size: 16,
+        }),
+      ],
+    })
+  );
+
+  /* ─── 2. SOMMAIRE ─── */
+  if (toc.length > 0) {
+    blocks.push(PB());
+    blocks.push(eyebrow('Table des matières'));
+    blocks.push(h1(COPY.toc));
     blocks.push(
       new Paragraph({
-        spacing: { before: 200, after: 80 },
-        children: [new TextRun({ text: 'CockpitJourney · Atlas Studio', color: SAGE, bold: true, size: 18 })],
+        spacing: { before: 0, after: 200 },
+        children: [new TextRun({ text: '———', color: SAGE, bold: true, size: 24 })],
       })
     );
+    // Auto TOC field — Word will populate it on first open (right-click → Update Field).
     blocks.push(
-      new Paragraph({
-        heading: HeadingLevel.TITLE,
-        spacing: { after: 120 },
-        children: [new TextRun({ text: report.title, color: FG, bold: true, size: 44 })],
+      new TableOfContents('Sommaire', {
+        hyperlink: true,
+        headingStyleRange: '1-3',
       })
     );
+    // Fallback static list (in case Word doesn't update the field automatically).
+    blocks.push(p(''));
+    blocks.push(p('', { italic: true, size: 16, color: MUTED }));
     blocks.push(
-      p(`${report.period} · généré le ${formatDate(report.generatedAt)}`, {
-        color: MUTED,
-        size: 18,
-      })
-    );
-  }
-
-  /* Narrative */
-  if (options.sections.includes('narrative') && report.narrative) {
-    blocks.push(heading(SECTION_LABELS.narrative));
-    blocks.push(...paragraphsFromMarkdown(report.narrative));
-  }
-
-  /* Metrics */
-  if (options.sections.includes('metrics') && report.metrics?.length) {
-    blocks.push(heading(SECTION_LABELS.metrics));
-    blocks.push(
-      makeTable(
-        ['Indicateur', 'Valeur', 'Évolution'],
-        report.metrics.map((m) => [
-          m.label,
-          m.value,
-          typeof m.delta === 'number' ? `${m.delta >= 0 ? '+' : ''}${m.delta}%` : '—',
-        ]),
-        [60, 20, 20]
+      p(
+        '(Si la table ne se met pas à jour automatiquement : clic-droit dessus → "Mettre à jour les champs".)',
+        { italic: true, size: 16, color: MUTED }
       )
     );
-  }
-
-  /* Highlights */
-  if (options.sections.includes('highlights') && report.highlights?.length) {
-    blocks.push(heading(SECTION_LABELS.highlights));
-    report.highlights.forEach((h) =>
+    toc.forEach((item) => {
       blocks.push(
         new Paragraph({
-          bullet: { level: 0 },
-          children: [new TextRun({ text: h, size: 20, color: FG })],
-        })
-      )
-    );
-  }
-
-  /* Projects */
-  if (options.sections.includes('projects') && report.projects?.length) {
-    blocks.push(heading(SECTION_LABELS.projects, 1));
-    const allow = new Set(options.projectIds ?? []);
-    const list = report.projects.filter((p) => allow.size === 0 || allow.has(p.projectId));
-    for (const proj of list) {
-      blocks.push(heading(proj.name, 2));
-      if (proj.summary) blocks.push(p(proj.summary, { color: MUTED }));
-      blocks.push(
-        p(
-          `Avancement : ${proj.progress}% · ${proj.tasksDone}/${proj.tasksTotal} livrées · santé : ${proj.health}`,
-          { bold: true }
-        )
-      );
-      blocks.push(
-        makeTable(
-          ['Total', 'Livrées', 'En cours', 'En retard', 'Critiques'],
-          [
-            [
-              String(proj.tasksTotal),
-              String(proj.tasksDone),
-              String(proj.tasksInProgress),
-              String(proj.tasksOverdue),
-              String(proj.tasksCritical),
-            ],
+          spacing: { after: 80 },
+          children: [
+            new TextRun({ text: item.number, bold: true, color: SAGE, size: 22 }),
+            new TextRun({ text: '   ' + item.label, color: FG, size: 22 }),
           ],
-          [20, 20, 20, 20, 20]
-        )
+        })
       );
-      if (proj.riskNote) blocks.push(p(`⚠ ${proj.riskNote}`, { color: 'B85B4D', bold: true }));
-    }
+    });
   }
 
-  /* Tasks */
-  if (options.sections.includes('tasks')) {
-    const tasks = filterTasks(payload).filter((t) => t.status !== 'cancelled');
-    if (tasks.length) {
-      blocks.push(heading(SECTION_LABELS.tasks, 1));
-      const byProject = tasks.reduce<Record<string, typeof tasks>>((acc, t) => {
-        (acc[t.projectId] ??= []).push(t);
-        return acc;
-      }, {});
-      for (const [pid, list] of Object.entries(byProject)) {
-        blocks.push(heading(projectNames[pid] ?? pid, 2));
-        blocks.push(
-          makeTable(
-            ['Tâche', 'Statut', 'Priorité', 'Échéance'],
-            list.map((t) => [
-              t.title,
-              taskStatusLabel(t.status),
-              priorityLabel(t.priority),
-              formatDate(t.dueDate),
-            ]),
-            [55, 15, 15, 15]
-          )
-        );
+  /* ─── 3. CONTENT SECTIONS ─── */
+  for (const item of toc) {
+    // Section divider page
+    blocks.push(PB());
+    blocks.push(eyebrow(`Partie ${item.number}`));
+    blocks.push(h1(item.label));
+    blocks.push(p(report.period, { color: MUTED, italic: true }));
+    blocks.push(
+      new Paragraph({
+        spacing: { before: 100, after: 200 },
+        children: [new TextRun({ text: '———', color: SAGE, bold: true, size: 22 })],
+      })
+    );
+
+    switch (item.key) {
+      case 'narrative': {
+        if (report.narrative) {
+          blocks.push(...paragraphsFromMarkdown(report.narrative));
+        } else {
+          blocks.push(p('Aucune narration PROPH3T générée pour ce rapport.', { italic: true, color: MUTED }));
+        }
+        break;
+      }
+
+      case 'metrics': {
+        if (report.metrics?.length) {
+          blocks.push(
+            makeTable(
+              ['Indicateur', 'Valeur', 'Évolution'],
+              report.metrics.map((m) => [
+                m.label,
+                m.value,
+                typeof m.delta === 'number' ? `${m.delta >= 0 ? '+' : ''}${m.delta}%` : '—',
+              ]),
+              [60, 20, 20]
+            )
+          );
+        }
+        break;
+      }
+
+      case 'highlights': {
+        if (report.highlights?.length) {
+          report.highlights.forEach((h) =>
+            blocks.push(
+              new Paragraph({
+                bullet: { level: 0 },
+                spacing: { after: 100 },
+                children: [new TextRun({ text: h, size: 22, color: FG })],
+              })
+            )
+          );
+        }
+        break;
+      }
+
+      case 'projects': {
+        const allow = new Set(options.projectIds ?? []);
+        const list = (report.projects ?? []).filter((proj) => allow.size === 0 || allow.has(proj.projectId));
+        for (const proj of list) {
+          blocks.push(h2(proj.name));
+          if (proj.summary) blocks.push(p(proj.summary, { color: MUTED, italic: true }));
+          blocks.push(
+            p(
+              `Avancement : ${proj.progress}%  ·  ${proj.tasksDone}/${proj.tasksTotal} livrées  ·  santé : ${proj.health}`,
+              { bold: true }
+            )
+          );
+          blocks.push(
+            makeTable(
+              ['Total', 'Livrées', 'En cours', 'En retard', 'Critiques'],
+              [
+                [
+                  String(proj.tasksTotal),
+                  String(proj.tasksDone),
+                  String(proj.tasksInProgress),
+                  String(proj.tasksOverdue),
+                  String(proj.tasksCritical),
+                ],
+              ],
+              [20, 20, 20, 20, 20]
+            )
+          );
+          if (proj.riskNote) blocks.push(p(`⚠  ${proj.riskNote}`, { color: HX.red, bold: true, size: 20 }));
+        }
+        break;
+      }
+
+      case 'tasks': {
+        const tasks = filterTasks(payload).filter((t) => t.status !== 'cancelled');
+        if (tasks.length) {
+          const byProject = tasks.reduce<Record<string, typeof tasks>>((acc, t) => {
+            (acc[t.projectId] ??= []).push(t);
+            return acc;
+          }, {});
+          for (const [pid, list] of Object.entries(byProject)) {
+            blocks.push(h2(projectNames[pid] ?? pid));
+            blocks.push(
+              makeTable(
+                ['Tâche', 'Statut', 'Priorité', 'Échéance'],
+                list.map((t) => [
+                  t.title,
+                  taskStatusLabel(t.status),
+                  priorityLabel(t.priority),
+                  formatDate(t.dueDate),
+                ]),
+                [55, 15, 15, 15]
+              )
+            );
+          }
+        }
+        break;
+      }
+
+      case 'attention': {
+        if (report.attentionPoints?.length) {
+          blocks.push(
+            makeTable(
+              ['Sévérité', 'Sujet', 'Détail', 'Recommandation'],
+              report.attentionPoints.map((a) => [
+                a.severity.toUpperCase(),
+                `${a.title} (${a.scope})`,
+                a.detail,
+                a.recommendation ?? '—',
+              ]),
+              [12, 25, 33, 30]
+            )
+          );
+        }
+        break;
+      }
+
+      case 'workload': {
+        if (report.workload?.length) {
+          blocks.push(
+            makeTable(
+              ['Membre', 'Tâches ouvertes', 'Charge', 'Statut'],
+              report.workload.map((w) => [
+                w.name,
+                String(w.tasksOpen),
+                `${w.plannedHours}h / ${w.capacityHours}h`,
+                w.status,
+              ]),
+              [40, 18, 22, 20]
+            )
+          );
+        }
+        break;
+      }
+
+      case 'goals': {
+        if (report.goalsProgress?.length) {
+          blocks.push(
+            makeTable(
+              ['Objectif', 'Progression', 'Évolution', 'Santé'],
+              report.goalsProgress.map((g) => [
+                g.title,
+                `${g.pct}%`,
+                `${g.delta >= 0 ? '+' : ''}${g.delta}`,
+                g.health.toUpperCase(),
+              ]),
+              [55, 15, 15, 15]
+            )
+          );
+        }
+        break;
+      }
+
+      case 'retards': {
+        if (report.topRetards?.length) {
+          blocks.push(
+            makeTable(
+              ['Tâche', 'Projet', 'Jours de retard', 'Priorité', 'Responsable'],
+              report.topRetards.map((r) => [
+                r.title,
+                r.projectName,
+                `+${r.daysLate}`,
+                priorityLabel(r.priority),
+                r.ownerInitials,
+              ]),
+              [40, 22, 12, 12, 14]
+            )
+          );
+        }
+        break;
+      }
+
+      case 'next_steps': {
+        if (report.nextSteps?.length) {
+          report.nextSteps.forEach((s) =>
+            blocks.push(
+              new Paragraph({
+                numbering: { reference: 'numbered', level: 0 },
+                spacing: { after: 100 },
+                children: [new TextRun({ text: s, size: 22, color: FG })],
+              })
+            )
+          );
+        }
+        break;
       }
     }
   }
 
-  /* Attention */
-  if (options.sections.includes('attention') && report.attentionPoints?.length) {
-    blocks.push(heading(SECTION_LABELS.attention));
-    blocks.push(
-      makeTable(
-        ['Sévérité', 'Sujet', 'Détail', 'Recommandation'],
-        report.attentionPoints.map((a) => [
-          a.severity.toUpperCase(),
-          `${a.title} (${a.scope})`,
-          a.detail,
-          a.recommendation ?? '—',
-        ]),
-        [12, 25, 33, 30]
-      )
-    );
-  }
+  /* ─── 4. CLOSING ─── */
+  blocks.push(PB());
+  blocks.push(p('', { size: 30 }));
+  blocks.push(
+    new Paragraph({
+      spacing: { before: 0, after: 80 },
+      children: [new TextRun({ text: COPY.thanks, bold: true, color: FG, size: 96 })],
+    })
+  );
+  blocks.push(
+    new Paragraph({
+      spacing: { before: 0, after: 200 },
+      children: [new TextRun({ text: '———', color: SAGE, bold: true, size: 28 })],
+    })
+  );
+  blocks.push(p(COPY.thanksSub, { size: 24, color: FG2 }));
+  blocks.push(p(''));
+  blocks.push(eyebrow('Contact'));
+  blocks.push(p(COPY.contact, { size: 22, color: FG }));
+  blocks.push(p(COPY.studioWebsite, { size: 22, color: SAGE, bold: true }));
+  blocks.push(p(''));
+  blocks.push(p(''));
+  blocks.push(p(COPY.legal, { size: 16, color: VERY_MUTED, italic: true }));
+  blocks.push(
+    new Paragraph({
+      spacing: { before: 200 },
+      children: [
+        new TextRun({
+          text: `${docRef} · ${formatDate(report.generatedAt)}`,
+          color: MUTED,
+          font: 'Courier New',
+          size: 16,
+        }),
+      ],
+    })
+  );
 
-  /* Workload */
-  if (options.sections.includes('workload') && report.workload?.length) {
-    blocks.push(heading(SECTION_LABELS.workload));
-    blocks.push(
-      makeTable(
-        ['Membre', 'Tâches ouvertes', 'Charge', 'Statut'],
-        report.workload.map((w) => [
-          w.name,
-          String(w.tasksOpen),
-          `${w.plannedHours}h / ${w.capacityHours}h`,
-          w.status,
-        ]),
-        [40, 18, 22, 20]
-      )
-    );
-  }
-
-  /* Goals */
-  if (options.sections.includes('goals') && report.goalsProgress?.length) {
-    blocks.push(heading(SECTION_LABELS.goals));
-    blocks.push(
-      makeTable(
-        ['Objectif', 'Progression', 'Évolution', 'Santé'],
-        report.goalsProgress.map((g) => [
-          g.title,
-          `${g.pct}%`,
-          `${g.delta >= 0 ? '+' : ''}${g.delta}`,
-          g.health.toUpperCase(),
-        ]),
-        [55, 15, 15, 15]
-      )
-    );
-  }
-
-  /* Retards */
-  if (options.sections.includes('retards') && report.topRetards?.length) {
-    blocks.push(heading(SECTION_LABELS.retards));
-    blocks.push(
-      makeTable(
-        ['Tâche', 'Projet', 'Jours de retard', 'Priorité', 'Responsable'],
-        report.topRetards.map((r) => [
-          r.title,
-          r.projectName,
-          `+${r.daysLate}`,
-          priorityLabel(r.priority),
-          r.ownerInitials,
-        ]),
-        [40, 22, 12, 12, 14]
-      )
-    );
-  }
-
-  /* Next steps */
-  if (options.sections.includes('next_steps') && report.nextSteps?.length) {
-    blocks.push(heading(SECTION_LABELS.next_steps));
-    report.nextSteps.forEach((s, i) => blocks.push(p(`${i + 1}. ${s}`)));
-  }
-
+  /* ─── Document ─── */
   const doc = new Document({
-    creator: 'CockpitJourney',
+    creator: COPY.brand,
     title: report.title,
     description: report.period,
+    features: { updateFields: true }, // tells Word to update TOC on open
+    numbering: {
+      config: [
+        {
+          reference: 'numbered',
+          levels: [
+            {
+              level: 0,
+              format: 'decimal',
+              text: '%1.',
+              alignment: AlignmentType.LEFT,
+            },
+          ],
+        },
+      ],
+    },
     sections: [
       {
         properties: { page: { margin: { top: 1000, right: 1000, bottom: 1000, left: 1000 } } },
