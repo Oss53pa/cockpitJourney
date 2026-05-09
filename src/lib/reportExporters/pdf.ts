@@ -140,15 +140,29 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
   doc.setFontSize(TYPE.eyebrow);
   doc.text(kindEyebrow(report.kind), W * 0.36 + PAGE.marginLeft, 270, { charSpace: 1.5 });
 
-  // Big title
+  // Big title — auto-shrink if it doesn't fit on 2 lines at full size.
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...rgb(C.fg1));
-  doc.setFontSize(TYPE.cover);
-  const titleLines = doc.splitTextToSize(report.title, W * 0.6);
+  // Cream side starts at 36% of W; leave a comfortable inner margin.
+  const titleX = W * 0.36 + PAGE.marginLeft;
+  const titleMaxW = W - titleX - PAGE.marginRight;
+  let titleSize = TYPE.cover;
+  let titleLines: string[] = [];
+  // Try 36 → 32 → 28 → 24 until the title fits on at most 3 lines.
+  for (const size of [TYPE.cover, 32, 28, 24]) {
+    doc.setFontSize(size);
+    titleLines = doc.splitTextToSize(report.title, titleMaxW) as string[];
+    if (titleLines.length <= 3) {
+      titleSize = size;
+      break;
+    }
+  }
+  doc.setFontSize(titleSize);
   let titleY = 320;
+  const lineH = Math.round(titleSize * 1.18);
   titleLines.forEach((line: string) => {
-    doc.text(line, W * 0.36 + PAGE.marginLeft, titleY);
-    titleY += 44;
+    doc.text(line, titleX, titleY);
+    titleY += lineH;
   });
 
   // Period range (DD/MM/YYYY → DD/MM/YYYY) — the canonical date span
@@ -286,27 +300,40 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
     doc.setFillColor(...rgb(C.brand));
     doc.rect(0, 0, W, 6, 'F');
 
-    // Big chapter number, sage glow, top-right
+    // Big chapter number, sage glow, top-right — sized to never collide
+    // with the section title (right-aligned, top-anchored at y=200).
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...rgb(C.brandGlow));
-    doc.setFontSize(180);
-    doc.text(number, W - PAGE.marginRight, 240, { align: 'right' });
+    doc.setFontSize(140);
+    doc.text(number, W - PAGE.marginRight, 200, { align: 'right' });
 
     // Eyebrow PARTIE 0X
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...rgb(C.brand));
     doc.setFontSize(TYPE.eyebrow);
-    doc.text(`PARTIE ${number}`, PAGE.marginLeft, 200, { charSpace: 2 });
+    doc.text(`PARTIE ${number}`, PAGE.marginLeft, 220, { charSpace: 2 });
 
-    // Section title
+    // Section title — auto-shrink if too long, never overlap the chapter
+    // number on the right (reserve 160pt for the number + breathing).
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...rgb(C.fg1));
-    doc.setFontSize(TYPE.h1);
-    const lines = doc.splitTextToSize(label, W - PAGE.marginLeft - PAGE.marginRight - 100);
-    let yy = 240;
+    let labelSize: number = TYPE.h1;
+    let lines: string[] = [];
+    const labelMaxW = W - PAGE.marginLeft - PAGE.marginRight - 160;
+    for (const size of [TYPE.h1, 18, 16, 14]) {
+      doc.setFontSize(size);
+      lines = doc.splitTextToSize(label, labelMaxW) as string[];
+      if (lines.length <= 3) {
+        labelSize = size;
+        break;
+      }
+    }
+    doc.setFontSize(labelSize);
+    let yy = 250;
+    const lineH = Math.round(labelSize * 1.25);
     lines.forEach((line: string) => {
       doc.text(line, PAGE.marginLeft, yy);
-      yy += 28;
+      yy += lineH;
     });
 
     // Sage thin line under title
@@ -363,7 +390,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
               halign: 'left',
               cellPadding: 8,
             },
-            bodyStyles: { fontSize: TYPE.body, textColor: rgb(C.fg1), cellPadding: 8 },
+            bodyStyles: { fontSize: TYPE.body, textColor: rgb(C.fg1), cellPadding: 8, overflow: 'linebreak' },
             alternateRowStyles: { fillColor: rgb(C.creamLight) },
             columnStyles: {
               1: { fontStyle: 'bold', halign: 'right' },
@@ -467,7 +494,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
               halign: 'center',
               cellPadding: 6,
             },
-            bodyStyles: { fontSize: TYPE.body, halign: 'center', cellPadding: 6 },
+            bodyStyles: { fontSize: TYPE.body, halign: 'center', cellPadding: 6, overflow: 'linebreak' },
             margin: { left: PAGE.marginLeft, right: PAGE.marginRight },
           });
           cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + GAP.paragraph;
@@ -513,7 +540,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
               fontSize: TYPE.eyebrow,
               cellPadding: 6,
             },
-            bodyStyles: { fontSize: TYPE.small, cellPadding: 6 },
+            bodyStyles: { fontSize: TYPE.small, cellPadding: 6, overflow: 'linebreak' },
             alternateRowStyles: { fillColor: rgb(C.creamLight) },
             columnStyles: {
               0: { cellWidth: 'auto' },
@@ -546,7 +573,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
               fontSize: TYPE.eyebrow,
               cellPadding: 6,
             },
-            bodyStyles: { fontSize: TYPE.small, valign: 'top', cellPadding: 6 },
+            bodyStyles: { fontSize: TYPE.small, valign: 'top', cellPadding: 6, overflow: 'linebreak' },
             columnStyles: { 0: { cellWidth: 60, fontStyle: 'bold' } },
             margin: { left: PAGE.marginLeft, right: PAGE.marginRight },
           });
@@ -573,7 +600,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
               fontSize: TYPE.eyebrow,
               cellPadding: 6,
             },
-            bodyStyles: { fontSize: TYPE.small, cellPadding: 6 },
+            bodyStyles: { fontSize: TYPE.small, cellPadding: 6, overflow: 'linebreak' },
             margin: { left: PAGE.marginLeft, right: PAGE.marginRight },
           });
           cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + GAP.table;
@@ -599,7 +626,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
               fontSize: TYPE.eyebrow,
               cellPadding: 6,
             },
-            bodyStyles: { fontSize: TYPE.small, cellPadding: 6 },
+            bodyStyles: { fontSize: TYPE.small, cellPadding: 6, overflow: 'linebreak' },
             margin: { left: PAGE.marginLeft, right: PAGE.marginRight },
           });
           cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + GAP.table;
@@ -626,7 +653,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
               fontSize: TYPE.eyebrow,
               cellPadding: 6,
             },
-            bodyStyles: { fontSize: TYPE.small, cellPadding: 6 },
+            bodyStyles: { fontSize: TYPE.small, cellPadding: 6, overflow: 'linebreak' },
             columnStyles: { 2: { halign: 'right', fontStyle: 'bold' } },
             margin: { left: PAGE.marginLeft, right: PAGE.marginRight },
           });

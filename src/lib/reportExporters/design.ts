@@ -56,15 +56,16 @@ export const TYPE = {
 
 /* ───────── Page geometry (jsPDF, pt) ─────────
  *
- * Tightened for print: less white space between blocks while keeping
- * proper bind-side margins. A4 page is 595×842 pt; 56pt = ~2cm — print
- * standard, comfortable but not wasteful.
+ * Narrow margins (~1.7 cm) — tight print layout per user direction.
+ * A4 = 595×842 pt; 48pt sides leaves ~500pt of usable width which is
+ * enough for tables, prose and a comfortable reading line length.
+ * Smaller would risk text crashing into bind / printer trim.
  */
 export const PAGE = {
-  marginTop: 72, // body content top after running header
-  marginBottom: 56, // body content bottom before running footer
-  marginLeft: 56,
-  marginRight: 56,
+  marginTop: 60,
+  marginBottom: 48,
+  marginLeft: 48,
+  marginRight: 48,
   runningHeader: 28,
   runningFooter: 24,
 };
