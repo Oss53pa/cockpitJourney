@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   FileBarChart,
   Sparkles,
@@ -22,11 +22,15 @@ import {
   AlertOctagon,
   Info,
   BarChart3,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { useApp, type Report, type ReportKind, type AttentionPoint } from '../../stores/appStore';
+import type { Task } from '../../types';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../ui/Menu';
 import { Modal } from '../ui/Modal';
 import { cn, relativeTime } from '../../lib/utils';
+import { ReportExportDialog } from '../reports/ReportExportDialog';
 
 const kindLabels: Record<ReportKind, string> = {
   weekly: 'Hebdomadaire',
@@ -60,8 +64,10 @@ export function ReportsView() {
   const deleteReport = useApp((s) => s.deleteReport);
   const [filter, setFilter] = useState<'all' | ReportKind>('all');
   const [openReportId, setOpenReportId] = useState<string | null>(null);
+  const [exportReportId, setExportReportId] = useState<string | null>(null);
 
   const filtered = filter === 'all' ? reports : reports.filter((r) => r.kind === filter);
+  const exportingReport = exportReportId ? reports.find((r) => r.id === exportReportId) : undefined;
 
   return (
     <div className="px-8 py-7">
@@ -173,6 +179,7 @@ export function ReportsView() {
             key={r.id}
             report={r}
             onOpen={() => setOpenReportId(r.id)}
+            onExport={() => setExportReportId(r.id)}
             onDelete={() => {
               if (confirm(`Supprimer "${r.title}" ?`)) deleteReport(r.id);
             }}
@@ -198,7 +205,17 @@ export function ReportsView() {
         )}
       </div>
 
-      {openReportId && <ReportViewerModal reportId={openReportId} onClose={() => setOpenReportId(null)} />}
+      {openReportId && (
+        <ReportViewerModal
+          reportId={openReportId}
+          onClose={() => setOpenReportId(null)}
+          onExport={() => setExportReportId(openReportId)}
+        />
+      )}
+
+      {exportingReport && (
+        <ReportExportDialog report={exportingReport} open onClose={() => setExportReportId(null)} />
+      )}
     </div>
   );
 }
@@ -206,10 +223,12 @@ export function ReportsView() {
 function ReportCard({
   report,
   onOpen,
+  onExport,
   onDelete,
 }: {
   report: Report;
   onOpen: () => void;
+  onExport: () => void;
   onDelete: () => void;
 }) {
   const author = useApp((s) => s.users.find((u) => u.id === report.authorId) || s.users[0]);
@@ -260,10 +279,10 @@ function ReportCard({
                 icon={Download}
                 onClick={() => {
                   close();
-                  pushToast({ kind: 'info', title: 'Export PDF' });
+                  onExport();
                 }}
               >
-                Exporter PDF
+                Exporter (PDF · Word · Excel · PPT)
               </MenuItem>
               <MenuItem
                 icon={Mail}
@@ -347,9 +366,18 @@ function ReportCard({
 
 /* ───────────────────────── Report Viewer Modal ───────────────────────── */
 
-function ReportViewerModal({ reportId, onClose }: { reportId: string; onClose: () => void }) {
+function ReportViewerModal({
+  reportId,
+  onClose,
+  onExport,
+}: {
+  reportId: string;
+  onClose: () => void;
+  onExport: () => void;
+}) {
   const report = useApp((s) => s.reports.find((r) => r.id === reportId));
   const author = useApp((s) => s.users.find((u) => u.id === report?.authorId) || s.users[0]);
+  const tasks = useApp((s) => s.tasks);
   const generateNarrative = useApp((s) => s.generateReportNarrative);
   const pushToast = useApp((s) => s.pushToast);
   const [tab, setTab] = useState<'overview' | 'projects' | 'attention' | 'workload' | 'goals' | 'retards'>(
@@ -396,11 +424,8 @@ function ReportViewerModal({ reportId, onClose }: { reportId: string; onClose: (
           <button onClick={onClose} className="btn-ghost text-sm px-3 py-1.5">
             Fermer
           </button>
-          <button
-            onClick={() => pushToast({ kind: 'info', title: 'Export PDF en cours' })}
-            className="btn-secondary text-sm px-3 py-1.5"
-          >
-            <Download className="w-3.5 h-3.5" /> Exporter PDF
+          <button onClick={onExport} className="btn-secondary text-sm px-3 py-1.5">
+            <Download className="w-3.5 h-3.5" /> Exporter…
           </button>
           <button
             onClick={() => pushToast({ kind: 'success', title: "Rapport envoyé à l'équipe" })}
@@ -561,53 +586,11 @@ function ReportViewerModal({ reportId, onClose }: { reportId: string; onClose: (
               Avancement détaillé par projet · {report.projects?.length || 0}
             </SectionTitle>
             {(report.projects || []).map((p) => (
-              <div key={p.projectId} className="panel p-5">
-                <div className="flex items-start gap-3">
-                  <div className="w-2 h-12 rounded-full" style={{ background: p.color }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="font-display text-lg font-medium text-atlas-fg-1">{p.name}</h3>
-                      <div className="flex items-center gap-2">
-                        <HealthBadge health={p.health} />
-                        <span className="chip bg-black/[0.04] border border-atlas-line text-atlas-fg-2">
-                          {p.members} membre{p.members > 1 ? 's' : ''}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-sm text-atlas-fg-2 mt-2">{p.summary}</p>
-                    <div className="mt-3 flex items-center gap-3">
-                      <div className="flex-1 h-2 rounded-full bg-black/[0.06] overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-amber-gradient"
-                          style={{ width: `${p.progress}%` }}
-                        />
-                      </div>
-                      <span className="text-2xs font-mono font-medium text-atlas-fg-1">{p.progress}%</span>
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-2">
-                      <MiniStat label="Total" value={String(p.tasksTotal)} />
-                      <MiniStat label="Livrées" value={String(p.tasksDone)} accent="green" />
-                      <MiniStat label="En cours" value={String(p.tasksInProgress)} accent="amber" />
-                      <MiniStat
-                        label="Retard"
-                        value={String(p.tasksOverdue)}
-                        accent={p.tasksOverdue > 0 ? 'red' : 'default'}
-                      />
-                      <MiniStat
-                        label="Critiques"
-                        value={String(p.tasksCritical)}
-                        accent={p.tasksCritical > 0 ? 'red' : 'default'}
-                      />
-                    </div>
-                    {p.riskNote && (
-                      <div className="mt-3 flex items-start gap-2 text-2xs text-signal-red bg-signal-red/[0.06] border border-signal-red/30 rounded-lg p-2.5">
-                        <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span>{p.riskNote}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+              <ProjectBreakdownCard
+                key={p.projectId}
+                breakdown={p}
+                tasks={tasks.filter((t) => t.projectId === p.projectId)}
+              />
             ))}
           </div>
         )}
@@ -825,6 +808,181 @@ function ReportViewerModal({ reportId, onClose }: { reportId: string; onClose: (
         )}
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Project section in the report viewer: header + counts + an expandable
+ * task list. The user explicitly asked for "le détail des tâches dans
+ * le rapport"; we read tasks live from the store filtered by projectId
+ * (the report itself only carries aggregate counts). Tasks are grouped
+ * by status so the reader sees what's done vs in-flight at a glance.
+ */
+function ProjectBreakdownCard({
+  breakdown: p,
+  tasks,
+}: {
+  breakdown: import('../../stores/appStore').ReportProjectBreakdown;
+  tasks: Task[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const grouped = useMemo(() => {
+    const out: Record<string, Task[]> = {
+      in_progress: [],
+      todo: [],
+      in_review: [],
+      done: [],
+    };
+    for (const t of tasks) {
+      if (t.status === 'cancelled') continue;
+      (out[t.status] ??= []).push(t);
+    }
+    return out;
+  }, [tasks]);
+
+  return (
+    <div className="panel p-5">
+      <div className="flex items-start gap-3">
+        <div className="w-2 h-12 rounded-full" style={{ background: p.color }} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-display text-lg font-medium text-atlas-fg-1">{p.name}</h3>
+            <div className="flex items-center gap-2">
+              <HealthBadge health={p.health} />
+              <span className="chip bg-black/[0.04] border border-atlas-line text-atlas-fg-2">
+                {p.members} membre{p.members > 1 ? 's' : ''}
+              </span>
+            </div>
+          </div>
+          <p className="text-sm text-atlas-fg-2 mt-2">{p.summary}</p>
+          <div className="mt-3 flex items-center gap-3">
+            <div className="flex-1 h-2 rounded-full bg-black/[0.06] overflow-hidden">
+              <div className="h-full rounded-full bg-amber-gradient" style={{ width: `${p.progress}%` }} />
+            </div>
+            <span className="text-2xs font-mono font-medium text-atlas-fg-1">{p.progress}%</span>
+          </div>
+          <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-2">
+            <MiniStat label="Total" value={String(p.tasksTotal)} />
+            <MiniStat label="Livrées" value={String(p.tasksDone)} accent="green" />
+            <MiniStat label="En cours" value={String(p.tasksInProgress)} accent="amber" />
+            <MiniStat
+              label="Retard"
+              value={String(p.tasksOverdue)}
+              accent={p.tasksOverdue > 0 ? 'red' : 'default'}
+            />
+            <MiniStat
+              label="Critiques"
+              value={String(p.tasksCritical)}
+              accent={p.tasksCritical > 0 ? 'red' : 'default'}
+            />
+          </div>
+          {p.riskNote && (
+            <div className="mt-3 flex items-start gap-2 text-2xs text-signal-red bg-signal-red/[0.06] border border-signal-red/30 rounded-lg p-2.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>{p.riskNote}</span>
+            </div>
+          )}
+
+          {/* Tasks toggle */}
+          {tasks.length > 0 && (
+            <>
+              <button
+                onClick={() => setExpanded((v) => !v)}
+                className="mt-4 inline-flex items-center gap-1.5 text-2xs uppercase tracking-wider font-medium text-atlas-fg-3 hover:text-atlas-amber-deep transition"
+              >
+                {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                {expanded ? 'Masquer' : 'Voir'} le détail des {tasks.length} tâche
+                {tasks.length > 1 ? 's' : ''}
+              </button>
+              {expanded && (
+                <div className="mt-3 space-y-3 border-t border-atlas-line pt-3">
+                  {(['in_progress', 'todo', 'in_review', 'done'] as const).map((status) => {
+                    const list = grouped[status] || [];
+                    if (list.length === 0) return null;
+                    const label =
+                      status === 'in_progress'
+                        ? 'En cours'
+                        : status === 'todo'
+                          ? 'À faire'
+                          : status === 'in_review'
+                            ? 'En revue'
+                            : 'Terminées';
+                    const accent =
+                      status === 'in_progress'
+                        ? 'text-atlas-amber-deep'
+                        : status === 'in_review'
+                          ? 'text-signal-blue'
+                          : status === 'done'
+                            ? 'text-signal-green'
+                            : 'text-atlas-fg-3';
+                    return (
+                      <div key={status}>
+                        <div className={cn('text-2xs uppercase tracking-wider font-medium mb-1.5', accent)}>
+                          {label} · {list.length}
+                        </div>
+                        <ul className="space-y-1">
+                          {list.map((t) => (
+                            <TaskBriefRow key={t.id} task={t} />
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TaskBriefRow({ task }: { task: Task }) {
+  const overdue = task.status !== 'done' && task.dueDate && new Date(task.dueDate).getTime() < Date.now();
+  const priorityColor =
+    task.priority === 4
+      ? 'bg-signal-red/15 text-signal-red border-signal-red/30'
+      : task.priority === 3
+        ? 'bg-signal-yellow/15 text-signal-yellow border-signal-yellow/30'
+        : task.priority === 2
+          ? 'bg-signal-blue/15 text-signal-blue border-signal-blue/30'
+          : 'bg-black/[0.04] text-atlas-fg-3 border-atlas-line';
+  const priorityLabel = ['Faible', 'Normale', 'Haute', 'Critique'][task.priority - 1] ?? '';
+
+  return (
+    <li className="flex items-center gap-2.5 py-1.5 text-sm">
+      <span
+        className={cn(
+          'chip border text-[9px] uppercase tracking-wider px-1.5 py-0 font-medium',
+          priorityColor
+        )}
+      >
+        P{task.priority}
+      </span>
+      <span className="flex-1 min-w-0 text-atlas-fg-1 truncate">{task.title}</span>
+      {task.tags && task.tags.length > 0 && (
+        <span className="hidden sm:inline-flex text-2xs text-atlas-fg-3 font-light">
+          #{task.tags[0]}
+          {task.tags.length > 1 && <span className="ml-0.5">+{task.tags.length - 1}</span>}
+        </span>
+      )}
+      {task.dueDate && (
+        <span
+          className={cn(
+            'text-2xs font-mono shrink-0 tabular-nums',
+            overdue ? 'text-signal-red font-medium' : 'text-atlas-fg-3'
+          )}
+          title={priorityLabel}
+        >
+          {new Date(task.dueDate).toLocaleDateString('fr-FR', {
+            day: '2-digit',
+            month: 'short',
+          })}
+        </span>
+      )}
+    </li>
   );
 }
 
