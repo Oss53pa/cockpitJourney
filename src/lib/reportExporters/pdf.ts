@@ -50,6 +50,26 @@ function healthHex(h?: 'green' | 'yellow' | 'red'): string {
   return h === 'red' ? C.red : h === 'yellow' ? C.yellow : C.green;
 }
 
+/**
+ * Strip characters jsPDF's built-in Helvetica can't render to a glyph.
+ * The font's encoding is WinAnsi (Latin-1 + a few extras) — anything
+ * outside that range was producing gibberish (the "& & & 1& t& à&" we
+ * saw in the user's screenshot was the WARNING emoji ⚠ falling apart
+ * inside the WinAnsi encoder). We replace common offenders inline and
+ * drop the rest.
+ */
+function safeText(s: string | undefined | null): string {
+  if (!s) return '';
+  return s
+    .replace(/⚠/g, '!')
+    .replace(/✦/g, '·')
+    .replace(/[…]/g, '...')
+    .replace(/[\u{1F300}-\u{1FAFF}]/gu, '') // emoji
+    .replace(/[…]/g, '...')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function kindEyebrow(kind: string): string {
   switch (kind) {
     case 'weekly':
@@ -433,15 +453,18 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
         const allow = new Set(options.projectIds ?? []);
         const projects = (report.projects ?? []).filter((p) => allow.size === 0 || allow.has(p.projectId));
         for (const p of projects) {
-          ensureSpace(cur, 130);
-          // Project name
+          /* ── Project header row (name + health pill) ── */
+          ensureSpace(cur, 24);
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(...rgb(C.fg1));
           doc.setFontSize(TYPE.h3);
-          doc.text(p.name, PAGE.marginLeft, cur.y);
-
-          // Health pill
+          // Truncate the name if needed so it doesn't crash into the pill.
           const pillW = 56;
+          const nameMaxW = W - PAGE.marginLeft - PAGE.marginRight - pillW - 12;
+          const nameLines = doc.splitTextToSize(safeText(p.name), nameMaxW) as string[];
+          doc.text(nameLines[0] ?? '', PAGE.marginLeft, cur.y);
+
+          // Health pill (right-anchored on the same row as name)
           const pillX = W - PAGE.marginRight - pillW;
           const pillCol = rgb(healthHex(p.health));
           doc.setFillColor(...pillCol);
@@ -453,38 +476,46 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
             align: 'center',
             charSpace: 1,
           });
-          cur.y += 12;
+          cur.y += 14;
 
+          /* ── Summary (italic muted) ── */
           if (p.summary) {
             doc.setFont('helvetica', 'italic');
             doc.setTextColor(...rgb(C.fg3));
             doc.setFontSize(TYPE.body);
-            const lines = doc.splitTextToSize(p.summary, W - PAGE.marginLeft - PAGE.marginRight);
-            lines.forEach((l: string) => {
-              ensureSpace(cur, 14);
+            const sumLines = doc.splitTextToSize(
+              safeText(p.summary),
+              W - PAGE.marginLeft - PAGE.marginRight
+            ) as string[];
+            // Reserve space for ALL lines together — never split the
+            // summary across pages mid-sentence.
+            ensureSpace(cur, sumLines.length * 13 + 4);
+            sumLines.forEach((l: string) => {
               doc.text(l, PAGE.marginLeft, cur.y);
               cur.y += 13;
             });
             cur.y += 4;
           }
 
-          // Progress bar
+          /* ── Progress bar + caption ── */
+          ensureSpace(cur, 28);
           const barW = W - PAGE.marginLeft - PAGE.marginRight;
           const barH = 6;
           doc.setFillColor(...rgb(C.line));
           doc.roundedRect(PAGE.marginLeft, cur.y, barW, barH, 3, 3, 'F');
           doc.setFillColor(...rgb(C.brand));
           doc.roundedRect(PAGE.marginLeft, cur.y, (barW * p.progress) / 100, barH, 3, 3, 'F');
-          cur.y += barH + 4;
+          cur.y += barH + 5;
           doc.setTextColor(...rgb(C.fg3));
           doc.setFontSize(TYPE.micro);
-          doc.text(`${p.progress}% — ${p.tasksDone}/${p.tasksTotal} tâches livrées`, PAGE.marginLeft, cur.y);
-          cur.y += 14;
+          doc.text(`${p.progress}% — ${p.tasksDone}/${p.tasksTotal} taches livrees`, PAGE.marginLeft, cur.y);
+          cur.y += 12;
 
-          // Counts grid
+          /* ── Counts grid (autoTable handles its own pagination) ── */
+          ensureSpace(cur, 50);
           autoTable(doc, {
             startY: cur.y,
-            head: [['Total', 'Livrées', 'En cours', 'En retard', 'Critiques']],
+            head: [['Total', 'Livrees', 'En cours', 'En retard', 'Critiques']],
             body: [[p.tasksTotal, p.tasksDone, p.tasksInProgress, p.tasksOverdue, p.tasksCritical]],
             theme: 'grid',
             headStyles: {
@@ -494,22 +525,41 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
               halign: 'center',
               cellPadding: 6,
             },
-            bodyStyles: { fontSize: TYPE.body, halign: 'center', cellPadding: 6, overflow: 'linebreak' },
+            bodyStyles: {
+              fontSize: TYPE.body,
+              halign: 'center',
+              cellPadding: 6,
+              overflow: 'linebreak',
+            },
             margin: { left: PAGE.marginLeft, right: PAGE.marginRight },
           });
           cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + GAP.paragraph;
 
+          /* ── Risk note (red box, plain text — no emoji) ── */
           if (p.riskNote) {
-            ensureSpace(cur, 30);
+            const note = safeText(p.riskNote);
+            const noteLines = doc.splitTextToSize(
+              note,
+              W - PAGE.marginLeft - PAGE.marginRight - 60
+            ) as string[];
+            const noteH = Math.max(22, noteLines.length * 12 + 10);
+            ensureSpace(cur, noteH + 4);
             doc.setFillColor(...rgb('#FCEAE6'));
-            doc.roundedRect(PAGE.marginLeft, cur.y, W - PAGE.marginLeft - PAGE.marginRight, 22, 3, 3, 'F');
+            doc.roundedRect(PAGE.marginLeft, cur.y, W - PAGE.marginLeft - PAGE.marginRight, noteH, 3, 3, 'F');
+            // "RISQUE" tag in red, then the note in red regular.
             doc.setFont('helvetica', 'bold');
             doc.setTextColor(...rgb(C.red));
+            doc.setFontSize(TYPE.eyebrow);
+            doc.text('RISQUE', PAGE.marginLeft + 8, cur.y + 12, { charSpace: 1.5 });
+            doc.setFont('helvetica', 'normal');
             doc.setFontSize(TYPE.small);
-            doc.text(`⚠  ${p.riskNote}`, PAGE.marginLeft + 8, cur.y + 14);
-            cur.y += 32;
+            const noteY = cur.y + 12;
+            noteLines.forEach((line, idx) => {
+              doc.text(line, PAGE.marginLeft + 56, noteY + idx * 12);
+            });
+            cur.y += noteH + 8;
           } else {
-            cur.y += 8;
+            cur.y += GAP.section;
           }
         }
         break;
