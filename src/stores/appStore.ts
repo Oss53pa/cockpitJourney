@@ -93,6 +93,10 @@ export interface Report {
   kind: ReportKind;
   title: string;
   period: string;
+  /** ISO date — start of the reporting window (inclusive). */
+  periodStart?: string;
+  /** ISO date — end of the reporting window (inclusive). */
+  periodEnd?: string;
   generatedAt: string;
   authorId: string;
   narrative?: string; // PROPH3T-generated executive narration (markdown)
@@ -1046,14 +1050,42 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       quarterly: 'Bilan trimestriel',
       annual: 'Bilan annuel',
     };
+
+    // Compute structured period bounds (inclusive) in addition to the
+    // human-readable `period` label. Exporters and the Reports table use
+    // periodStart/End for the "DD/MM/YYYY → DD/MM/YYYY" display.
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    const startOfDay = (d: Date) => {
+      const c = new Date(d);
+      c.setHours(0, 0, 0, 0);
+      return c;
+    };
+    let periodStart: Date;
+    let periodEnd: Date;
+    if (kind === 'weekly') {
+      periodEnd = startOfDay(today);
+      periodEnd.setHours(23, 59, 59, 999);
+      periodStart = startOfDay(new Date(today.getTime() - 6 * 86_400_000));
+    } else if (kind === 'monthly') {
+      periodStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+    } else if (kind === 'quarterly') {
+      const q = Math.floor(today.getMonth() / 3);
+      periodStart = new Date(today.getFullYear(), q * 3, 1);
+      periodEnd = new Date(today.getFullYear(), q * 3 + 3, 0, 23, 59, 59, 999);
+    } else {
+      periodStart = new Date(today.getFullYear(), 0, 1);
+      periodEnd = new Date(today.getFullYear(), 11, 31, 23, 59, 59, 999);
+    }
     const period =
       kind === 'weekly'
-        ? `Semaine du ${new Date(Date.now() - 6 * 86400000).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} au ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}`
+        ? `Semaine du ${periodStart.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} au ${periodEnd.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}`
         : kind === 'monthly'
-          ? new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+          ? today.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
           : kind === 'quarterly'
-            ? `T${Math.floor(new Date().getMonth() / 3) + 1} ${new Date().getFullYear()}`
-            : `${new Date().getFullYear()}`;
+            ? `T${Math.floor(today.getMonth() / 3) + 1} ${today.getFullYear()}`
+            : `${today.getFullYear()}`;
     const tasks = get().tasks;
     const projects = get().projects;
     const users = get().users;
@@ -1217,6 +1249,8 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       kind,
       title: `${titles[kind]} — ${period}`,
       period,
+      periodStart: periodStart.toISOString(),
+      periodEnd: periodEnd.toISOString(),
       generatedAt: new Date().toISOString(),
       authorId: get().currentProfileId || 'u_pame',
       highlights: [

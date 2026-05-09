@@ -470,7 +470,13 @@ function ReportRow({
         >
           {report.title}
         </button>
-        <div className="text-2xs text-atlas-fg-3 mt-0.5">{report.period}</div>
+        <div className="text-2xs mt-0.5 inline-flex items-center gap-1.5">
+          <span className="font-mono font-medium text-atlas-amber-deep tabular-nums">
+            {formatPeriodRangeFromReport(report)}
+          </span>
+          <span className="text-atlas-fg-3">·</span>
+          <span className="text-atlas-fg-3">{report.period}</span>
+        </div>
       </td>
       <td className="px-4 py-3 align-top text-right tabular-nums">
         <span className="text-sm font-medium text-atlas-fg-1">{report.projects?.length ?? 0}</span>
@@ -601,8 +607,13 @@ function ReportCard({
             )}
           </div>
           <h3 className="font-display text-lg font-medium text-atlas-fg-1 mt-2 truncate">{report.title}</h3>
-          <div className="text-2xs text-atlas-fg-3 mt-1">
-            {report.period} · généré {relativeTime(report.generatedAt)} par {author.name}
+          <div className="text-2xs mt-1 inline-flex items-center gap-1.5 flex-wrap">
+            <span className="font-mono font-medium text-atlas-amber-deep tabular-nums">
+              {formatPeriodRangeFromReport(report)}
+            </span>
+            <span className="text-atlas-fg-3">
+              · {report.period} · généré {relativeTime(report.generatedAt)} par {author.name}
+            </span>
           </div>
         </div>
         <Menu
@@ -1332,6 +1343,23 @@ function TaskBriefRow({ task }: { task: Task }) {
       )}
     </li>
   );
+}
+
+/**
+ * Format the report's period as "DD/MM/YYYY → DD/MM/YYYY" using the
+ * structured periodStart / periodEnd fields. Mirrors the helper used
+ * by the export library so the in-app history shows the exact same
+ * date range string the PDF/DOCX/PPTX/XLSX will print.
+ */
+function formatPeriodRangeFromReport(report: Report): string {
+  if (report.periodStart && report.periodEnd) {
+    const start = new Date(report.periodStart);
+    const end = new Date(report.periodEnd);
+    const fmt = (d: Date) =>
+      d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return `${fmt(start)} → ${fmt(end)}`;
+  }
+  return report.period;
 }
 
 function MiniStat({

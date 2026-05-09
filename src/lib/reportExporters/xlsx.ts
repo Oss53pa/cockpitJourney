@@ -21,7 +21,7 @@ import {
   type ExportPayload,
   type SectionKey,
 } from './types';
-import { COPY, buildToc, buildDocRef } from './design';
+import { COPY, buildToc, buildDocRef, formatPeriodRange } from './design';
 
 type Cell = string | number | null;
 
@@ -66,11 +66,10 @@ export async function exportToXlsx(payload: ExportPayload): Promise<void> {
   const coverRows: Cell[][] = [
     [COPY.brandLong.toUpperCase()],
     [],
-    [],
     [kindEyebrow(report.kind)],
     [report.title],
+    [formatPeriodRange(report)],
     [report.period],
-    [],
     [],
     [`${COPY.preparedBy} : ${COPY.brand}`],
     [`${COPY.generatedOn} : ${formatDate(report.generatedAt)}`],
@@ -87,7 +86,14 @@ export async function exportToXlsx(payload: ExportPayload): Promise<void> {
 
   /* ─── 3. CONTENT SHEETS ─── */
   if (options.sections.includes('narrative') && report.narrative) {
-    const ws = aoaSheet([['SYNTHÈSE PROPH3T'], [report.title], [report.period], [], [report.narrative]]);
+    const ws = aoaSheet([
+      ['SYNTHÈSE PROPH3T'],
+      [report.title],
+      [formatPeriodRange(report)],
+      [report.period],
+      [],
+      [report.narrative],
+    ]);
     ws['!cols'] = [{ wch: 100 }];
     XLSX.utils.book_append_sheet(wb, ws, 'Synthèse');
     sheetForKey.narrative = 'Synthèse';
@@ -275,6 +281,7 @@ export async function exportToXlsx(payload: ExportPayload): Promise<void> {
   const summaryHeader: Cell[][] = [
     ['SOMMAIRE'],
     [report.title],
+    [formatPeriodRange(report)],
     [report.period],
     [],
     ['#', 'Section', 'Onglet'],

@@ -22,7 +22,15 @@ import {
   taskStatusLabel,
   type ExportPayload,
 } from './types';
-import { HX, COPY, buildToc, buildDocRef, loadWordmarkDataUrl, stripMarkdown } from './design';
+import {
+  HX,
+  COPY,
+  buildToc,
+  buildDocRef,
+  loadWordmarkDataUrl,
+  stripMarkdown,
+  formatPeriodRange,
+} from './design';
 
 const SAGE = HX.brand;
 const SAGE_GLOW = HX.brandGlow;
@@ -86,7 +94,7 @@ export async function exportToPptx(payload: ExportPayload): Promise<void> {
       },
       {
         text: {
-          text: report.period,
+          text: formatPeriodRange(report),
           options: {
             x: 7,
             y: 0.18,
@@ -239,13 +247,23 @@ export async function exportToPptx(payload: ExportPayload): Promise<void> {
     valign: 'top',
   });
 
-  // Period
-  cover.addText(report.period, {
+  // Period range (DD/MM/YYYY → DD/MM/YYYY) — canonical date span
+  cover.addText(formatPeriodRange(report), {
     x: 5.3,
-    y: 5.0,
+    y: 4.95,
     w: 7.5,
     h: 0.4,
-    fontSize: 16,
+    fontSize: 18,
+    color: SAGE,
+    bold: true,
+  });
+  // Long-form below
+  cover.addText(report.period, {
+    x: 5.3,
+    y: 5.35,
+    w: 7.5,
+    h: 0.35,
+    fontSize: 13,
     color: MUTED,
   });
 
@@ -411,8 +429,8 @@ export async function exportToPptx(payload: ExportPayload): Promise<void> {
       fill: { color: SAGE },
       line: { color: SAGE, width: 0 },
     });
-    // Period
-    slide.addText(report.period, {
+    // Period range
+    slide.addText(formatPeriodRange(report), {
       x: 0.6,
       y: 4.8,
       w: 8,

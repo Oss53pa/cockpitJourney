@@ -27,6 +27,7 @@ import {
 import {
   C,
   PAGE,
+  GAP,
   TYPE,
   COPY,
   buildToc,
@@ -34,6 +35,7 @@ import {
   loadWordmarkDataUrl,
   rgb,
   stripMarkdown,
+  formatPeriodRange,
 } from './design';
 
 /** jsPDF instance with the autotable side-effect attached. */
@@ -90,7 +92,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
     doc.setTextColor(...rgb(C.fg1));
     doc.setFontSize(TYPE.h3);
     doc.text(text, PAGE.marginLeft, cur.y);
-    cur.y += 16;
+    cur.y += GAP.heading;
   };
 
   const drawText = (
@@ -105,11 +107,11 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
     doc.setFontSize(size);
     const lines = doc.splitTextToSize(text, W - PAGE.marginLeft - PAGE.marginRight);
     for (const line of lines) {
-      ensureSpace(cur, size + 3);
+      ensureSpace(cur, size + 2);
       doc.text(line, PAGE.marginLeft, cur.y);
-      cur.y += size + 3;
+      cur.y += size + 2;
     }
-    cur.y += 4;
+    cur.y += GAP.paragraph;
   };
 
   /* ─────────────────────── 1. COVER PAGE ─────────────────────── */
@@ -149,14 +151,19 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
     titleY += 44;
   });
 
-  // Period
+  // Period range (DD/MM/YYYY → DD/MM/YYYY) — the canonical date span
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...rgb(C.brand));
+  doc.setFontSize(TYPE.h3);
+  doc.text(formatPeriodRange(report), W * 0.36 + PAGE.marginLeft, titleY + 18);
+  // Long-form below for human readability
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...rgb(C.fg3));
-  doc.setFontSize(TYPE.h3);
-  doc.text(report.period, W * 0.36 + PAGE.marginLeft, titleY + 18);
+  doc.setFontSize(TYPE.body);
+  doc.text(report.period, W * 0.36 + PAGE.marginLeft, titleY + 36);
 
   // Bottom block: prepared by + date
-  const bottomY = H - 140;
+  const bottomY = H - 100;
   doc.setDrawColor(...rgb(C.line));
   doc.setLineWidth(0.5);
   doc.line(W * 0.36 + PAGE.marginLeft, bottomY - 18, W - PAGE.marginRight, bottomY - 18);
@@ -307,11 +314,11 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
     doc.setLineWidth(2);
     doc.line(PAGE.marginLeft, yy + 8, PAGE.marginLeft + 60, yy + 8);
 
-    // Tagline below
-    doc.setFont('helvetica', 'italic');
-    doc.setTextColor(...rgb(C.fg3));
+    // Period range below the section title
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...rgb(C.brand));
     doc.setFontSize(TYPE.body);
-    doc.text(report.period, PAGE.marginLeft, yy + 32);
+    doc.text(formatPeriodRange(report), PAGE.marginLeft, yy + 32);
 
     // Body content starts on the NEXT page
     newBodyPage(cur);
@@ -364,7 +371,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
             },
             margin: { left: PAGE.marginLeft, right: PAGE.marginRight },
           });
-          cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + 14;
+          cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + GAP.table;
         }
         break;
       }
@@ -463,7 +470,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
             bodyStyles: { fontSize: TYPE.body, halign: 'center', cellPadding: 6 },
             margin: { left: PAGE.marginLeft, right: PAGE.marginRight },
           });
-          cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + 8;
+          cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + GAP.paragraph;
 
           if (p.riskNote) {
             ensureSpace(cur, 30);
@@ -516,7 +523,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
             },
             margin: { left: PAGE.marginLeft, right: PAGE.marginRight },
           });
-          cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + 14;
+          cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + GAP.table;
         }
         break;
       }
@@ -543,7 +550,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
             columnStyles: { 0: { cellWidth: 60, fontStyle: 'bold' } },
             margin: { left: PAGE.marginLeft, right: PAGE.marginRight },
           });
-          cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + 14;
+          cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + GAP.table;
         }
         break;
       }
@@ -569,7 +576,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
             bodyStyles: { fontSize: TYPE.small, cellPadding: 6 },
             margin: { left: PAGE.marginLeft, right: PAGE.marginRight },
           });
-          cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + 14;
+          cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + GAP.table;
         }
         break;
       }
@@ -595,7 +602,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
             bodyStyles: { fontSize: TYPE.small, cellPadding: 6 },
             margin: { left: PAGE.marginLeft, right: PAGE.marginRight },
           });
-          cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + 14;
+          cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + GAP.table;
         }
         break;
       }
@@ -623,7 +630,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
             columnStyles: { 2: { halign: 'right', fontStyle: 'bold' } },
             margin: { left: PAGE.marginLeft, right: PAGE.marginRight },
           });
-          cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + 14;
+          cur.y = (doc as DocWithAutotable).lastAutoTable.finalY + GAP.table;
         }
         break;
       }
@@ -747,7 +754,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
     doc.text(COPY.brand.toUpperCase(), PAGE.marginLeft, 50, { charSpace: 1 });
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...rgb(C.fg3));
-    doc.text(report.period, W - PAGE.marginRight, 50, { align: 'right' });
+    doc.text(formatPeriodRange(report), W - PAGE.marginRight, 50, { align: 'right' });
 
     // Running footer
     doc.setDrawColor(...rgb(C.line));

@@ -14,7 +14,10 @@
 import {
   AlignmentType,
   Document,
+  Footer,
+  Header,
   HeadingLevel,
+  PageNumber,
   Packer,
   PageBreak,
   Paragraph,
@@ -36,7 +39,7 @@ import {
   taskStatusLabel,
   type ExportPayload,
 } from './types';
-import { HX, COPY, buildToc, buildDocRef } from './design';
+import { HX, COPY, buildToc, buildDocRef, formatPeriodRange } from './design';
 
 const SAGE = HX.brand;
 const FG = HX.fg1;
@@ -261,11 +264,18 @@ export async function exportToDocx(payload: ExportPayload): Promise<void> {
       children: [new TextRun({ text: report.title, color: FG, bold: true, size: 72 })],
     })
   );
-  // Period
-  blocks.push(p(report.period, { color: MUTED, size: 28 }));
+  // Period range (DD/MM/YYYY → DD/MM/YYYY) — canonical date span
+  blocks.push(
+    new Paragraph({
+      spacing: { after: 60 },
+      children: [new TextRun({ text: formatPeriodRange(report), bold: true, color: SAGE, size: 28 })],
+    })
+  );
+  // Long-form below
+  blocks.push(p(report.period, { color: MUTED, size: 22 }));
 
-  // Spacer
-  for (let i = 0; i < 8; i++) blocks.push(p(''));
+  // Spacer (tightened: was 8, now 5)
+  for (let i = 0; i < 5; i++) blocks.push(p(''));
 
   // Bottom info table (Préparé par / Généré le)
   blocks.push(
@@ -409,7 +419,12 @@ export async function exportToDocx(payload: ExportPayload): Promise<void> {
     blocks.push(PB());
     blocks.push(eyebrow(`Partie ${item.number}`));
     blocks.push(h1(item.label));
-    blocks.push(p(report.period, { color: MUTED, italic: true }));
+    blocks.push(
+      new Paragraph({
+        spacing: { after: 100 },
+        children: [new TextRun({ text: formatPeriodRange(report), bold: true, color: SAGE, size: 22 })],
+      })
+    );
     blocks.push(
       new Paragraph({
         spacing: { before: 100, after: 200 },
@@ -667,7 +682,72 @@ export async function exportToDocx(payload: ExportPayload): Promise<void> {
     },
     sections: [
       {
-        properties: { page: { margin: { top: 1000, right: 1000, bottom: 1000, left: 1000 } } },
+        properties: {
+          // Tighter print margins (was 1000 = 0.7 inch; now ~0.6 inch / 1.5cm).
+          page: { margin: { top: 850, right: 900, bottom: 850, left: 900 } },
+          titlePage: true, // suppresses header/footer on the cover page
+        },
+        headers: {
+          default: new Header({
+            children: [
+              new Paragraph({
+                tabStops: [{ type: 'right', position: 9000 }],
+                children: [
+                  new TextRun({
+                    text: COPY.brand.toUpperCase(),
+                    bold: true,
+                    color: SAGE,
+                    size: 16,
+                    characterSpacing: 30,
+                  }),
+                  new TextRun({ text: '\t' }),
+                  new TextRun({
+                    text: formatPeriodRange(report),
+                    color: MUTED,
+                    size: 16,
+                  }),
+                ],
+              }),
+            ],
+          }),
+          first: new Header({ children: [new Paragraph('')] }), // blank header on cover
+        },
+        footers: {
+          default: new Footer({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                tabStops: [
+                  { type: 'center', position: 4500 },
+                  { type: 'right', position: 9000 },
+                ],
+                children: [
+                  new TextRun({
+                    text: COPY.classification,
+                    color: MUTED,
+                    size: 14,
+                    characterSpacing: 30,
+                  }),
+                  new TextRun({ text: '\t' }),
+                  new TextRun({
+                    text: docRef,
+                    color: MUTED,
+                    font: 'Courier New',
+                    size: 14,
+                  }),
+                  new TextRun({ text: '\t' }),
+                  new TextRun({
+                    children: ['Page ', PageNumber.CURRENT, ' / ', PageNumber.TOTAL_PAGES],
+                    bold: true,
+                    color: FG,
+                    size: 14,
+                  }),
+                ],
+              }),
+            ],
+          }),
+          first: new Footer({ children: [new Paragraph('')] }), // blank footer on cover
+        },
         children: blocks,
       },
     ],

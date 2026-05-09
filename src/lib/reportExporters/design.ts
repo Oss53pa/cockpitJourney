@@ -54,15 +54,28 @@ export const TYPE = {
   coverBig: 48,
 };
 
-/* ───────── Page geometry (jsPDF, pt) ───────── */
+/* ───────── Page geometry (jsPDF, pt) ─────────
+ *
+ * Tightened for print: less white space between blocks while keeping
+ * proper bind-side margins. A4 page is 595×842 pt; 56pt = ~2cm — print
+ * standard, comfortable but not wasteful.
+ */
 export const PAGE = {
-  marginTop: 96, // breathing room — same on cover and body
-  marginBottom: 72,
-  marginLeft: 64,
-  marginRight: 64,
-  // Running header height + footer height reserved on body pages
+  marginTop: 72, // body content top after running header
+  marginBottom: 56, // body content bottom before running footer
+  marginLeft: 56,
+  marginRight: 56,
   runningHeader: 28,
   runningFooter: 24,
+};
+
+/** Vertical gap between adjacent blocks (paragraphs, tables, lists). */
+export const GAP = {
+  paragraph: 4,
+  list: 5,
+  table: 10,
+  heading: 10,
+  section: 14,
 };
 
 /* ───────── Copy strings (FR) ───────── */
@@ -153,6 +166,26 @@ export function loadWordmarkDataUrl(): Promise<string> {
     }
   })();
   return wordmarkCache;
+}
+
+/**
+ * Format the report's period as "DD/MM/YYYY → DD/MM/YYYY" — the
+ * universal "from-to" string used on covers, section dividers, the
+ * Reports table, and exports. Falls back to the human-readable
+ * `report.period` if the structured bounds aren't available (older
+ * reports generated before periodStart/periodEnd were stored).
+ */
+export function formatPeriodRange(report: Report): string {
+  if (report.periodStart && report.periodEnd) {
+    return `${shortDate(report.periodStart)} → ${shortDate(report.periodEnd)}`;
+  }
+  return report.period;
+}
+
+function shortDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 /** Strip markdown to plain text for prose blocks. */
