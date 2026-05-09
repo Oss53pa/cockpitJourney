@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, Loader2, ArrowRight, Lock } from 'lucide-react';
-import { signInWithPassword, SUPABASE_CONFIGURED } from '../../lib/supabase';
+import { signInWithPassword, SUPABASE_CONFIGURED, supabase, APP_ID, APP_TAGLINE } from '../../lib/supabase';
 import { AuthLayout, AuthErrorBanner } from '../auth/AuthLayout';
 
 /**
@@ -41,7 +41,15 @@ export function LoginView() {
     setError(null);
     try {
       await signInWithPassword(email, password);
-      // onAuthStateChange in appStore picks it up → /dashboard.
+      // Tag this session with `data.app = "CockpitJourney"` so the
+      // shared Atlas Studio Auth e-mail templates branch on the correct
+      // brand (multi-app project: ~/.Data.app drives the conditional).
+      // We don't await the update — it's best-effort and the login
+      // redirect must not be blocked.
+      void supabase.auth.updateUser({
+        data: { app: APP_ID, app_id: 'cockpit-journey', app_tagline: APP_TAGLINE },
+      });
+      // onAuthStateChange in appStore picks the session up → /dashboard.
     } catch (err) {
       setError(humanizeAuthError(err));
       setLoading(false);

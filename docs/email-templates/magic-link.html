@@ -7,25 +7,18 @@
 <meta name="format-detection" content="telephone=no, date=no, address=no, email=no, url=no" />
 <meta name="color-scheme" content="light only" />
 <meta name="supported-color-schemes" content="light only" />
-<title>Code de connexion · CockpitJourney</title>
+<title>Code de connexion · {{ if .Data.app }}{{ .Data.app }}{{ else }}Atlas Studio{{ end }}</title>
 <!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
 <style type="text/css">
-  /* Web fonts — pulled when supported, gracefully fall back otherwise. */
   @import url('https://fonts.googleapis.com/css2?family=Grand+Hotel&family=Dosis:wght@200;300;400;500;600&family=JetBrains+Mono:wght@300;400&display=swap');
-
-  /* Resets that MUST live in <style> (clients that strip <style> still degrade gracefully because every visual rule is also inline). */
-  body { margin: 0 !important; padding: 0 !important; width: 100% !important; min-width: 100% !important; }
-  table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
-  img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
-  a { text-decoration: none; }
-
-  /* Mobile overrides — media queries cannot be inlined; the unprefixed
-     desktop values are inline on every element so this only refines on
-     small viewports. */
+  body { margin:0 !important; padding:0 !important; width:100% !important; min-width:100% !important; }
+  table, td { mso-table-lspace:0pt; mso-table-rspace:0pt; }
+  img { -ms-interpolation-mode:bicubic; border:0; height:auto; line-height:100%; outline:none; text-decoration:none; }
+  a { text-decoration:none; }
   @media screen and (max-width: 540px) {
     .em-container { border-radius: 16px !important; }
     .em-header { padding: 28px 22px 22px !important; }
-    .em-logo { font-size: 36px !important; }
+    .em-logo-text { font-size: 30px !important; }
     .em-body { padding: 28px 22px 22px !important; }
     .em-code { font-size: 32px !important; letter-spacing: 0.28em !important; padding-left: 0.28em !important; }
     .em-footer { padding: 22px 20px 26px !important; }
@@ -35,9 +28,9 @@
 </head>
 <body style="margin:0; padding:0; background:#F4F2E9; font-family:'Dosis', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color:#1A1D17; font-weight:300;" bgcolor="#F4F2E9">
 
-<!-- Hidden preheader (preview text in inbox list) -->
+<!-- Hidden preheader -->
 <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; visibility:hidden; opacity:0; color:transparent; height:0; width:0; font-size:1px; line-height:1px;">
-  Votre code de connexion CockpitJourney : {{ .Token }} — valide 5 minutes.
+  Votre code de connexion {{ if .Data.app }}{{ .Data.app }}{{ else }}Atlas Studio{{ end }} : {{ .Token }} — valide 5 minutes.
 </div>
 
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#F4F2E9" style="background:#F4F2E9; padding:40px 12px;">
@@ -51,20 +44,38 @@
       <!-- Header -->
       <tr><td bgcolor="#FBFAF4" style="background:#FBFAF4; background-image:linear-gradient(135deg, #FBFAF4 0%, #F4F2E9 50%, #ECE6D2 100%);">
         <div class="em-header" style="padding:38px 32px 28px; text-align:center;">
-          <!-- Wordmark — text-as-paths PNG (Grand Hotel outlined). Served
-               via jsDelivr from the repo so we don't depend on web fonts
-               which Yahoo/Outlook strip. The @2x source is in srcset for
-               retina; clients that ignore srcset just use the 1x. -->
-          <img
-            src="https://cdn.jsdelivr.net/gh/Oss53pa/cockpitJourney@main/public/cj-wordmark.png"
-            srcset="https://cdn.jsdelivr.net/gh/Oss53pa/cockpitJourney@main/public/cj-wordmark.png 1x, https://cdn.jsdelivr.net/gh/Oss53pa/cockpitJourney@main/public/cj-wordmark@2x.png 2x"
-            alt="CockpitJourney"
-            width="280"
-            height="71"
-            style="display:block; margin:0 auto; max-width:100%; height:auto; border:0; outline:none; text-decoration:none;"
-          />
-          <div style="margin-top:14px; font-size:10px; letter-spacing:0.28em; text-transform:uppercase; color:#6E8B58; font-weight:500; font-family:'Dosis', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;">
-            Pilotez votre journée<span style="color:#C9C2A8; margin:0 8px; font-weight:300;">·</span>Propulsé par PROPH3T
+
+          <!-- Atlas Studio parent brand line -->
+          <div style="font-size:10px; letter-spacing:0.32em; text-transform:uppercase; color:#52693F; font-weight:600; margin-bottom:14px; font-family:'Dosis', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;">
+            ATLAS STUDIO{{ if .Data.app }}<span style="color:#C9C2A8; margin:0 8px; font-weight:300;">·</span>{{ .Data.app }}{{ end }}
+          </div>
+
+          <!-- App-specific logo -->
+          {{ if eq .Data.app "CockpitJourney" }}
+            <!-- CockpitJourney : Grand Hotel wordmark PNG (text-as-paths) -->
+            <img
+              src="https://cdn.jsdelivr.net/gh/Oss53pa/cockpitJourney@main/public/cj-wordmark.png"
+              srcset="https://cdn.jsdelivr.net/gh/Oss53pa/cockpitJourney@main/public/cj-wordmark.png 1x, https://cdn.jsdelivr.net/gh/Oss53pa/cockpitJourney@main/public/cj-wordmark@2x.png 2x"
+              alt="CockpitJourney"
+              width="280"
+              height="71"
+              style="display:block; margin:0 auto; max-width:100%; height:auto; border:0; outline:none; text-decoration:none;"
+            />
+          {{ else if .Data.app }}
+            <!-- Other Atlas Studio app : text-only logo (no wordmark image yet) -->
+            <div class="em-logo-text" style="font-family:'Grand Hotel', 'Brush Script MT', Georgia, serif; font-size:42px; line-height:1; color:#1A1D17; letter-spacing:-0.01em; font-weight:400; margin:8px 0;">
+              {{ .Data.app }}
+            </div>
+          {{ else }}
+            <!-- Unknown app : Atlas Studio default -->
+            <div class="em-logo-text" style="font-family:'Grand Hotel', 'Brush Script MT', Georgia, serif; font-size:42px; line-height:1; color:#1A1D17; letter-spacing:-0.01em; font-weight:400; margin:8px 0;">
+              Atlas Studio
+            </div>
+          {{ end }}
+
+          <!-- Tagline (per-app from raw_user_meta_data, fallback to generic) -->
+          <div style="margin-top:12px; font-size:10px; letter-spacing:0.28em; text-transform:uppercase; color:#6E8B58; font-weight:500; font-family:'Dosis', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;">
+            {{ if .Data.app_tagline }}{{ .Data.app_tagline }}{{ else }}Suite cockpit pour dirigeants{{ end }}
           </div>
         </div>
       </td></tr>
@@ -77,7 +88,8 @@
         </h1>
         <p style="margin:0 0 16px; font-size:15px; line-height:1.65; color:#3F443A; font-weight:300;">Bonjour,</p>
         <p style="margin:0 0 16px; font-size:15px; line-height:1.65; color:#3F443A; font-weight:300;">
-          Quelqu'un (probablement vous) vient de demander à se connecter à votre cockpit <strong style="font-weight:500; color:#1A1D17;">CockpitJourney</strong>.
+          Quelqu'un (probablement vous) vient de demander à se connecter à votre compte
+          <strong style="font-weight:500; color:#1A1D17;">{{ if .Data.app }}{{ .Data.app }}{{ else }}Atlas Studio{{ end }}</strong>.
           Saisissez ce code à 6 chiffres dans la fenêtre que vous venez d'ouvrir :
         </p>
 
@@ -99,26 +111,29 @@
         <p style="margin:0 0 16px; font-size:13px; color:#7A8071; line-height:1.6; font-weight:300;">
           Si vous ne reconnaissez pas cette demande, ignorez simplement cet e-mail —
           aucune action ne sera prise et le code expirera tout seul. Votre compte
-          reste protégé : sans le code, personne ne peut accéder à votre cockpit.
+          reste protégé : sans le code, personne ne peut accéder à
+          {{ if .Data.app }} votre {{ .Data.app }}{{ else }} votre cockpit{{ end }}.
         </p>
 
-        <!-- PROPH3T insight box -->
+        <!-- PROPH3T insight box (CockpitJourney only) -->
+        {{ if eq .Data.app "CockpitJourney" }}
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 8px;">
           <tr><td bgcolor="#F1F5EC" style="background:#F1F5EC; padding:14px 16px; border-left:3px solid #6E8B58; border-radius:0 10px 10px 0;">
             <div style="font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:#6E8B58; font-weight:600; margin-bottom:4px; font-family:'Dosis', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;">✨ Bon à savoir</div>
             <p style="margin:0; font-size:13px; color:#3F443A; line-height:1.55; font-weight:300; font-family:'Dosis', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;">Une fois connecté, PROPH3T vous attend pour générer votre Daily Brief : top&nbsp;3 priorités, risques, fenêtre Deep Work pré-bloquée.</p>
           </td></tr>
         </table>
+        {{ end }}
       </td></tr>
 
       <!-- Footer -->
       <tr><td class="em-footer" bgcolor="#F8F6EE" style="background:#F8F6EE; padding:28px 32px 32px; text-align:center; font-size:12px; color:#7A8071; line-height:1.7; font-weight:300; border-top:1px solid #DCD9CB; font-family:'Dosis', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;">
-        <div style="font-size:11px; letter-spacing:0.22em; text-transform:uppercase; color:#52693F; font-weight:600; margin-bottom:8px;">CockpitJourney · 13<sup>e</sup> produit Atlas Studio</div>
+        <div style="font-size:11px; letter-spacing:0.22em; text-transform:uppercase; color:#52693F; font-weight:600; margin-bottom:8px;">
+          ATLAS STUDIO{{ if .Data.app }} · {{ .Data.app }}{{ end }}
+        </div>
         Vous recevez cet e-mail parce qu'une connexion a été demandée à <strong style="font-weight:500; color:#3F443A;">{{ .Email }}</strong>.<br/>
         Si ce n'était pas vous, aucune action n'est requise — le code sera invalide dans 5 minutes.
         <div style="margin-top:14px; padding-top:14px; border-top:1px solid #E8E3D0; font-size:11px;">
-          <a href="https://cockpitjourney.app" style="color:#6E8B58; text-decoration:none; font-weight:400;">cockpitjourney.app</a>
-          <span style="color:#DCD9CB; margin:0 8px;">·</span>
           <a href="https://atlas-studio.org" style="color:#6E8B58; text-decoration:none; font-weight:400;">atlas-studio.org</a>
           <span style="color:#DCD9CB; margin:0 8px;">·</span>
           <a href="https://atlas-studio.org/portal/legal/privacy" style="color:#6E8B58; text-decoration:none; font-weight:400;">Confidentialité</a>
