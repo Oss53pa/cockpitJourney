@@ -24,6 +24,10 @@ import {
   BarChart3,
   ChevronDown,
   ChevronRight,
+  LayoutGrid,
+  Rows3,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { useApp, type Report, type ReportKind, type AttentionPoint } from '../../stores/appStore';
 import type { Task } from '../../types';
@@ -65,9 +69,48 @@ export function ReportsView() {
   const [filter, setFilter] = useState<'all' | ReportKind>('all');
   const [openReportId, setOpenReportId] = useState<string | null>(null);
   const [exportReportId, setExportReportId] = useState<string | null>(null);
+  // Default to "table" — proper history view. Card grid stays available
+  // via the toggle for visual scanning.
+  const [layout, setLayout] = useState<'table' | 'cards'>('table');
+  const [sortKey, setSortKey] = useState<'generatedAt' | 'kind' | 'title' | 'critical' | 'projects'>(
+    'generatedAt'
+  );
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  const filtered = filter === 'all' ? reports : reports.filter((r) => r.kind === filter);
+  const filtered = useMemo(() => {
+    const base = filter === 'all' ? reports : reports.filter((r) => r.kind === filter);
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return [...base].sort((a, b) => {
+      switch (sortKey) {
+        case 'generatedAt':
+          return (new Date(a.generatedAt).getTime() - new Date(b.generatedAt).getTime()) * dir;
+        case 'kind':
+          return a.kind.localeCompare(b.kind) * dir;
+        case 'title':
+          return a.title.localeCompare(b.title) * dir;
+        case 'critical': {
+          const ac = (a.attentionPoints || []).filter((x) => x.severity === 'critical').length;
+          const bc = (b.attentionPoints || []).filter((x) => x.severity === 'critical').length;
+          return (ac - bc) * dir;
+        }
+        case 'projects':
+          return ((a.projects?.length ?? 0) - (b.projects?.length ?? 0)) * dir;
+        default:
+          return 0;
+      }
+    });
+  }, [reports, filter, sortKey, sortDir]);
+
   const exportingReport = exportReportId ? reports.find((r) => r.id === exportReportId) : undefined;
+
+  const handleSort = (k: typeof sortKey) => {
+    if (sortKey === k) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(k);
+      setSortDir(k === 'generatedAt' ? 'desc' : 'asc');
+    }
+  };
 
   return (
     <div className="px-8 py-7">
@@ -145,65 +188,114 @@ export function ReportsView() {
         })}
       </div>
 
-      <div className="flex items-center gap-1.5 mb-4">
-        <button
-          onClick={() => setFilter('all')}
-          className={cn(
-            'px-3 py-1 rounded-full text-2xs uppercase tracking-wider font-medium border',
-            filter === 'all'
-              ? 'bg-atlas-amber/15 border-atlas-amber/30 text-atlas-amber-deep'
-              : 'border-atlas-line text-atlas-fg-3 hover:bg-black/[0.04]'
-          )}
-        >
-          Tous · {reports.length}
-        </button>
-        {(Object.keys(kindLabels) as ReportKind[]).map((k) => (
+      {/* Filters + history label + layout toggle */}
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-2xs uppercase tracking-[0.18em] font-medium text-atlas-fg-3 mr-1">
+            Historique
+          </span>
           <button
-            key={k}
-            onClick={() => setFilter(k)}
+            onClick={() => setFilter('all')}
             className={cn(
               'px-3 py-1 rounded-full text-2xs uppercase tracking-wider font-medium border',
-              filter === k
+              filter === 'all'
                 ? 'bg-atlas-amber/15 border-atlas-amber/30 text-atlas-amber-deep'
                 : 'border-atlas-line text-atlas-fg-3 hover:bg-black/[0.04]'
             )}
           >
-            {kindLabels[k]}
+            Tous · {reports.length}
           </button>
-        ))}
+          {(Object.keys(kindLabels) as ReportKind[]).map((k) => (
+            <button
+              key={k}
+              onClick={() => setFilter(k)}
+              className={cn(
+                'px-3 py-1 rounded-full text-2xs uppercase tracking-wider font-medium border',
+                filter === k
+                  ? 'bg-atlas-amber/15 border-atlas-amber/30 text-atlas-amber-deep'
+                  : 'border-atlas-line text-atlas-fg-3 hover:bg-black/[0.04]'
+              )}
+            >
+              {kindLabels[k]}
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto inline-flex items-center gap-0 rounded-full border border-atlas-line bg-white p-0.5">
+          <button
+            onClick={() => setLayout('table')}
+            aria-label="Vue tableau"
+            title="Vue tableau"
+            className={cn(
+              'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-2xs uppercase tracking-wider font-medium transition',
+              layout === 'table'
+                ? 'bg-atlas-amber/15 text-atlas-amber-deep'
+                : 'text-atlas-fg-3 hover:text-atlas-fg-1'
+            )}
+          >
+            <Rows3 className="w-3 h-3" />
+            Table
+          </button>
+          <button
+            onClick={() => setLayout('cards')}
+            aria-label="Vue cartes"
+            title="Vue cartes"
+            className={cn(
+              'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-2xs uppercase tracking-wider font-medium transition',
+              layout === 'cards'
+                ? 'bg-atlas-amber/15 text-atlas-amber-deep'
+                : 'text-atlas-fg-3 hover:text-atlas-fg-1'
+            )}
+          >
+            <LayoutGrid className="w-3 h-3" />
+            Cartes
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {filtered.map((r) => (
-          <ReportCard
-            key={r.id}
-            report={r}
-            onOpen={() => setOpenReportId(r.id)}
-            onExport={() => setExportReportId(r.id)}
-            onDelete={() => {
-              if (confirm(`Supprimer "${r.title}" ?`)) deleteReport(r.id);
+      {filtered.length === 0 ? (
+        <div className="panel p-10 text-center">
+          <FileBarChart className="w-8 h-8 mx-auto text-atlas-fg-3 mb-2" />
+          <h3 className="text-sm font-medium text-atlas-fg-1">Aucun rapport</h3>
+          <p className="text-2xs text-atlas-fg-3 mt-1 mb-4">
+            Générez votre premier rapport — analyse complète multi-projets.
+          </p>
+          <button
+            onClick={() => {
+              const r = generateReport('weekly');
+              setOpenReportId(r.id);
             }}
-          />
-        ))}
-        {filtered.length === 0 && (
-          <div className="col-span-full panel p-10 text-center">
-            <FileBarChart className="w-8 h-8 mx-auto text-atlas-fg-3 mb-2" />
-            <h3 className="text-sm font-medium text-atlas-fg-1">Aucun rapport</h3>
-            <p className="text-2xs text-atlas-fg-3 mt-1 mb-4">
-              Générez votre premier rapport — analyse complète multi-projets.
-            </p>
-            <button
-              onClick={() => {
-                const r = generateReport('weekly');
-                setOpenReportId(r.id);
+            className="btn-primary text-sm px-3.5 py-1.5 inline-flex"
+          >
+            <Sparkles className="w-3.5 h-3.5" /> Générer hebdo
+          </button>
+        </div>
+      ) : layout === 'table' ? (
+        <ReportsHistoryTable
+          reports={filtered}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSort={handleSort}
+          onOpen={(id) => setOpenReportId(id)}
+          onExport={(id) => setExportReportId(id)}
+          onDelete={(id, title) => {
+            if (confirm(`Supprimer "${title}" ?`)) deleteReport(id);
+          }}
+        />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {filtered.map((r) => (
+            <ReportCard
+              key={r.id}
+              report={r}
+              onOpen={() => setOpenReportId(r.id)}
+              onExport={() => setExportReportId(r.id)}
+              onDelete={() => {
+                if (confirm(`Supprimer "${r.title}" ?`)) deleteReport(r.id);
               }}
-              className="btn-primary text-sm px-3.5 py-1.5 inline-flex"
-            >
-              <Sparkles className="w-3.5 h-3.5" /> Générer hebdo
-            </button>
-          </div>
-        )}
-      </div>
+            />
+          ))}
+        </div>
+      )}
 
       {openReportId && (
         <ReportViewerModal
@@ -217,6 +309,262 @@ export function ReportsView() {
         <ReportExportDialog report={exportingReport} open onClose={() => setExportReportId(null)} />
       )}
     </div>
+  );
+}
+
+/* ───────────────────── History table ─────────────────────
+ *
+ * Dense, sortable table of all generated reports — the proper history
+ * surface. Columns: Date · Type · Titre & période · Projets · Critiques
+ * · Auteur · Narration · Actions. Sortable on Date / Type / Titre /
+ * Critiques / Projets via the column headers.
+ */
+
+type SortKey = 'generatedAt' | 'kind' | 'title' | 'critical' | 'projects';
+
+function ReportsHistoryTable({
+  reports,
+  sortKey,
+  sortDir,
+  onSort,
+  onOpen,
+  onExport,
+  onDelete,
+}: {
+  reports: Report[];
+  sortKey: SortKey;
+  sortDir: 'asc' | 'desc';
+  onSort: (k: SortKey) => void;
+  onOpen: (id: string) => void;
+  onExport: (id: string) => void;
+  onDelete: (id: string, title: string) => void;
+}) {
+  return (
+    <div className="panel overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-atlas-panel-2 border-b border-atlas-line">
+              <SortableTh sortKey="generatedAt" current={sortKey} dir={sortDir} onSort={onSort}>
+                Date
+              </SortableTh>
+              <SortableTh sortKey="kind" current={sortKey} dir={sortDir} onSort={onSort}>
+                Type
+              </SortableTh>
+              <SortableTh sortKey="title" current={sortKey} dir={sortDir} onSort={onSort}>
+                Titre & période
+              </SortableTh>
+              <SortableTh sortKey="projects" current={sortKey} dir={sortDir} onSort={onSort} align="right">
+                Projets
+              </SortableTh>
+              <SortableTh sortKey="critical" current={sortKey} dir={sortDir} onSort={onSort} align="right">
+                Critiques
+              </SortableTh>
+              <th className="text-left text-2xs uppercase tracking-[0.18em] text-atlas-fg-3 font-medium px-4 py-3">
+                Auteur
+              </th>
+              <th className="text-center text-2xs uppercase tracking-[0.18em] text-atlas-fg-3 font-medium px-4 py-3 w-20">
+                Narration
+              </th>
+              <th className="text-right text-2xs uppercase tracking-[0.18em] text-atlas-fg-3 font-medium px-4 py-3 w-1">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {reports.map((r) => (
+              <ReportRow
+                key={r.id}
+                report={r}
+                onOpen={() => onOpen(r.id)}
+                onExport={() => onExport(r.id)}
+                onDelete={() => onDelete(r.id, r.title)}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function SortableTh({
+  sortKey,
+  current,
+  dir,
+  onSort,
+  align = 'left',
+  children,
+}: {
+  sortKey: SortKey;
+  current: SortKey;
+  dir: 'asc' | 'desc';
+  onSort: (k: SortKey) => void;
+  align?: 'left' | 'right';
+  children: React.ReactNode;
+}) {
+  const active = current === sortKey;
+  return (
+    <th
+      className={cn(
+        'text-2xs uppercase tracking-[0.18em] font-medium px-4 py-3',
+        align === 'right' ? 'text-right' : 'text-left',
+        active ? 'text-atlas-amber-deep' : 'text-atlas-fg-3'
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={cn(
+          'inline-flex items-center gap-1 hover:text-atlas-fg-1 transition',
+          align === 'right' && 'justify-end w-full'
+        )}
+      >
+        {children}
+        {active && (dir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
+      </button>
+    </th>
+  );
+}
+
+function ReportRow({
+  report,
+  onOpen,
+  onExport,
+  onDelete,
+}: {
+  report: Report;
+  onOpen: () => void;
+  onExport: () => void;
+  onDelete: () => void;
+}) {
+  const author = useApp((s) => s.users.find((u) => u.id === report.authorId) || s.users[0]);
+  const pushToast = useApp((s) => s.pushToast);
+  const critical = (report.attentionPoints || []).filter((a) => a.severity === 'critical').length;
+  const high = (report.attentionPoints || []).filter((a) => a.severity === 'high').length;
+
+  const generatedAt = new Date(report.generatedAt);
+  const fullDate = generatedAt.toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+  const time = generatedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <tr className="border-b border-atlas-line/50 last:border-0 hover:bg-atlas-amber/[0.03] transition-colors">
+      <td className="px-4 py-3 align-top tabular-nums">
+        <div className="text-sm font-medium text-atlas-fg-1">{fullDate}</div>
+        <div className="text-2xs text-atlas-fg-3">
+          {time} · {relativeTime(report.generatedAt)}
+        </div>
+      </td>
+      <td className="px-4 py-3 align-top">
+        <span className={cn('chip border', kindColors[report.kind])}>{kindLabels[report.kind]}</span>
+      </td>
+      <td className="px-4 py-3 align-top min-w-0 max-w-[28rem]">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="text-left text-sm font-medium text-atlas-fg-1 hover:text-atlas-amber-deep transition leading-snug"
+        >
+          {report.title}
+        </button>
+        <div className="text-2xs text-atlas-fg-3 mt-0.5">{report.period}</div>
+      </td>
+      <td className="px-4 py-3 align-top text-right tabular-nums">
+        <span className="text-sm font-medium text-atlas-fg-1">{report.projects?.length ?? 0}</span>
+      </td>
+      <td className="px-4 py-3 align-top text-right tabular-nums">
+        {critical > 0 ? (
+          <span className="inline-flex items-center gap-1.5 text-sm font-medium text-signal-red">
+            <span className="w-1.5 h-1.5 rounded-full bg-signal-red" />
+            {critical}
+          </span>
+        ) : high > 0 ? (
+          <span className="inline-flex items-center gap-1.5 text-sm font-medium text-signal-yellow">
+            <span className="w-1.5 h-1.5 rounded-full bg-signal-yellow" />
+            {high}
+          </span>
+        ) : (
+          <span className="text-sm text-atlas-fg-3">—</span>
+        )}
+      </td>
+      <td className="px-4 py-3 align-top">
+        <div className="inline-flex items-center gap-2 min-w-0">
+          <span
+            className="w-6 h-6 rounded-full text-2xs font-medium flex items-center justify-center text-white shrink-0"
+            style={{ background: `linear-gradient(135deg, ${author.color}, ${author.color}99)` }}
+          >
+            {author.initials}
+          </span>
+          <span className="text-sm text-atlas-fg-2 truncate">{author.name}</span>
+        </div>
+      </td>
+      <td className="px-4 py-3 align-top text-center">
+        {report.narrative ? (
+          <span
+            className="inline-flex items-center gap-1 chip bg-atlas-amber/10 text-atlas-amber-deep border border-atlas-amber/30"
+            title="Narration PROPH3T générée"
+          >
+            <Sparkles className="w-2.5 h-2.5" /> IA
+          </span>
+        ) : (
+          <span className="text-2xs text-atlas-fg-3">—</span>
+        )}
+      </td>
+      <td className="px-4 py-3 align-top">
+        <div className="inline-flex items-center gap-1 justify-end">
+          <button onClick={onOpen} className="btn-ghost !p-1.5" title="Ouvrir" aria-label="Ouvrir le rapport">
+            <FileText className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={onExport} className="btn-ghost !p-1.5" title="Exporter" aria-label="Exporter">
+            <Download className="w-3.5 h-3.5" />
+          </button>
+          <Menu
+            trigger={
+              <button className="btn-ghost !p-1.5" aria-label="Plus d'actions">
+                <MoreHorizontal className="w-3.5 h-3.5" />
+              </button>
+            }
+          >
+            {(close) => (
+              <>
+                <MenuItem
+                  icon={Mail}
+                  onClick={() => {
+                    close();
+                    pushToast({ kind: 'success', title: 'Rapport envoyé par e-mail' });
+                  }}
+                >
+                  Envoyer par e-mail
+                </MenuItem>
+                <MenuItem
+                  icon={Copy}
+                  onClick={() => {
+                    close();
+                    pushToast({ kind: 'success', title: 'Lien copié' });
+                  }}
+                >
+                  Copier le lien
+                </MenuItem>
+                <MenuSeparator />
+                <MenuItem
+                  danger
+                  icon={Trash2}
+                  onClick={() => {
+                    close();
+                    onDelete();
+                  }}
+                >
+                  Supprimer
+                </MenuItem>
+              </>
+            )}
+          </Menu>
+        </div>
+      </td>
+    </tr>
   );
 }
 
