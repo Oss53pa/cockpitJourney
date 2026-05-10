@@ -13,6 +13,7 @@ import { ForgotPasswordView } from './components/views/ForgotPasswordView';
 import { ResetPasswordView } from './components/views/ResetPasswordView';
 import { LandingPage } from './components/views/LandingPage';
 import { AuthCallback } from './components/AuthCallback';
+const AcceptInvite = lazy(() => import('./pages/auth/AcceptInvite'));
 import { ModalRoot } from './components/modals/ModalRoot';
 const TeamSettingsPage = lazy(() => import('./pages/settings/TeamSettingsPage'));
 const IntegrationsSettingsPage = lazy(() => import('./pages/settings/IntegrationsSettingsPage'));
@@ -401,6 +402,14 @@ function App() {
 
       {/* SSO callback (Atlas Studio token handoff or magic-link redirect) */}
       <Route path="/auth" element={<AuthCallback />} />
+      <Route
+        path="/auth/accept-invite"
+        element={
+          <Suspense fallback={<div />}>
+            <AcceptInvite />
+          </Suspense>
+        }
+      />
 
       {/* Team settings — gestion equipe via licence_seats */}
       <Route
