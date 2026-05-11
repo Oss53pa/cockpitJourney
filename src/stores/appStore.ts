@@ -641,8 +641,13 @@ const initialState = (set: SetFn, get: GetFn): State => ({
         }
         // Signed in / refreshed / initial session with valid creds → hydrate
         await hydrateFromSupabase(session.user.id, session.user.email ?? '', set, get);
-      } catch (err) {
+      } catch (err: any) {
         console.error('[bootstrap] auth state change handler failed', err);
+        const msg = err?.message || '';
+        if (msg.includes('Refresh Token') || msg.includes('Invalid Refresh Token')) {
+          console.warn('[auth] Refresh token invalid — signing out');
+          await supabase.auth.signOut();
+        }
         set({ authStatus: 'signed_out' });
       } finally {
         clearTimeout(timeoutId);
@@ -662,8 +667,13 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       } else if (get().authStatus === 'loading') {
         set({ authStatus: 'signed_out' });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[bootstrap] getSession failed', err);
+      const msg = err?.message || '';
+      if (msg.includes('Refresh Token') || msg.includes('Invalid Refresh Token')) {
+        console.warn('[auth] Refresh token invalid — signing out');
+        await supabase.auth.signOut();
+      }
       set({ authStatus: 'signed_out' });
     } finally {
       clearTimeout(timeoutId);

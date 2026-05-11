@@ -1,6 +1,15 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 
+function isChunkLoadError(error: Error): boolean {
+  return (
+    error.message.includes('dynamically imported module') ||
+    error.message.includes('Failed to fetch') ||
+    error.message.includes('Loading chunk') ||
+    error.name === 'ChunkLoadError'
+  );
+}
+
 interface Props {
   children: ReactNode;
   fallback?: (err: Error, reset: () => void) => ReactNode;
@@ -18,6 +27,13 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error('[ErrorBoundary]', error, info.componentStack);
+    if (isChunkLoadError(error)) {
+      const key = 'chunk-reload-' + location.pathname;
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, '1');
+        location.reload();
+      }
+    }
   }
 
   reset = () => this.setState({ error: null });
