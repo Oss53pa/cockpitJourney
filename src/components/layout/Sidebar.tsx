@@ -74,6 +74,9 @@ export function Sidebar({
   const tasks = useApp((s) => s.tasks);
   const notifications = useApp((s) => s.notifications);
   const me = useCurrentUser();
+  // Canonical e-mail from the auth session (NOT from the cj_profiles
+  // row, which can contain a seeded mock e-mail for legacy users).
+  const authEmail = useApp((s) => s.authEmail);
   const openModal = useApp((s) => s.openModal);
   const updateProject = useApp((s) => s.updateProject);
   const deleteProject = useApp((s) => s.deleteProject);
@@ -306,17 +309,30 @@ export function Sidebar({
               <Avatar user={me} size="md" />
               <div className="flex-1 min-w-0 text-left">
                 <div className="text-sm font-medium text-atlas-fg-1 truncate">{me.name}</div>
-                <div className="text-2xs text-atlas-fg-3 truncate">Plan Pro · 12 900 FCFA/mois</div>
+                {/* Prefer the auth session e-mail (canonical truth from
+                    auth.users) over the cj_profiles row, which may
+                    still contain a seeded mock e-mail for users who
+                    signed up before the clean seed (Pamela's
+                    pame@atlasstudio.io leak). */}
+                <div className="text-2xs text-atlas-fg-3 truncate" title={authEmail || me.email}>
+                  {authEmail || me.email || me.role || '—'}
+                </div>
               </div>
               <Settings className="w-4 h-4 text-atlas-fg-3 group-hover:text-atlas-fg-1 transition-colors" />
             </div>
           }
           align="left"
-          width={220}
+          width={260}
         >
           {(close) => (
             <>
-              <MenuLabel>{me.email}</MenuLabel>
+              {/* Email shown in full inside the menu — break-all so a
+                  long address wraps cleanly. */}
+              <MenuLabel>
+                <span className="break-all normal-case tracking-normal">
+                  {authEmail || me.email || me.name}
+                </span>
+              </MenuLabel>
               <MenuItem
                 icon={Settings}
                 onClick={() => {
