@@ -2,48 +2,71 @@ import { useState } from 'react';
 import { useApp } from '../../stores/appStore';
 import { Modal } from '../ui/Modal';
 import { FieldLabel, NativeSelect, TextInput, Textarea } from '../ui/Field';
+import type { Project } from '../../types';
 
 const COLORS = ['#95B07D', '#8AA6C4', '#A290C2', '#7AC388', '#D58FA7', '#D77564', '#D6B868', '#6E8B58'];
 const ICONS = ['Compass', 'FileText', 'Wallet', 'Sparkles', 'TrendingUp', 'Sunrise', 'BookOpen'];
 
-export function ProjectFormModal({ onClose }: { onClose: () => void }) {
+interface Props {
+  onClose: () => void;
+  initial?: Project;
+}
+
+export function ProjectFormModal({ onClose, initial }: Props) {
   const folders = useApp((s) => s.folders);
   const createProject = useApp((s) => s.createProject);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [folderId, setFolderId] = useState(folders[0]?.id ?? '');
-  const [color, setColor] = useState(COLORS[0]);
-  const [icon, setIcon] = useState(ICONS[0]);
-  const [endDate, setEndDate] = useState('');
+  const updateProject = useApp((s) => s.updateProject);
+  const isEdit = !!initial;
+
+  const [name, setName] = useState(initial?.name ?? '');
+  const [description, setDescription] = useState(initial?.description ?? '');
+  const [folderId, setFolderId] = useState(initial?.folderId ?? folders[0]?.id ?? '');
+  const [color, setColor] = useState(initial?.color ?? COLORS[0]);
+  const [icon, setIcon] = useState(initial?.icon ?? ICONS[0]);
+  const [endDate, setEndDate] = useState(initial?.endDate ?? '');
+
+  const submit = () => {
+    if (!name.trim()) return;
+    if (isEdit) {
+      updateProject(initial.id, {
+        name: name.trim(),
+        description: description.trim() || undefined,
+        folderId,
+        color,
+        icon,
+        endDate: endDate || undefined,
+      });
+    } else {
+      createProject({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        folderId,
+        color,
+        icon,
+        endDate: endDate || undefined,
+      });
+    }
+    onClose();
+  };
 
   return (
     <Modal
       open
       onClose={onClose}
-      title="Nouveau projet"
-      description="Définit la structure : 4 sections par défaut, 7 onglets, dashboards et goals."
+      title={isEdit ? 'Modifier le projet' : 'Nouveau projet'}
+      description={
+        isEdit
+          ? 'Modifiez les informations du projet.'
+          : 'Définit la structure : 4 sections par défaut, 7 onglets, dashboards et goals.'
+      }
       size="lg"
       footer={
         <>
           <button onClick={onClose} className="btn-ghost text-sm px-3 py-1.5">
             Annuler
           </button>
-          <button
-            disabled={!name.trim()}
-            onClick={() => {
-              createProject({
-                name: name.trim(),
-                description: description.trim() || undefined,
-                folderId,
-                color,
-                icon,
-                endDate: endDate || undefined,
-              });
-              onClose();
-            }}
-            className="btn-primary text-sm px-3.5 py-1.5"
-          >
-            Créer le projet
+          <button disabled={!name.trim()} onClick={submit} className="btn-primary text-sm px-3.5 py-1.5">
+            {isEdit ? 'Enregistrer' : 'Créer le projet'}
           </button>
         </>
       }

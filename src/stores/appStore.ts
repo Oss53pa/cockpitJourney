@@ -355,6 +355,8 @@ export type ModalKind =
   | 'task-edit'
   | 'task-delete'
   | 'project-create'
+  | 'project-edit'
+  | 'project-delete'
   | 'goal-create'
   | 'goal-edit'
   | 'goal-bump'

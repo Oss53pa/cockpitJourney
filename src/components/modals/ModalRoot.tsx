@@ -33,6 +33,19 @@ export function ModalRoot() {
       );
     case 'project-create':
       return <ProjectFormModal onClose={close} />;
+    case 'project-edit':
+      return <ProjectFormModal initial={modal.payload} onClose={close} />;
+    case 'project-delete':
+      return (
+        <ConfirmModal
+          title="Supprimer le projet ?"
+          description={modal.payload?.title}
+          confirmLabel="Supprimer"
+          danger
+          onConfirm={modal.payload?.onConfirm}
+          onClose={close}
+        />
+      );
     case 'goal-create':
       return <GoalFormModal onClose={close} />;
     case 'goal-edit':

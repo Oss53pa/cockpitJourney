@@ -26,6 +26,11 @@ import {
   BookOpen,
   LogOut,
   X,
+  Edit3,
+  Trash2,
+  Pause,
+  Play,
+  MoreHorizontal,
   type LucideIcon,
 } from 'lucide-react';
 import { Logo } from '../ui/Logo';
@@ -70,6 +75,8 @@ export function Sidebar({
   const notifications = useApp((s) => s.notifications);
   const me = useCurrentUser();
   const openModal = useApp((s) => s.openModal);
+  const updateProject = useApp((s) => s.updateProject);
+  const deleteProject = useApp((s) => s.deleteProject);
   const pushToast = useApp((s) => s.pushToast);
 
   // Folder expand/collapse state is keyed by folder id and lazy-initialized:
@@ -213,25 +220,75 @@ export function Sidebar({
                       const Icon = projectIcons[p.icon] || Compass;
                       const active = view === 'project' && activeProjectId === p.id;
                       return (
-                        <button
+                        <div
                           key={p.id}
-                          onClick={() => onNavigate('project', p.id)}
                           className={cn(
-                            'group w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm transition-colors',
+                            'group flex items-center rounded-lg text-sm transition-colors',
                             active
                               ? 'bg-black/[0.06] text-atlas-fg-1'
                               : 'text-atlas-fg-2 hover:text-atlas-fg-1 hover:bg-black/[0.03]'
                           )}
                         >
-                          <span
-                            className="w-5 h-5 rounded-md flex items-center justify-center"
-                            style={{ background: `${p.color}22`, color: p.color }}
+                          <button
+                            onClick={() => onNavigate('project', p.id)}
+                            className="flex-1 flex items-center gap-2.5 px-3 py-1.5 min-w-0"
                           >
-                            <Icon className="w-3 h-3" strokeWidth={2.2} />
-                          </span>
-                          <span className="flex-1 text-left truncate">{p.name}</span>
-                          <HealthDot health={p.health} />
-                        </button>
+                            <span
+                              className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
+                              style={{ background: `${p.color}22`, color: p.color }}
+                            >
+                              <Icon className="w-3 h-3" strokeWidth={2.2} />
+                            </span>
+                            <span className="flex-1 text-left truncate">{p.name}</span>
+                            <HealthDot health={p.health} />
+                          </button>
+                          <Menu
+                            trigger={
+                              <button className="w-6 h-6 rounded-md flex items-center justify-center text-atlas-fg-3 opacity-0 group-hover:opacity-100 hover:bg-black/[0.06] hover:text-atlas-fg-1 shrink-0 mr-1">
+                                <MoreHorizontal className="w-3.5 h-3.5" />
+                              </button>
+                            }
+                          >
+                            {(close) => (
+                              <>
+                                <MenuItem
+                                  icon={Edit3}
+                                  onClick={() => {
+                                    close();
+                                    openModal('project-edit', p);
+                                  }}
+                                >
+                                  Modifier
+                                </MenuItem>
+                                <MenuItem
+                                  icon={p.status === 'active' ? Pause : Play}
+                                  onClick={() => {
+                                    close();
+                                    updateProject(p.id, {
+                                      status: p.status === 'active' ? 'paused' : 'active',
+                                    });
+                                  }}
+                                >
+                                  {p.status === 'active' ? 'Mettre en pause' : 'Réactiver'}
+                                </MenuItem>
+                                <MenuSeparator />
+                                <MenuItem
+                                  danger
+                                  icon={Trash2}
+                                  onClick={() => {
+                                    close();
+                                    openModal('project-delete', {
+                                      title: p.name,
+                                      onConfirm: () => deleteProject(p.id),
+                                    });
+                                  }}
+                                >
+                                  Supprimer
+                                </MenuItem>
+                              </>
+                            )}
+                          </Menu>
+                        </div>
                       );
                     })}
                   </div>

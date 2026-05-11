@@ -237,7 +237,7 @@ export function ProjectView({ project, onOpenTask }: Props) {
                     icon={Edit3}
                     onClick={() => {
                       close();
-                      pushToast({ kind: 'info', title: 'Édition projet à venir' });
+                      openModal('project-edit', project);
                     }}
                   >
                     Modifier
@@ -259,7 +259,10 @@ export function ProjectView({ project, onOpenTask }: Props) {
                     icon={Trash2}
                     onClick={() => {
                       close();
-                      if (confirm(`Supprimer ${project.name} ?`)) deleteProject(project.id);
+                      openModal('project-delete', {
+                        title: project.name,
+                        onConfirm: () => deleteProject(project.id),
+                      });
                     }}
                   >
                     Supprimer
