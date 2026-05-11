@@ -144,11 +144,29 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
 
   const focusBlocks = [...taskBlocks, ...ritualBlocks];
 
+  // Compute real deep work minutes from tasks completed today
+  const todayDoneTasks = tasks.filter(
+    (t) => t.status === 'done' && t.completionDate && new Date(t.completionDate).toDateString() === todayStr
+  );
+  const deepWorkMinutes = todayDoneTasks.reduce((sum, t) => sum + (t.actualMinutes || 0), 0);
+
+  // Compute real streak: consecutive days with at least one task completed
+  const completionDays = new Set(
+    tasks
+      .filter((t) => t.status === 'done' && t.completionDate)
+      .map((t) => new Date(t.completionDate!).toDateString())
+  );
+  let streak = 0;
+  for (let d = new Date(); ; d.setDate(d.getDate() - 1)) {
+    if (completionDays.has(d.toDateString())) streak++;
+    else if (d.toDateString() !== todayStr) break;
+  }
+
   const totals = {
-    planned: dueToday.length + 3,
+    planned: dueToday.length,
     completed: tasks.filter((t) => t.status === 'done').length,
-    deepWork: 145,
-    streak: 12,
+    deepWork: deepWorkMinutes,
+    streak,
   };
 
   const submitCapture = async () => {
@@ -310,15 +328,15 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
               <Stat
                 icon={Flame}
                 label="Série"
-                value={`${totals.streak} jours`}
-                sub="record perso : 21j"
+                value={totals.streak > 0 ? `${totals.streak} jour${totals.streak > 1 ? 's' : ''}` : '—'}
+                sub={totals.streak > 0 ? 'jours consécutifs' : 'aucune série en cours'}
                 accent="red"
               />
               <Stat
                 icon={TargetIcon}
                 label="Goals en cours"
                 value={`${goals.length}`}
-                sub="1 en zone jaune"
+                sub={`${goals.filter((g) => g.health !== 'green').length} en zone jaune`}
                 accent="green"
               />
             </div>
@@ -519,7 +537,7 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
                 value={capture}
                 onChange={(e) => setCapture(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && submitCapture()}
-                placeholder='ex : "rappeler Pame vendredi 15h #cosmos"'
+                placeholder='ex : "rappeler client vendredi 15h #projet"'
                 className="flex-1 bg-transparent text-sm placeholder:text-atlas-fg-3 outline-none"
               />
               <button

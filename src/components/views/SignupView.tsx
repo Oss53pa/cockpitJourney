@@ -132,7 +132,7 @@ export function SignupView() {
               autoFocus
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="Pamela Atokouna"
+              placeholder="Votre nom complet"
               className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-atlas-cream border border-atlas-line focus:border-atlas-sage-deep focus:outline-none focus:ring-2 focus:ring-atlas-sage-deep/20 text-sm font-light text-atlas-fg-1 placeholder:text-atlas-fg-3 transition"
             />
           </div>

@@ -29,14 +29,17 @@ export function HomeView({ onEnter }: Props) {
   const monthShort = new Date().toLocaleDateString('fr-FR', { month: 'long' });
   const year = new Date().getFullYear();
 
+  const users = useApp((s) => s.users);
   const activeTasks = tasks.filter((t) => t.status !== 'done').length;
   const completedTasks = tasks.filter((t) => t.status === 'done').length;
   const onTrack = goals.filter((g) => g.health === 'green').length;
   const atRisk = goals.filter((g) => g.health !== 'green').length;
-  const deepWorkHours = 14.5;
-  const deepWorkTarget = 20;
+  const totalActualMinutes = tasks.reduce((sum, t) => sum + (t.actualMinutes || 0), 0);
+  const deepWorkHours = Math.round((totalActualMinutes / 60) * 10) / 10;
+  const deepWorkTarget = Math.max(deepWorkHours, 20);
   const projectsCount = projects.filter((p) => p.status === 'active').length;
-  const sprintProgress = 62;
+  const totalTasks = tasks.length || 1;
+  const sprintProgress = Math.round((completedTasks / totalTasks) * 100);
 
   return (
     <div className="min-h-screen w-full bg-atlas-black bg-noise overflow-x-hidden">
@@ -135,7 +138,7 @@ export function HomeView({ onEnter }: Props) {
             <Kpi
               label="Projets actifs"
               value={String(projectsCount)}
-              sub={`${tasks.length} tâches · 7 membres`}
+              sub={`${tasks.length} tâches · ${users.length} membre${users.length > 1 ? 's' : ''}`}
               sparklineColor="#B69248"
               trend="flat"
               arrow
@@ -172,8 +175,16 @@ export function HomeView({ onEnter }: Props) {
               />
             </div>
             <div className="mt-3 flex items-center justify-between text-2xs text-atlas-fg-3">
-              <span>Reste 4 jours avant clôture · 12 tâches restantes</span>
-              <span className="text-signal-green font-medium">+2 jours d'avance</span>
+              <span>
+                {activeTasks} tâche{activeTasks > 1 ? 's' : ''} restante{activeTasks > 1 ? 's' : ''}
+              </span>
+              <span
+                className={
+                  sprintProgress >= 50 ? 'text-signal-green font-medium' : 'text-signal-yellow font-medium'
+                }
+              >
+                {sprintProgress}% complété
+              </span>
             </div>
           </div>
 

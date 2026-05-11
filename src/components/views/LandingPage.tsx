@@ -283,7 +283,7 @@ function CockpitMockup() {
               <div className="text-2xs uppercase tracking-[0.18em] text-atlas-fg-3 font-light">
                 Aujourd'hui · 7 mai
               </div>
-              <div className="text-base font-light text-atlas-fg-1 mt-0.5">Bonjour Pamela</div>
+              <div className="text-base font-light text-atlas-fg-1 mt-0.5">Bonjour</div>
             </div>
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-atlas-sage-deep text-white text-2xs font-light">
               <Brain className="w-3 h-3" />
@@ -305,7 +305,7 @@ function CockpitMockup() {
                 },
                 {
                   p: 'P2',
-                  txt: 'CoDir Cosmos — point budget 2027',
+                  txt: 'Réunion comité — point budget Q3',
                   col: 'text-signal-yellow bg-signal-yellow/15',
                 },
                 {
@@ -543,7 +543,7 @@ function ValueProps({ cms }: { cms?: FeaturesContent }) {
 
 function PropheticBlock() {
   const caps = [
-    'Parser une tâche en langage naturel ("appeler Koffi vendredi 15h, P1")',
+    'Parser une tâche en langage naturel ("rappel client vendredi 15h, P1")',
     'Générer le Daily Brief avec priorités, risques et insights',
     'Reformuler une description (Impact / Dépendances / Critères de succès)',
     'Suggérer 5 à 7 tâches contributrices à un Goal',
@@ -595,18 +595,18 @@ function PropheticBlock() {
               </span>
             </div>
             <h3 className="text-lg font-light text-atlas-fg-1 mb-3 leading-tight">
-              Bonjour Pamela. 4 priorités aujourd'hui.
+              Bonjour. 4 priorités aujourd'hui.
             </h3>
             <div className="space-y-3">
               {[
                 {
                   badge: 'P1',
-                  text: 'Validation Daily Brief — design system tokens (Koffi)',
+                  text: 'Validation Daily Brief — design system tokens',
                   color: 'bg-signal-red/10 text-signal-red',
                 },
                 {
                   badge: 'P2',
-                  text: 'CoDir Cosmos — point budget 2027',
+                  text: 'Réunion comité — point budget Q3',
                   color: 'bg-signal-yellow/15 text-signal-yellow',
                 },
                 {
@@ -1209,7 +1209,7 @@ function Footer() {
         </div>
       </div>
       <div className="max-w-6xl mx-auto mt-12 pt-6 border-t border-atlas-line flex flex-col sm:flex-row items-center justify-between gap-3 text-2xs text-atlas-fg-3 font-light">
-        <div>© 2026 Atlas Studio · Pamela Atokouna · Tous droits réservés.</div>
+        <div>© {new Date().getFullYear()} Atlas Studio · Tous droits réservés.</div>
         <div className="flex items-center gap-4">
           <span className="font-mono">v1.0</span>
           <span className="inline-flex items-center gap-1">

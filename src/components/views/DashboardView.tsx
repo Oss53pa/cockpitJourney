@@ -54,10 +54,13 @@ export function DashboardView() {
     pushToast({ kind: 'success', title: 'Widget ajouté' });
   };
 
+  const users = useApp((s) => s.users);
+
+  const totalActualMinutes = tasks.reduce((sum, t) => sum + (t.actualMinutes || 0), 0);
   const kpis = {
     activeTasks: tasks.filter((t) => t.status !== 'done').length,
-    timeTracked: 124,
-    mau: 14820,
+    timeTracked: Math.round(totalActualMinutes / 60),
+    teamMembers: users.length,
     goalsOnTrack: goals.filter((g) => g.health === 'green').length,
     goalsTotal: goals.length,
     activeProjects: projects.filter((p) => p.status === 'active').length,
@@ -197,31 +200,27 @@ export function DashboardView() {
         <KpiCard
           label="Tâches actives"
           value={String(kpis.activeTasks)}
-          delta={+12}
           sub={`période ${period.toLowerCase()}`}
           icon={ListChecks}
           accent="amber"
         />
         <KpiCard
           label="Time tracked"
-          value={`${kpis.timeTracked}h`}
-          delta={+8}
-          sub="cette semaine"
+          value={kpis.timeTracked > 0 ? `${kpis.timeTracked}h` : '—'}
+          sub="total logué"
           icon={Clock4}
           accent="blue"
         />
         <KpiCard
-          label="MAU produit"
-          value={kpis.mau.toLocaleString('fr-FR')}
-          delta={+18}
-          sub="vs 12 542 mois précédent"
+          label="Membres équipe"
+          value={String(kpis.teamMembers)}
+          sub="collaborateurs actifs"
           icon={Users}
           accent="green"
         />
         <KpiCard
           label="Goals on-track"
           value={`${kpis.goalsOnTrack} / ${kpis.goalsTotal}`}
-          delta={-1}
           sub={`${kpis.goalsTotal - kpis.goalsOnTrack} en zone jaune`}
           icon={Target}
           accent="violet"
@@ -276,14 +275,12 @@ export function DashboardView() {
 function KpiCard({
   label,
   value,
-  delta,
   sub,
   icon: Icon,
   accent,
 }: {
   label: string;
   value: string;
-  delta: number;
   sub: string;
   icon: any;
   accent: 'amber' | 'blue' | 'green' | 'violet';
@@ -300,7 +297,6 @@ function KpiCard({
     green: 'text-signal-green',
     violet: 'text-signal-violet',
   };
-  const positive = delta >= 0;
   return (
     <div className={cn('relative overflow-hidden rounded-2xl border p-5', ringMap[accent])}>
       <div className="relative flex items-start justify-between">
@@ -319,21 +315,6 @@ function KpiCard({
         >
           <Icon className="w-5 h-5" />
         </div>
-      </div>
-      <div className="mt-3 flex items-center gap-1.5">
-        <span
-          className={cn(
-            'chip border text-[10px] tracking-wider',
-            positive
-              ? 'text-signal-green border-signal-green/30 bg-signal-green/10'
-              : 'text-signal-red border-signal-red/30 bg-signal-red/10'
-          )}
-        >
-          {positive ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-          {positive ? '+' : ''}
-          {delta}%
-        </span>
-        <span className="text-2xs text-atlas-fg-3">vs période N-1</span>
       </div>
     </div>
   );
@@ -425,22 +406,22 @@ function Widget({
 }
 
 function Bars() {
-  const data = [12, 18, 14, 22, 19, 26, 31, 28, 34, 38, 30, 42];
-  const max = Math.max(...data);
-  const labels = [
-    'S-12',
-    'S-11',
-    'S-10',
-    'S-09',
-    'S-08',
-    'S-07',
-    'S-06',
-    'S-05',
-    'S-04',
-    'S-03',
-    'S-02',
-    'S-01',
-  ];
+  const tasks = useApp((s) => s.tasks);
+  const now = Date.now();
+  const weekMs = 7 * 86400000;
+  const labels = Array.from({ length: 12 }, (_, i) => `S-${String(12 - i).padStart(2, '0')}`);
+  const data = labels
+    .map((_, i) => {
+      const weekEnd = now - i * weekMs;
+      const weekStart = weekEnd - weekMs;
+      return tasks.filter((t) => {
+        if (!t.completionDate) return false;
+        const d = new Date(t.completionDate).getTime();
+        return d >= weekStart && d < weekEnd;
+      }).length;
+    })
+    .reverse();
+  const max = Math.max(...data, 1);
   return (
     <div>
       <div className="flex items-end gap-2 h-44">
@@ -476,9 +457,24 @@ function Bars() {
         <span className="inline-flex items-center gap-2 text-2xs text-atlas-fg-3">
           <span className="w-2 h-2 rounded-sm bg-atlas-line" /> Sprints précédents
         </span>
-        <span className="ml-auto text-2xs text-signal-green inline-flex items-center gap-1">
-          <TrendingUp className="w-3 h-3" /> +14% vs S-02
-        </span>
+        {data.length >= 2 && data[data.length - 2] > 0 && (
+          <span
+            className={cn(
+              'ml-auto text-2xs inline-flex items-center gap-1',
+              data[data.length - 1] >= data[data.length - 2] ? 'text-signal-green' : 'text-signal-red'
+            )}
+          >
+            {data[data.length - 1] >= data[data.length - 2] ? (
+              <TrendingUp className="w-3 h-3" />
+            ) : (
+              <TrendingDown className="w-3 h-3" />
+            )}
+            {data[data.length - 2] > 0
+              ? `${Math.round(((data[data.length - 1] - data[data.length - 2]) / data[data.length - 2]) * 100)}%`
+              : '—'}{' '}
+            vs S-02
+          </span>
+        )}
       </div>
     </div>
   );
@@ -545,10 +541,23 @@ function DonutLegend() {
         ))}
         <div className="pt-3 border-t border-atlas-line mt-3">
           <div className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">Score santé</div>
-          <div className="text-signal-green font-display text-2xl font-medium mt-1 flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-signal-green animate-pulse-soft" />
-            96 / 100
-          </div>
+          {(() => {
+            const done = data.find((d) => d.label === 'Terminé')?.value || 0;
+            const score = Math.min(
+              100,
+              Math.round(done * 1.2 + (100 - (data.find((d) => d.label === 'À faire')?.value || 0)) * 0.3)
+            );
+            const color =
+              score >= 70 ? 'text-signal-green' : score >= 40 ? 'text-signal-yellow' : 'text-signal-red';
+            const dotColor =
+              score >= 70 ? 'bg-signal-green' : score >= 40 ? 'bg-signal-yellow' : 'bg-signal-red';
+            return (
+              <div className={cn('font-display text-2xl font-medium mt-1 flex items-center gap-1.5', color)}>
+                <span className={cn('w-2.5 h-2.5 rounded-full animate-pulse-soft', dotColor)} />
+                {score} / 100
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -658,9 +667,23 @@ function Workload() {
 }
 
 function Burndown() {
-  const ideal = [60, 54, 48, 42, 36, 30, 24, 18, 12, 6, 0];
-  const actual = [60, 58, 50, 47, 44, 36, 30, 27, 21, 16, 10];
-  const max = 60;
+  const tasks = useApp((s) => s.tasks);
+  const doneTasks = tasks.filter((t) => t.status === 'done');
+  const totalScope = tasks.length || 1;
+  const steps = 11;
+  const ideal = Array.from({ length: steps }, (_, i) => Math.round(totalScope * (1 - i / (steps - 1))));
+  const now = Date.now();
+  const sprintDays = 14;
+  const dayMs = 86400000;
+  const actual = Array.from({ length: steps }, (_, i) => {
+    const dayOffset = Math.round((i / (steps - 1)) * sprintDays);
+    const cutoff = now - (sprintDays - dayOffset) * dayMs;
+    const doneByThen = doneTasks.filter(
+      (t) => t.completionDate && new Date(t.completionDate).getTime() <= cutoff
+    ).length;
+    return Math.max(0, totalScope - doneByThen);
+  });
+  const max = totalScope;
   const w = 100,
     h = 100;
   const path = (vals: number[]) =>
@@ -695,7 +718,20 @@ function Burndown() {
         <span className="inline-flex items-center gap-2 text-atlas-fg-3">
           <span className="w-3 h-px border-t border-dashed border-atlas-line-2" /> Idéal
         </span>
-        <span className="ml-auto text-signal-green font-medium">+2 jours d'avance</span>
+        {(() => {
+          const remaining = actual[actual.length - 1];
+          const idealRemaining = ideal[ideal.length - 1];
+          const diff = idealRemaining - remaining;
+          if (diff > 0)
+            return (
+              <span className="ml-auto text-signal-green font-medium">
+                {remaining === 0 ? 'Sprint terminé' : `${remaining} tâches restantes`}
+              </span>
+            );
+          if (diff < 0)
+            return <span className="ml-auto text-signal-red font-medium">{remaining} tâches restantes</span>;
+          return <span className="ml-auto text-atlas-fg-3 font-medium">Dans les temps</span>;
+        })()}
       </div>
     </div>
   );
