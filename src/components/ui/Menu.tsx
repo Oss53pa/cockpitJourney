@@ -4,13 +4,25 @@ import { cn } from '../../lib/utils';
 interface MenuProps {
   trigger: ReactNode;
   align?: 'left' | 'right';
+  /**
+   * Where the dropdown should open relative to the trigger:
+   *   - `down` (default) — opens below, useful in headers / toolbars
+   *   - `up`             — opens above, useful in sidebar footers and
+   *                        any trigger that sits near the bottom of a
+   *                        scroll container with `overflow: hidden`
+   *   - `auto`           — measure free space and pick the side that fits
+   */
+  direction?: 'down' | 'up' | 'auto';
   children: (close: () => void) => ReactNode;
   width?: number;
 }
 
-export function Menu({ trigger, align = 'right', children, width = 220 }: MenuProps) {
+export function Menu({ trigger, align = 'right', direction = 'down', children, width = 220 }: MenuProps) {
   const [open, setOpen] = useState(false);
+  const [resolvedDir, setResolvedDir] = useState<'up' | 'down'>(direction === 'auto' ? 'down' : direction);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
@@ -19,13 +31,28 @@ export function Menu({ trigger, align = 'right', children, width = 220 }: MenuPr
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
+  // For `direction: 'auto'`, decide on open: if the trigger is in the
+  // lower half of the viewport, flip upward so the dropdown stays on
+  // screen and isn't clipped by any ancestor `overflow: hidden`.
+  useEffect(() => {
+    if (!open || direction !== 'auto') return;
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setResolvedDir(rect.top > window.innerHeight / 2 ? 'up' : 'down');
+  }, [open, direction]);
+
+  const dir = direction === 'auto' ? resolvedDir : direction;
+
   return (
     <div className="relative" ref={ref}>
-      <div onClick={() => setOpen((v) => !v)}>{trigger}</div>
+      <div ref={triggerRef} onClick={() => setOpen((v) => !v)}>
+        {trigger}
+      </div>
       {open && (
         <div
           className={cn(
-            'absolute top-full mt-2 z-50 panel p-1.5 animate-fade-in-scale origin-top-right shadow-soft-pop',
+            'absolute z-50 panel p-1.5 animate-fade-in-scale shadow-soft-pop',
+            dir === 'up' ? 'bottom-full mb-2 origin-bottom-right' : 'top-full mt-2 origin-top-right',
             align === 'right' ? 'right-0' : 'left-0'
           )}
           style={{ width }}

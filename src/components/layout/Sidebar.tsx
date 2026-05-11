@@ -323,6 +323,7 @@ export function Sidebar({
           }
           align="left"
           width={260}
+          direction="up"
         >
           {(close) => (
             <>
