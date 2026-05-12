@@ -8,7 +8,7 @@ import {
   Compass,
   type LucideIcon,
 } from 'lucide-react';
-import { useApp, useCurrentUser } from '../../stores/appStore';
+import { useApp, useCurrentUser, getCurrentSprint } from '../../stores/appStore';
 import { cn } from '../../lib/utils';
 import type { ViewKey } from '../../types';
 
@@ -38,6 +38,8 @@ export function HomeView({ onEnter }: Props) {
   const deepWorkHours = Math.round((totalActualMinutes / 60) * 10) / 10;
   const deepWorkTarget = Math.max(deepWorkHours, 20);
   const projectsCount = projects.filter((p) => p.status === 'active').length;
+  const sprintLabel = getCurrentSprint(tasks);
+  const mainProject = projects.find((p) => p.status === 'active');
   const totalTasks = tasks.length || 1;
   const sprintProgress = Math.round((completedTasks / totalTasks) * 100);
 
@@ -157,7 +159,8 @@ export function HomeView({ onEnter }: Props) {
                   Avancement du sprint
                 </div>
                 <div className="mt-1 text-base font-medium text-atlas-fg-1">
-                  Sprint S-08 · CockpitJourney v2.0
+                  {sprintLabel ? `Sprint ${sprintLabel}` : 'Sprint en cours'}
+                  {mainProject ? ` · ${mainProject.name}` : ''}
                 </div>
               </div>
               <div className="text-right">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useApp, useCurrentUser } from '../../stores/appStore';
+import { useApp, useCurrentUser, getCurrentSprint } from '../../stores/appStore';
 import { Modal } from '../ui/Modal';
 import { FieldLabel, NativeSelect, Switch, TextInput, Textarea } from '../ui/Field';
 import { Avatar } from '../ui/Avatar';
@@ -127,11 +127,12 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
   const toggleWatcher = (id: string) =>
     setWatchers((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]));
 
+  const tasks = useApp((s) => s.tasks);
   const aiSuggest = () => {
     if (!title.trim()) return;
     setEstimateMinutes(60);
     setPriority(3);
-    setSprint(sprint || 'S-08');
+    setSprint(sprint || getCurrentSprint(tasks));
     pushToast({ kind: 'success', title: 'PROPH3T a suggéré priorité et estimation', duration: 2000 });
   };
 

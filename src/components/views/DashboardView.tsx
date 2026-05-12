@@ -18,7 +18,7 @@ import {
   Download,
   Trash2,
 } from 'lucide-react';
-import { useApp } from '../../stores/appStore';
+import { useApp, getCurrentSprint } from '../../stores/appStore';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../ui/Menu';
 import { cn } from '../../lib/utils';
 
@@ -55,6 +55,8 @@ export function DashboardView() {
   };
 
   const users = useApp((s) => s.users);
+  const sprintLabel = getCurrentSprint(tasks);
+  const activeProject = projects.find((p) => p.status === 'active');
 
   const totalActualMinutes = tasks.reduce((sum, t) => sum + (t.actualMinutes || 0), 0);
   const kpis = {
@@ -237,14 +239,22 @@ export function DashboardView() {
                 : 'col-span-12 lg:col-span-5';
           const titles: Record<Widget['kind'], { title: string; sub: string; icon: any }> = {
             velocity: { title: 'Vélocité hebdomadaire', sub: 'Tâches livrées par sprint', icon: Zap },
-            donut: { title: 'Répartition par statut', sub: 'Cockpit v2.0', icon: Activity },
+            donut: {
+              title: 'Répartition par statut',
+              sub: activeProject?.name || 'Tous les projets',
+              icon: Activity,
+            },
             heatmap: {
               title: 'Heatmap activité',
               sub: 'Productivité quotidienne · 12 dernières semaines',
               icon: Sparkles,
             },
             workload: { title: 'Charge équipe', sub: 'Heures planifiées cette semaine', icon: Users },
-            burndown: { title: 'Burndown — Sprint 08', sub: 'Avancement vs idéal', icon: TrendingDown },
+            burndown: {
+              title: sprintLabel ? `Burndown — ${sprintLabel}` : 'Burndown sprint',
+              sub: 'Avancement vs idéal',
+              icon: TrendingDown,
+            },
             delays: { title: 'Top tâches en retard', sub: 'Actions à arbitrer', icon: Clock4 },
           };
           const t = titles[w.kind];
@@ -616,10 +626,11 @@ function Heatmap() {
 function Workload() {
   const tasks = useApp((s) => s.tasks);
   const users = useApp((s) => s.users);
+  const weeklyCapacity = useApp((s) => s.settings.weeklyCapacityHours);
   const data = users.slice(0, 6).map((u) => {
     const open = tasks.filter((t) => t.assignees.includes(u.id) && t.status !== 'done');
     const planned = open.reduce((sum, t) => sum + (t.estimatedMinutes || 60), 0) / 60;
-    const capacity = 40;
+    const capacity = weeklyCapacity;
     return {
       name: u.name.split(' ')[0],
       initials: u.initials,

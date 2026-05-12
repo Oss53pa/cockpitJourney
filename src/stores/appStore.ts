@@ -21,6 +21,25 @@ import type {
 // concurrently. We guard at the module level (NOT in store state) so the
 // second invocation literally cannot start.
 let bootstrapStarted = false;
+
+/** Derive the current sprint label from non-done tasks' customFields.Sprint */
+export function getCurrentSprint(tasks: Task[]): string {
+  const counts: Record<string, number> = {};
+  for (const t of tasks) {
+    if (t.status === 'done') continue;
+    const s = t.customFields?.['Sprint'];
+    if (typeof s === 'string' && s) counts[s] = (counts[s] || 0) + 1;
+  }
+  let best = '';
+  let max = 0;
+  for (const [k, v] of Object.entries(counts)) {
+    if (v > max) {
+      best = k;
+      max = v;
+    }
+  }
+  return best;
+}
 let hydrateInFlight: Promise<void> | null = null;
 
 export type ToastKind = 'success' | 'info' | 'warning' | 'error';
@@ -250,6 +269,7 @@ interface State {
     notificationsEmail: boolean;
     notificationsPush: boolean;
     notificationsWhatsapp: boolean;
+    weeklyCapacityHours: number;
     proph3t: {
       provider: 'groq' | 'openrouter' | 'ollama-cloud';
       apiKey: string;
@@ -576,6 +596,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     notificationsEmail: true,
     notificationsPush: true,
     notificationsWhatsapp: true,
+    weeklyCapacityHours: 40,
     proph3t: {
       provider: 'groq',
       apiKey: '',
@@ -1203,7 +1224,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     const workload: ReportWorkloadEntry[] = users.slice(0, 7).map((u) => {
       const open = tasks.filter((t) => t.assignees.includes(u.id) && t.status !== 'done');
       const planned = Math.round(open.reduce((sum, t) => sum + (t.estimatedMinutes || 60), 0) / 60);
-      const capacity = 40;
+      const capacity = get().settings.weeklyCapacityHours;
       const status: ReportWorkloadEntry['status'] =
         planned > capacity ? 'overloaded' : planned < capacity * 0.6 ? 'available' : 'optimal';
       return {

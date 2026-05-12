@@ -85,8 +85,7 @@ export function TopBar({ breadcrumb, onOpenCommand, onToggleSidebar }: Props) {
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2.5 shrink-0">
         <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/[0.03] border border-atlas-line">
           <Cloud className="w-3.5 h-3.5 text-signal-blue" />
-          <span className="text-2xs text-atlas-fg-2 font-medium">Abidjan · 28°C</span>
-          <span className="text-2xs text-atlas-fg-3 capitalize">· {now}</span>
+          <span className="text-2xs text-atlas-fg-3 capitalize">{now}</span>
         </div>
 
         <Menu
