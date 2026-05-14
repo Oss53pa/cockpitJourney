@@ -425,17 +425,20 @@ async function seedCleanStarter(
     createdAt: isoNow,
   };
 
+  const projectId = `${prefix}_p_starter`;
+
   const folder = {
     id: `${prefix}_f_personal`,
     name: 'Personnel',
     color: '#6E8B58',
     icon: 'briefcase',
     order: 0,
+    projectIds: [projectId],
     createdAt: isoNow,
   };
 
   const project = {
-    id: `${prefix}_p_starter`,
+    id: projectId,
     name: 'Mon premier projet',
     slug: 'mon-premier-projet',
     description:

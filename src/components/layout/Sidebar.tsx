@@ -203,7 +203,12 @@ export function Sidebar({
           {folders.map((folder) => {
             const FolderIcon = folderIcons[folder.icon] || Building2;
             const isOpen = isFolderOpen(folder.id);
-            const folderProjects = projects.filter((p) => folder.projectIds.includes(p.id));
+            // Older / freshly-seeded folders may not carry a `projectIds`
+            // array — fall back to `folderId` on the project itself so the
+            // sidebar never crashes on `undefined.includes(...)`.
+            const folderProjects = projects.filter((p) =>
+              folder.projectIds ? folder.projectIds.includes(p.id) : p.folderId === folder.id
+            );
             return (
               <div key={folder.id}>
                 <button
