@@ -34,6 +34,7 @@ export function TopBar({ breadcrumb, onOpenCommand, onToggleSidebar }: Props) {
   const openModal = useApp((s) => s.openModal);
   const pushToast = useApp((s) => s.pushToast);
   const regenerateBrief = useApp((s) => s.regenerateBrief);
+  const revalidating = useApp((s) => s.revalidating);
 
   const unread = notifications.filter((n) => !n.read).length;
   const now = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -292,10 +293,21 @@ export function TopBar({ breadcrumb, onOpenCommand, onToggleSidebar }: Props) {
           )}
         </Menu>
 
-        <div className="hidden md:flex ml-1 items-center gap-2 px-3 py-1.5 rounded-lg bg-signal-green-soft border border-signal-green/30">
-          <Wifi className="w-3.5 h-3.5 text-signal-green" />
-          <span className="text-2xs font-medium uppercase tracking-wider text-signal-green">Synchronisé</span>
-        </div>
+        {revalidating ? (
+          <div className="hidden md:flex ml-1 items-center gap-2 px-3 py-1.5 rounded-lg bg-signal-blue-soft border border-signal-blue/30">
+            <Cloud className="w-3.5 h-3.5 text-signal-blue animate-pulse-soft" />
+            <span className="text-2xs font-medium uppercase tracking-wider text-signal-blue">
+              Mise à jour…
+            </span>
+          </div>
+        ) : (
+          <div className="hidden md:flex ml-1 items-center gap-2 px-3 py-1.5 rounded-lg bg-signal-green-soft border border-signal-green/30">
+            <Wifi className="w-3.5 h-3.5 text-signal-green" />
+            <span className="text-2xs font-medium uppercase tracking-wider text-signal-green">
+              Synchronisé
+            </span>
+          </div>
+        )}
       </div>
     </header>
   );

@@ -1,7 +1,19 @@
 import { create } from 'zustand';
-import { persist as dbPersist, loadSnapshot, wipeDatabase, setCurrentAuthUserId } from '../lib/repo';
+import {
+  persist as dbPersist,
+  loadSnapshot,
+  wipeDatabase,
+  setCurrentAuthUserId,
+  getCurrentAuthUserId,
+} from '../lib/repo';
 import { bootstrapUserData, buildOfflineSnapshot } from '../lib/seed';
 import { supabase, SUPABASE_CONFIGURED } from '../lib/supabase';
+import {
+  peekSupabaseSession,
+  readSnapshotCache,
+  writeSnapshotCache,
+  clearSnapshotCache,
+} from '../lib/snapshotCache';
 import type {
   User,
   Project,
@@ -245,8 +257,13 @@ interface State {
   notes: TaskNote[];
   subtasks: Subtask[];
 
-  // hydration flag — true once Supabase snapshot has been loaded
+  // hydration flag — true once Supabase snapshot has been loaded (or
+  // optimistically hydrated from the localStorage cache pending the real
+  // Supabase round-trip).
   ready: boolean;
+  // true while a background snapshot revalidation is in flight after an
+  // optimistic cache-hydrate. Used by the UI for a subtle indicator.
+  revalidating?: boolean;
   // auth state
   authStatus: 'loading' | 'signed_out' | 'signed_in';
   authEmail?: string;
@@ -531,8 +548,11 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
         settings: { ...get().settings, ...(snap.settings as Partial<State['settings']>) },
         currentProfileId: profileId,
         ready: true,
+        revalidating: false,
         degraded: false,
       });
+      // Mirror to localStorage for instant-boot on the next page load.
+      writeSnapshotCache(authUserId, snap, profileId);
       console.info('[hydrate] DONE — ready=true');
     } catch (err) {
       clearTimeout(overallTimeout);
@@ -624,6 +644,49 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       return;
     }
 
+    // ─── OPTIMISTIC HYDRATE FROM LOCAL CACHE ───
+    // If Supabase has a persisted session in localStorage AND we have a
+    // snapshot cache for that user, hydrate the store IMMEDIATELY (before
+    // any network round-trip). The real Supabase handshake runs in
+    // parallel below — when it completes, the snapshot is overwritten
+    // with server-side truth. Boot perceived as ~0 ms on warm returns.
+    const cachedSession = peekSupabaseSession();
+    if (cachedSession) {
+      const cached = readSnapshotCache(cachedSession.authUserId);
+      if (cached && cached.users.length > 0) {
+        console.info(
+          '[bootstrap] ⚡ instant-hydrate from localStorage cache (cachedAt=' + cached.cachedAt + ')'
+        );
+        setCurrentAuthUserId(cachedSession.authUserId);
+        set({
+          authStatus: 'signed_in',
+          authEmail: cachedSession.email,
+          currentProfileId: cached.profileId,
+          users: cached.users,
+          folders: cached.folders,
+          projects: cached.projects,
+          sections: cached.sections,
+          tasks: cached.tasks,
+          goals: cached.goals,
+          comments: cached.comments,
+          notifications: cached.notifications,
+          insights: cached.insights,
+          automations: cached.automations,
+          forms: cached.forms,
+          reports: cached.reports,
+          attachments: cached.attachments,
+          dependencies: cached.dependencies,
+          activity: cached.activity,
+          subtasks: cached.subtasks,
+          notes: cached.notes,
+          settings: { ...get().settings, ...(cached.settings as Partial<State['settings']>) },
+          ready: true,
+          revalidating: true,
+          degraded: false,
+        });
+      }
+    }
+
     // Hard timeout: if Supabase auth hasn't resolved within 6s (network
     // hung, broken token, CORS issue…), fall through to signed_out so
     // the user can at least try to log in instead of seeing a frozen splash.
@@ -641,12 +704,18 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       console.info('[auth]', event, session ? `(user ${session.user.id.slice(0, 8)})` : '(no session)');
       try {
         if (event === 'SIGNED_OUT' || !session) {
+          // Drop the snapshot mirror for the previous user. They might
+          // come back as a different account; we don't want to flash
+          // someone else's data even momentarily.
+          const prevUserId = getCurrentAuthUserId();
+          if (prevUserId) clearSnapshotCache(prevUserId);
           setCurrentAuthUserId(null);
           set({
             authStatus: 'signed_out',
             authEmail: undefined,
             currentProfileId: undefined,
             ready: false,
+            revalidating: false,
             users: [],
             folders: [],
             projects: [],
@@ -1618,6 +1687,9 @@ Reste sous 400 mots, ton factuel et engagé.`,
     } catch {
       /* legacy key cleanup */
     }
+    // Also drop the snapshot cache mirror — otherwise the next boot
+    // would optimistic-hydrate from stale data we just wiped.
+    clearSnapshotCache();
     // Wipe all cj_* rows in Supabase, then reload to re-run the seed.
     await wipeDatabase();
     location.reload();
@@ -1625,6 +1697,138 @@ Reste sous 400 mots, ton factuel et engagé.`,
 });
 
 export const useApp = create<State>()((set, get) => initialState(set, get));
+
+/* ───────────── Cache mirror — debounced rewrite on mutations ─────────────
+ *
+ * After the first successful hydrate, every time an entity array or the
+ * settings object changes (= a mutation landed in the store), we schedule
+ * a rewrite of the localStorage snapshot mirror. The 800 ms debounce
+ * means rapid edits (drag-reorder, multi-field updates) only trigger one
+ * write at the end of the burst, not per keystroke. Worst case lag if
+ * the user closes the tab mid-burst: ~800 ms of edits aren't mirrored,
+ * but the next boot still pulls the real snapshot from Supabase to fix
+ * up the difference.
+ */
+if (typeof window !== 'undefined') {
+  let cacheTimer: ReturnType<typeof setTimeout> | null = null;
+  let prevEntityRefs: Partial<State> = {};
+  useApp.subscribe((state) => {
+    if (!state.ready) return;
+    const authUserId = getCurrentAuthUserId();
+    if (!authUserId) return;
+    // Reference-equality short-circuit: if none of the persisted slices
+    // changed, do nothing. (Toasts, modal, focus tick: ignored.)
+    if (
+      state.users === prevEntityRefs.users &&
+      state.folders === prevEntityRefs.folders &&
+      state.projects === prevEntityRefs.projects &&
+      state.sections === prevEntityRefs.sections &&
+      state.tasks === prevEntityRefs.tasks &&
+      state.goals === prevEntityRefs.goals &&
+      state.comments === prevEntityRefs.comments &&
+      state.notifications === prevEntityRefs.notifications &&
+      state.insights === prevEntityRefs.insights &&
+      state.automations === prevEntityRefs.automations &&
+      state.forms === prevEntityRefs.forms &&
+      state.reports === prevEntityRefs.reports &&
+      state.attachments === prevEntityRefs.attachments &&
+      state.dependencies === prevEntityRefs.dependencies &&
+      state.activity === prevEntityRefs.activity &&
+      state.subtasks === prevEntityRefs.subtasks &&
+      state.notes === prevEntityRefs.notes &&
+      state.settings === prevEntityRefs.settings &&
+      state.currentProfileId === prevEntityRefs.currentProfileId
+    ) {
+      return;
+    }
+    prevEntityRefs = {
+      users: state.users,
+      folders: state.folders,
+      projects: state.projects,
+      sections: state.sections,
+      tasks: state.tasks,
+      goals: state.goals,
+      comments: state.comments,
+      notifications: state.notifications,
+      insights: state.insights,
+      automations: state.automations,
+      forms: state.forms,
+      reports: state.reports,
+      attachments: state.attachments,
+      dependencies: state.dependencies,
+      activity: state.activity,
+      subtasks: state.subtasks,
+      notes: state.notes,
+      settings: state.settings,
+      currentProfileId: state.currentProfileId,
+    };
+    if (cacheTimer) clearTimeout(cacheTimer);
+    cacheTimer = setTimeout(() => {
+      const s = useApp.getState();
+      const uid = getCurrentAuthUserId();
+      if (!uid || !s.ready) return;
+      writeSnapshotCache(
+        uid,
+        {
+          users: s.users,
+          folders: s.folders,
+          projects: s.projects,
+          sections: s.sections,
+          tasks: s.tasks,
+          goals: s.goals,
+          comments: s.comments,
+          notifications: s.notifications,
+          insights: s.insights,
+          automations: s.automations,
+          forms: s.forms,
+          reports: s.reports,
+          attachments: s.attachments,
+          dependencies: s.dependencies,
+          activity: s.activity,
+          subtasks: s.subtasks,
+          notes: s.notes,
+          settings: s.settings as unknown as Record<string, unknown>,
+        },
+        s.currentProfileId ?? ''
+      );
+    }, 800);
+  });
+
+  // Best-effort flush on tab close: if a mutation landed within the last
+  // 800 ms, the debounce hasn't fired yet — write synchronously now.
+  window.addEventListener('beforeunload', () => {
+    if (!cacheTimer) return;
+    clearTimeout(cacheTimer);
+    cacheTimer = null;
+    const s = useApp.getState();
+    const uid = getCurrentAuthUserId();
+    if (!uid || !s.ready) return;
+    writeSnapshotCache(
+      uid,
+      {
+        users: s.users,
+        folders: s.folders,
+        projects: s.projects,
+        sections: s.sections,
+        tasks: s.tasks,
+        goals: s.goals,
+        comments: s.comments,
+        notifications: s.notifications,
+        insights: s.insights,
+        automations: s.automations,
+        forms: s.forms,
+        reports: s.reports,
+        attachments: s.attachments,
+        dependencies: s.dependencies,
+        activity: s.activity,
+        subtasks: s.subtasks,
+        notes: s.notes,
+        settings: s.settings as unknown as Record<string, unknown>,
+      },
+      s.currentProfileId ?? ''
+    );
+  });
+}
 
 export const focusPresetMap = focusPresets;
 
