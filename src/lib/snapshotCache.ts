@@ -23,7 +23,11 @@
 
 import type { Snapshot } from './repo';
 
-const SCHEMA_VERSION = 'v1';
+// Bumped from v1 → v2 when we added normalizeProject/Section/Folder at
+// load-time. Older caches may hold projects without membersIds/progress/
+// health, which crash ProjectView on .map() / .toUpperCase(). Bump
+// invalidates all stale caches so users get a fresh, normalized snapshot.
+const SCHEMA_VERSION = 'v2';
 const SNAP_KEY_PREFIX = `cj-snap-${SCHEMA_VERSION}:`;
 const SUPABASE_STORAGE_KEY = 'cj-supabase-auth';
 

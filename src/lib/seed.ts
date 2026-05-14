@@ -492,15 +492,26 @@ async function seedCleanStarter(
     folderId: folder.id,
     ownerId: profileId,
     status: 'active' as const,
+    // Fields required by the Project type — must be populated or
+    // ProjectView crashes on .map() / renders "undefined%". Solo user,
+    // brand-new project, healthy by default.
+    health: 'green' as const,
+    progress: 0,
+    taskCount: 3,
+    membersIds: [profileId],
     createdAt: isoNow,
     updatedAt: isoNow,
   };
 
+  // Section type requires `position` (NOT `order`) and `color`. The
+  // previous seed used `order: N` with no color — the Kanban board
+  // sorted by undefined and rendered columns without their accent.
   const sectionTodo = {
     id: `${prefix}_s_todo`,
     projectId: project.id,
     name: 'À faire',
-    order: 0,
+    color: '#94A3B8', // slate-400 — neutral grey for "to do"
+    position: 0,
     createdAt: isoNow,
     updatedAt: isoNow,
   };
@@ -508,7 +519,8 @@ async function seedCleanStarter(
     id: `${prefix}_s_progress`,
     projectId: project.id,
     name: 'En cours',
-    order: 1,
+    color: '#6E8B58', // atlas-sage-deep — same accent as the project
+    position: 1,
     createdAt: isoNow,
     updatedAt: isoNow,
   };
@@ -516,7 +528,8 @@ async function seedCleanStarter(
     id: `${prefix}_s_done`,
     projectId: project.id,
     name: 'Terminé',
-    order: 2,
+    color: '#22C55E', // signal-green — success
+    position: 2,
     createdAt: isoNow,
     updatedAt: isoNow,
   };

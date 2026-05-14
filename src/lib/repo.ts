@@ -221,6 +221,43 @@ async function fetchData<T>(sqlTable: string): Promise<T[]> {
   return out;
 }
 
+/**
+ * Backfill missing fields on rows loaded from Supabase so the UI never
+ * crashes on `.map()` / `.toUpperCase()` / `${undefined}%`.
+ *
+ * Older seeds (and the freshly-fixed clean-starter before it shipped)
+ * persisted rows without all required fields. Rather than running a
+ * one-off migration on every user's data, we normalize at read-time —
+ * the cache mirror picks up the normalized shape on next write, so the
+ * defensive code only matters once per legacy row.
+ */
+function normalizeProject(p: Project): Project {
+  return {
+    ...p,
+    health: p.health ?? 'green',
+    progress: typeof p.progress === 'number' ? p.progress : 0,
+    taskCount: typeof p.taskCount === 'number' ? p.taskCount : 0,
+    membersIds: Array.isArray(p.membersIds) && p.membersIds.length > 0 ? p.membersIds : [p.ownerId],
+  };
+}
+
+function normalizeFolder(f: Folder): Folder {
+  return {
+    ...f,
+    projectIds: Array.isArray(f.projectIds) ? f.projectIds : [],
+  };
+}
+
+function normalizeSection(s: Section): Section {
+  // Older seeds wrote `order` instead of `position`, and skipped `color`.
+  const legacyOrder = (s as unknown as { order?: number }).order;
+  return {
+    ...s,
+    color: s.color ?? '#94A3B8',
+    position: typeof s.position === 'number' ? s.position : typeof legacyOrder === 'number' ? legacyOrder : 0,
+  };
+}
+
 export async function loadSnapshot(): Promise<Snapshot> {
   if (!SUPABASE_CONFIGURED) {
     return emptySnapshot();
@@ -273,9 +310,9 @@ export async function loadSnapshot(): Promise<Snapshot> {
 
   return {
     users,
-    folders,
-    projects,
-    sections,
+    folders: folders.map(normalizeFolder),
+    projects: projects.map(normalizeProject),
+    sections: sections.map(normalizeSection),
     tasks,
     goals,
     comments,

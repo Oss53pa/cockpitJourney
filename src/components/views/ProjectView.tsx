@@ -202,7 +202,9 @@ export function ProjectView({ project, onOpenTask }: Props) {
                 <Badge>
                   <Users className="w-3 h-3 text-atlas-fg-3" />
                   <AvatarGroup
-                    users={project.membersIds.map((id) => users.find((u) => u.id === id) || users[0])}
+                    users={(project.membersIds ?? [project.ownerId])
+                      .map((id) => users.find((u) => u.id === id))
+                      .filter((u): u is NonNullable<typeof u> => !!u)}
                     size="xs"
                     max={4}
                   />
