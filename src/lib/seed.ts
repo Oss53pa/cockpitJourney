@@ -10,17 +10,11 @@
 
 import { supabase } from './supabase';
 import { isEmpty, persist, setCurrentProfileId, setCurrentAuthUserId, getCurrentProfileId } from './repo';
-import {
-  users,
-  folders,
-  projects,
-  sections,
-  tasks,
-  goals,
-  comments,
-  notifications,
-  insights,
-} from '../data/mockData';
+// mockData (full demo personas: Pamela, Koffi, Aminata, Cosmos Group,
+// DocJourney…) is dev-only — it's never seeded into a production
+// account. We dynamic-import it from the two functions that need it
+// (seedFullDemo + buildOfflineSnapshot) so Vite tree-shakes the whole
+// 17 KB out of the prod bundle.
 
 /* ───────────── Demo data extending the mockData seed ───────────── */
 
@@ -610,6 +604,10 @@ async function seedFullDemo(authUserId: string, _email: string): Promise<boolean
   setCurrentProfileId(`${prefix}_u_pame`);
   console.info('[seed-demo] prefix:', prefix);
 
+  // Dynamic import — keeps mockData out of the prod bundle.
+  const { users, folders, projects, sections, tasks, goals, comments, notifications, insights } =
+    await import('../data/mockData');
+
   const notificationsWithRecipient = notifications.map((n) => ({ ...n, userId: 'u_pame' }));
 
   const stepWithTimeout = async (label: string, work: () => Promise<unknown>) => {
@@ -692,8 +690,13 @@ function computeInitials(name: string): string {
  * In offline mode mutations stay in-memory only — they are logged but
  * not persisted. A banner in the UI tells the user about the degraded mode.
  */
-export function buildOfflineSnapshot(authUserId: string) {
+export async function buildOfflineSnapshot(authUserId: string) {
   const prefix = authUserId.slice(0, 8);
+  // Dynamic import — keeps mockData out of the prod bundle. This
+  // function is only called by the DEV-only offline fallback in
+  // appStore.hydrateFromSupabase; prod never reaches this branch.
+  const { users, folders, projects, sections, tasks, goals, comments, notifications, insights } =
+    await import('../data/mockData');
   const notifsWithRecipient = notifications.map((n) => ({ ...n, userId: 'u_pame' }));
   return {
     users: nsClone(users, prefix),

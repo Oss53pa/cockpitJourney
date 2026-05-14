@@ -435,7 +435,7 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
   // In prod, if Supabase REST is unreachable we DO NOT silently load
   // mockData (that would mean showing fake data to a real user).
   // Instead, we sign the user out and let them retry via the login flow.
-  const goOffline = (reason: string) => {
+  const goOffline = async (reason: string) => {
     if (!import.meta.env.DEV) {
       console.warn('[hydrate] Supabase unreachable in production —', reason);
       console.warn('[hydrate] falling back to signed_out (NO offline mockData in prod).');
@@ -450,7 +450,7 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
       return;
     }
     console.warn('[hydrate] entering OFFLINE/DEV mode —', reason);
-    const offline = buildOfflineSnapshot(authUserId);
+    const offline = await buildOfflineSnapshot(authUserId);
     set({
       users: offline.users,
       folders: offline.folders,
@@ -485,7 +485,7 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
     let bailed = false;
     const overallTimeout = setTimeout(() => {
       bailed = true;
-      goOffline('hydrate exceeded 20s — Supabase REST unreachable');
+      void goOffline('hydrate exceeded 20s — Supabase REST unreachable');
     }, 20_000);
 
     try {
@@ -522,7 +522,7 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
       // was skipped via watchdog), use offline data so the cockpit is usable.
       if (snap.users.length === 0 && snap.projects.length === 0 && snap.tasks.length === 0) {
         clearTimeout(overallTimeout);
-        goOffline('snapshot empty — seed never landed in Supabase');
+        await goOffline('snapshot empty — seed never landed in Supabase');
         return;
       }
 
@@ -557,7 +557,7 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
     } catch (err) {
       clearTimeout(overallTimeout);
       console.error('[hydrate] threw — falling back to offline', err);
-      goOffline(err instanceof Error ? err.message : 'unknown error');
+      await goOffline(err instanceof Error ? err.message : 'unknown error');
     } finally {
       hydrateInFlight = null;
     }
