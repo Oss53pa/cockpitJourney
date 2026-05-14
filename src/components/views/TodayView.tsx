@@ -10,10 +10,8 @@ import {
   MessageCircle,
   Mail,
   Hand,
-  Coffee,
   Headphones,
   Sunrise,
-  Moon,
   Plus,
   ListChecks,
   Clock4,
@@ -111,26 +109,22 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
     (t) => t.dueDate && new Date(t.dueDate).toDateString() === todayStr && t.status !== 'done'
   );
 
-  // Static "ritual" blocks — visual agenda. Real task slots are derived
-  // from dueToday below and prepended dynamically.
-  const ritualBlocks: Array<{
-    time: string;
-    label: string;
-    icon: typeof Sunrise;
-    kind: 'brief' | 'focus' | 'break' | 'meeting' | 'task' | 'review';
-    taskId?: string;
-  }> = [
-    { time: '07:00', label: 'Daily Brief PROPH3T', icon: Sunrise, kind: 'brief' },
-    { time: '08:30', label: 'Deep Work · Plage focus', icon: Headphones, kind: 'focus' },
-    { time: '10:30', label: 'Pause active · 10 min', icon: Coffee, kind: 'break' },
-    { time: '12:00', label: 'Pause déjeuner', icon: Mail, kind: 'break' },
-    { time: '16:00', label: 'Revue de mi-journée', icon: Flame, kind: 'meeting' },
-    { time: '18:00', label: 'Revue de journée', icon: Moon, kind: 'review' },
-  ];
+  // Build the day's agenda from the user's REAL due-today tasks plus a
+  // single "Daily Brief" anchor at their configured brief hour. We used
+  // to hardcode 6 fake blocks (Deep Work, Pauses, etc.) for everyone —
+  // that's now gone; until PROPH3T can plan blocks from the user's own
+  // patterns, we only show what's real.
+  const briefHour = useApp.getState().settings.dailyBriefHour ?? 7;
+  const briefBlock = {
+    time: `${String(briefHour).padStart(2, '0')}:00`,
+    label: 'Daily Brief PROPH3T',
+    icon: Sunrise,
+    kind: 'brief' as const,
+    taskId: undefined as string | undefined,
+  };
 
-  // Pre-pend real task slots from the user's due-today list, sorted by due time.
   const taskBlocks = dueToday
-    .slice(0, 3)
+    .slice()
     .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''))
     .map((t) => ({
       time: t.dueDate
@@ -139,10 +133,11 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
       label: t.title,
       icon: Sparkles,
       kind: 'task' as const,
-      taskId: t.id,
+      taskId: t.id as string | undefined,
     }));
 
-  const focusBlocks = [...taskBlocks, ...ritualBlocks];
+  // Brief anchor first, then real tasks ordered by due time.
+  const focusBlocks = [briefBlock, ...taskBlocks];
 
   // Compute real deep work minutes from tasks completed today
   const todayDoneTasks = tasks.filter(
@@ -162,11 +157,18 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
     else if (d.toDateString() !== todayStr) break;
   }
 
+  // Daily Deep Work target = weekly capacity / 5 working days. Rounded to
+  // the nearest 30 min for a clean display. Replaces the previous hardcoded
+  // "objectif 4h00" sub-label that was identical for every user.
+  const weeklyCapacityHours = useApp.getState().settings.weeklyCapacityHours ?? 40;
+  const dailyTargetMinutes = Math.round((weeklyCapacityHours * 60) / 5 / 30) * 30;
+
   const totals = {
     planned: dueToday.length,
     completed: tasks.filter((t) => t.status === 'done').length,
     deepWork: deepWorkMinutes,
     streak,
+    dailyTargetMinutes,
   };
 
   const submitCapture = async () => {
@@ -322,7 +324,9 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
                 icon={Clock4}
                 label="Deep Work"
                 value={`${Math.floor(totals.deepWork / 60)}h${String(totals.deepWork % 60).padStart(2, '0')}`}
-                sub="objectif 4h00"
+                sub={`objectif ${Math.floor(totals.dailyTargetMinutes / 60)}h${String(
+                  totals.dailyTargetMinutes % 60
+                ).padStart(2, '0')}`}
                 accent="blue"
               />
               <Stat
@@ -423,7 +427,11 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
             <div>
               <h2 className="font-display text-xl font-medium tracking-tight">Votre journée</h2>
               <p className="text-sm text-atlas-fg-3">
-                Time-blocking optimisé par PROPH3T · ajusté à votre pic mardi matin
+                {taskBlocks.length > 0
+                  ? `${taskBlocks.length} tâche${taskBlocks.length > 1 ? 's' : ''} planifiée${
+                      taskBlocks.length > 1 ? 's' : ''
+                    } aujourd'hui`
+                  : 'Aucune tâche due aujourd’hui — ajoutez-en pour structurer votre journée'}
               </p>
             </div>
             <button
