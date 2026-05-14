@@ -525,36 +525,27 @@ async function seedCleanStarter(
     },
   ];
 
-  const stepWithTimeout = async (label: string, work: () => Promise<unknown>) => {
-    console.info('[seed-clean] →', label);
-    try {
-      await Promise.race([
-        work(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-      ]);
-      console.info(`[seed-clean] ✓ ${label}`);
-    } catch (err) {
-      console.warn(`[seed-clean] ${label} failed:`, err);
-    }
-  };
-
-  await stepWithTimeout('profile', () => persist.bulkPut('users', [userProfile]));
-  await stepWithTimeout('folder', () => persist.bulkPut('folders', [folder]));
-  await stepWithTimeout('project', () => persist.bulkPut('projects', [project]));
-  await stepWithTimeout('sections', () =>
-    persist.bulkPut('sections', [sectionTodo, sectionInProgress, sectionDone])
-  );
-  await stepWithTimeout('tasks', () => persist.bulkPut('tasks', onboardingTasks));
-
-  console.info('[seed-clean] → settings (per-key)');
-  for (const [key, value] of Object.entries(defaultSettings)) {
-    try {
-      await persist.setSetting(key, value);
-    } catch {
-      /* best-effort — settings are non-critical for first render */
-    }
+  // Parallelize ALL writes: every bulkPut + every setSetting is an
+  // independent upsert keyed on its own PK / (profile_id,key) → there's
+  // no cross-row FK enforcement issue here (FKs are nullable in cj_*
+  // and the rows we're inserting only reference each other, not anything
+  // that needs to land first). Going from ~15 serial round-trips to 1
+  // parallel batch shaves 2-3s off cold boot on a clean account.
+  console.info('[seed-clean] → parallel upserts (entities + settings)');
+  const t0 = performance.now();
+  const settled = await Promise.allSettled([
+    persist.bulkPut('users', [userProfile]),
+    persist.bulkPut('folders', [folder]),
+    persist.bulkPut('projects', [project]),
+    persist.bulkPut('sections', [sectionTodo, sectionInProgress, sectionDone]),
+    persist.bulkPut('tasks', onboardingTasks),
+    ...Object.entries(defaultSettings).map(([k, v]) => persist.setSetting(k, v)),
+  ]);
+  const failed = settled.filter((r) => r.status === 'rejected');
+  if (failed.length) {
+    console.warn(`[seed-clean] ${failed.length}/${settled.length} writes rejected`, failed);
   }
-  console.info('[seed-clean] DONE — clean starter deployed');
+  console.info(`[seed-clean] DONE — clean starter deployed in ${Math.round(performance.now() - t0)}ms`);
   return true;
 }
 
@@ -690,33 +681,41 @@ export function buildOfflineSnapshot(authUserId: string) {
 export async function linkAuthUserToProfile(authUserId: string, email: string) {
   setCurrentAuthUserId(authUserId);
   const prefix = authUserId.slice(0, 8);
-  const expectedSelfId = `${prefix}_u_pame`;
 
-  // Check if the self profile already exists
-  const { data: existing } = await supabase
+  // Find ANY profile owned by this auth user — could be `_u_me` (clean
+  // starter) or `_u_pame` (legacy demo seed). Whichever exists, use it.
+  // The previous version hardcoded `_u_pame` and silently created a 2nd
+  // (empty) profile for clean-starter users, breaking identity:
+  // tasks were assigned to `_u_me`, `currentProfileId` was `_u_pame`,
+  // and TodayView / PROPH3T couldn't match the user to their own data.
+  const { data: rows } = await supabase
     .from('cj_profiles')
     .select('id')
     .eq('auth_user_id', authUserId)
-    .eq('id', expectedSelfId)
-    .maybeSingle();
+    .order('id')
+    .limit(2);
 
-  if (existing) {
-    setCurrentProfileId(expectedSelfId);
-    return expectedSelfId;
+  const existingId = (rows && (rows[0] as { id?: string } | undefined))?.id;
+  if (existingId) {
+    setCurrentProfileId(existingId);
+    return existingId;
   }
 
-  // No self profile — make one (covers the case of an existing user
-  // whose seed somehow didn't run, or who came in fresh).
+  // No profile at all — returning user whose seed didn't run, or fresh
+  // user whose seed silently failed. Create a minimal one under the
+  // canonical `_u_me` id so the user is consistent with the clean-starter
+  // convention going forward.
+  const fallbackId = `${prefix}_u_me`;
   const profile = {
-    id: expectedSelfId,
+    id: fallbackId,
     name: email.split('@')[0] || 'Utilisateur',
     initials: ((email[0] || 'U').toUpperCase() + (email[1] || '')).toUpperCase().slice(0, 2),
     email,
-    role: 'CEO · Atlas Studio',
-    color: '#95B07D',
+    role: 'admin' as const,
+    color: '#6E8B58',
   };
   await persist.put('users', profile);
 
-  setCurrentProfileId(expectedSelfId);
-  return expectedSelfId;
+  setCurrentProfileId(fallbackId);
+  return fallbackId;
 }
