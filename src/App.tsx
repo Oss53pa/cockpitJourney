@@ -42,13 +42,17 @@ const ReportsView = lazy(() =>
 );
 
 /**
- * Splash shown while we wait for Supabase auth to resolve. After 4s a
- * "ça met du temps" hint appears with a manual escape hatch (clear local
- * storage + reload) for the rare case where bootstrap genuinely hangs
- * (network fail, broken CORS, stale auth token, browser extension blocking
- * the auth iframe…).
+ * Single unified splash used while the app is booting (auth resolving
+ * or snapshot loading). We deliberately use ONE component for both
+ * stages — previously the user saw "Connexion à Supabase…" then a
+ * jarring switch to "Chargement de votre cockpit…", which read like
+ * two separate slow operations instead of one continuous boot.
+ *
+ * After 4s an escape hatch appears in case bootstrap genuinely hangs
+ * (network fail, broken CORS, stale auth token, browser extension
+ * blocking the auth iframe…).
  */
-function ConnectingSplash() {
+function BootSplash() {
   const [showEscape, setShowEscape] = useState(false);
   useEffect(() => {
     const id = setTimeout(() => setShowEscape(true), 4000);
@@ -72,9 +76,7 @@ function ConnectingSplash() {
         <div className="font-logo text-5xl text-atlas-fg-1 mb-4">
           Cockpit<span className="text-atlas-sage-deep">Journey</span>
         </div>
-        <div className="text-2xs uppercase tracking-[0.2em] text-atlas-fg-3 font-light">
-          Connexion à Supabase…
-        </div>
+        <div className="text-2xs uppercase tracking-[0.2em] text-atlas-fg-3 font-light">Chargement…</div>
         <div className="mt-5 mx-auto w-32 h-1 rounded-full bg-black/[0.05] overflow-hidden">
           <div className="h-full w-1/2 bg-atlas-sage-deep animate-pulse-soft rounded-full" />
         </div>
@@ -225,23 +227,10 @@ function CockpitShell() {
     setMobileSidebarOpen(false);
   }, [view, activeProjectId]);
 
-  // Snapshot still loading → loading screen
+  // Snapshot still loading — show the same splash component as the auth-
+  // resolve stage so the user perceives ONE continuous boot, not two.
   if (!ready) {
-    return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-atlas-cream">
-        <div className="text-center">
-          <div className="font-logo text-5xl text-atlas-fg-1 mb-4">
-            Cockpit<span className="text-atlas-sage-deep">Journey</span>
-          </div>
-          <div className="text-2xs uppercase tracking-[0.2em] text-atlas-fg-3 font-light">
-            Chargement de votre cockpit…
-          </div>
-          <div className="mt-5 mx-auto w-32 h-1 rounded-full bg-black/[0.05] overflow-hidden">
-            <div className="h-full w-1/2 bg-atlas-sage-deep animate-pulse-soft rounded-full" />
-          </div>
-        </div>
-      </div>
-    );
+    return <BootSplash />;
   }
 
   if (!entered) {
@@ -390,7 +379,7 @@ function App() {
   // While auth is resolving, show splash regardless of which route the
   // user landed on (except /auth which has its own progress UI).
   if (authStatus === 'loading' && window.location.pathname !== '/auth') {
-    return <ConnectingSplash />;
+    return <BootSplash />;
   }
 
   return (

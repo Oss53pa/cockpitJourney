@@ -9,7 +9,7 @@
 // are demo teammates owned by the same auth user.
 
 import { supabase } from './supabase';
-import { isEmpty, persist, setCurrentProfileId, setCurrentAuthUserId } from './repo';
+import { isEmpty, persist, setCurrentProfileId, setCurrentAuthUserId, getCurrentProfileId } from './repo';
 import {
   users,
   folders,
@@ -385,6 +385,56 @@ export async function seedDatabaseIfEmpty(): Promise<boolean> {
     return await seedFullDemo(authUserId, session.user.email ?? '');
   }
   return await seedCleanStarter(authUserId, session.user);
+}
+
+/**
+ * Unified boot path — combines what used to be three separate Supabase
+ * round-trips (isEmpty + linkAuthUserToProfile SELECT + a possible
+ * second profile INSERT) into ONE: a single SELECT against cj_profiles.
+ *
+ *   • Profile exists → use it. Returning user, zero extra writes.
+ *   • Profile missing → run the appropriate seed (clean-starter in prod,
+ *     full demo in dev). The seed sets currentProfileId itself.
+ *
+ * This is THE function the app should call after auth resolves —
+ * `seedDatabaseIfEmpty` + `linkAuthUserToProfile` are kept as exports
+ * only for backward compatibility / explicit re-link scenarios.
+ */
+export async function bootstrapUserData(
+  authUserId: string,
+  user: { email?: string | null; user_metadata?: Record<string, unknown> }
+): Promise<{ profileId: string; seeded: boolean }> {
+  setCurrentAuthUserId(authUserId);
+
+  // Single SELECT — replaces both isEmpty() and the old linkAuthUserToProfile lookup.
+  const { data: rows, error } = await supabase
+    .from('cj_profiles')
+    .select('id')
+    .eq('auth_user_id', authUserId)
+    .order('id')
+    .limit(1);
+  if (error) {
+    console.warn('[bootstrap] cj_profiles lookup failed', error);
+  }
+
+  const existingId = (rows && (rows[0] as { id?: string } | undefined))?.id;
+  if (existingId) {
+    setCurrentProfileId(existingId);
+    return { profileId: existingId, seeded: false };
+  }
+
+  // No profile yet → seed.
+  const useFullDemo = import.meta.env.DEV || import.meta.env.VITE_SEED_DEMO === '1';
+  if (useFullDemo) {
+    await seedFullDemo(authUserId, user.email ?? '');
+  } else {
+    await seedCleanStarter(authUserId, user);
+  }
+
+  // Both seed paths call setCurrentProfileId themselves; read back the
+  // value they wrote rather than re-deriving it here.
+  const profileId = getCurrentProfileId() ?? `${authUserId.slice(0, 8)}_u_me`;
+  return { profileId, seeded: true };
 }
 
 /**

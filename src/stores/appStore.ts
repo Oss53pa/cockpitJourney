@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist as dbPersist, loadSnapshot, wipeDatabase, setCurrentAuthUserId } from '../lib/repo';
-import { seedDatabaseIfEmpty, linkAuthUserToProfile, buildOfflineSnapshot } from '../lib/seed';
+import { bootstrapUserData, buildOfflineSnapshot } from '../lib/seed';
 import { supabase, SUPABASE_CONFIGURED } from '../lib/supabase';
 import type {
   User,
@@ -476,19 +476,24 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
       set({ authStatus: 'signed_in', authEmail: email });
       setCurrentAuthUserId(authUserId);
 
-      console.info('[hydrate] step 1/3 — seedDatabaseIfEmpty');
-      const seeded = await seedDatabaseIfEmpty();
+      // ONE round-trip: combined isEmpty-check + profile-resolution + seed.
+      // Returning user → single SELECT, no writes. New user → single SELECT
+      // then parallel-batched seed (all in one wave). Previously this was
+      // 2 sequential round-trips even for the common returning-user case.
+      console.info('[hydrate] step 1/2 — bootstrapUserData');
+      const sessionUser = (await supabase.auth.getSession()).data.session?.user;
+      const { profileId, seeded } = await bootstrapUserData(authUserId, {
+        email: sessionUser?.email ?? email,
+        user_metadata: sessionUser?.user_metadata,
+      });
       if (bailed) return;
       console.info(
-        seeded ? '[hydrate] seed: inserted demo data' : '[hydrate] seed: skipped (data already present)'
+        seeded
+          ? `[hydrate] bootstrap: seeded new profile ${profileId}`
+          : `[hydrate] bootstrap: existing profile ${profileId}`
       );
 
-      console.info('[hydrate] step 2/3 — linkAuthUserToProfile');
-      const profileId = await linkAuthUserToProfile(authUserId, email);
-      if (bailed) return;
-      console.info('[hydrate] profile bound:', profileId);
-
-      console.info('[hydrate] step 3/3 — loadSnapshot');
+      console.info('[hydrate] step 2/2 — loadSnapshot');
       const snap = await loadSnapshot();
       if (bailed) return;
       console.info(

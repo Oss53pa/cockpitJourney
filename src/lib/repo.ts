@@ -226,6 +226,11 @@ export async function loadSnapshot(): Promise<Snapshot> {
     return emptySnapshot();
   }
 
+  // All 17 entity tables + cj_settings load in a single parallel wave.
+  // The previous version awaited loadSettings() AFTER the 17 fetches
+  // resolved, costing one extra serial round-trip (~200ms) for no
+  // reason — settings live in their own table with its own PK and
+  // don't depend on any entity row.
   const [
     users,
     folders,
@@ -244,6 +249,7 @@ export async function loadSnapshot(): Promise<Snapshot> {
     activity,
     notes,
     subtasks,
+    settings,
   ] = await Promise.all([
     fetchData<User>('cj_profiles'),
     fetchData<Folder>('cj_folders'),
@@ -262,10 +268,8 @@ export async function loadSnapshot(): Promise<Snapshot> {
     fetchData<ActivityEvent>('cj_activity'),
     fetchData<TaskNote>('cj_notes'),
     fetchData<Subtask>('cj_subtasks'),
+    loadSettings(),
   ]);
-
-  // Settings — separate per-user table
-  const settings = await loadSettings();
 
   return {
     users,
