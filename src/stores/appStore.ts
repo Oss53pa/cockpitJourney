@@ -287,6 +287,8 @@ interface State {
     notificationsPush: boolean;
     notificationsWhatsapp: boolean;
     weeklyCapacityHours: number;
+    /** Set to true after the user finishes the first-boot onboarding wizard. */
+    onboardingDone?: boolean;
     proph3t: {
       provider: 'groq' | 'openrouter' | 'ollama-cloud';
       apiKey: string;

@@ -15,6 +15,7 @@ import { LandingPage } from './components/views/LandingPage';
 import { AuthCallback } from './components/AuthCallback';
 const AcceptInvite = lazy(() => import('./pages/auth/AcceptInvite'));
 import { ModalRoot } from './components/modals/ModalRoot';
+import { OnboardingModal } from './components/modals/OnboardingModal';
 const TeamSettingsPage = lazy(() => import('./pages/settings/TeamSettingsPage'));
 const IntegrationsSettingsPage = lazy(() => import('./pages/settings/IntegrationsSettingsPage'));
 import { Toaster } from './components/ui/Toaster';
@@ -142,6 +143,10 @@ function CockpitShell() {
   const openModal = useApp((s) => s.openModal);
   const tickFocus = useApp((s) => s.tickFocus);
   const focusRunning = useApp((s) => s.focus.running);
+  const onboardingDone = useApp((s) => s.settings.onboardingDone);
+  // Onboarding wizard: show when hydrate succeeded AND the user has a
+  // project (seed has run) AND the wizard hasn't been completed yet.
+  const showOnboarding = ready && projects.length > 0 && !onboardingDone;
 
   // Once snapshot is loaded, default the active project to the user's
   // first project (their namespace, no global hardcoded id).
@@ -308,6 +313,7 @@ function CockpitShell() {
           <CommandMenu open={cmdOpen} onClose={() => setCmdOpen(false)} onNavigate={onNavigate} />
           <TaskDetailDrawer task={openTask} onClose={() => setOpenTask(null)} />
           <ModalRoot />
+          {showOnboarding && <OnboardingModal />}
           <Toaster />
         </div>
       </div>

@@ -10,6 +10,9 @@ interface Props {
   children: ReactNode;
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  /** When true, suppresses the header close-X and ignores backdrop clicks /
+   *  Escape — used by required flows like first-boot onboarding. */
+  hideCloseButton?: boolean;
 }
 
 const sizes = {
@@ -19,21 +22,34 @@ const sizes = {
   xl: 'max-w-4xl',
 };
 
-export function Modal({ open, onClose, title, description, children, footer, size = 'md' }: Props) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  size = 'md',
+  hideCloseButton = false,
+}: Props) {
   useEffect(() => {
-    if (!open) return;
+    if (!open || hideCloseButton) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open, onClose, hideCloseButton]);
 
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fade-in">
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+      {/* Backdrop — clicks dismiss UNLESS hideCloseButton (required flow) */}
+      <div
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={hideCloseButton ? undefined : onClose}
+        aria-hidden="true"
+      />
       {/* Modal — sticks header on top, scrolls inner content, footer always visible */}
       <div
         className={cn(
@@ -49,9 +65,11 @@ export function Modal({ open, onClose, title, description, children, footer, siz
               </h2>
               {description && <p className="text-sm text-atlas-fg-3 mt-0.5 truncate">{description}</p>}
             </div>
-            <button onClick={onClose} className="btn-ghost !p-1.5 -mr-1 -mt-1 shrink-0" aria-label="Fermer">
-              <X className="w-4 h-4" />
-            </button>
+            {!hideCloseButton && (
+              <button onClick={onClose} className="btn-ghost !p-1.5 -mr-1 -mt-1 shrink-0" aria-label="Fermer">
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </header>
         )}
         <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">{children}</div>
