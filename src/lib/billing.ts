@@ -1,20 +1,39 @@
 /**
- * Billing client — talks to the shared Atlas Studio Edge Functions for
- * Stripe checkout, customer portal, plan changes, and cancellation.
+ * Billing client — READ-ONLY surface.
  *
- * The backend lives at supabase project `vgtmljfayiysuvrcmunt` and is
- * shared with the other Atlas Studio products (Cockpit F&A, Atlas Compta,
- * TableSmart…). Every endpoint takes an `appId: "cockpit-journey"` so
- * subscriptions are scoped per-product.
+ * Atlas Studio centralizes ALL billing (Stripe, CinetPay, Mobile Money,
+ * invoicing, customer portal) on its own portal at
+ * https://atlas-studio.org/portal. CockpitJourney never hosts a checkout
+ * UI itself — it just reads the subscription row from the shared
+ * `subscriptions` table and links out to the central portal when the
+ * user wants to subscribe, upgrade, or cancel.
  *
- * Stripe is configured to bill in **XOF (FCFA)** natively — no
- * EUR/USD conversion needed. The user sees "15 000 FCFA / mois" at
- * checkout exactly as they see it on the landing page.
+ * Why this matters:
+ *   - Single billing dashboard for users who own multiple Atlas Studio
+ *     products (CockpitJourney + Cockpit F&A + Atlas Compta…)
+ *   - One legal entity issuing the invoices (Atlas Studio SAS, not
+ *     CockpitJourney as a standalone brand)
+ *   - Payment provider choice (Stripe / CinetPay / virement) and tax
+ *     handling stay in one place
+ *   - When a user cancels via Atlas Studio portal, every Atlas product
+ *     sees the new status on the next snapshot load
  */
 
 import { supabase } from './supabase';
 
 export const APP_ID = 'cockpit-journey';
+
+/**
+ * Base URL of the Atlas Studio billing portal. The portal accepts a
+ * `?app=` query string to deep-link directly to the CockpitJourney plan
+ * picker / management screen.
+ */
+const ATLAS_PORTAL_URL = 'https://atlas-studio.org/portal';
+
+/** URL to send the user to when they want to subscribe / manage billing. */
+export function atlasPortalUrl(action: 'subscribe' | 'manage' = 'manage'): string {
+  return `${ATLAS_PORTAL_URL}?app=${APP_ID}&action=${action}`;
+}
 
 export type PlanId = 'particulier' | 'equipe' | 'entreprise';
 
@@ -127,82 +146,6 @@ export async function getCurrentSubscription(): Promise<SubscriptionState | null
 export function isSubscriptionActive(s: SubscriptionState | null): boolean {
   if (!s) return false;
   return s.status === 'active' || s.status === 'trialing';
-}
-
-/**
- * Start the Stripe Checkout flow for a given plan. Resolves with the
- * checkout URL — the caller is expected to `window.location.href = url`.
- *
- * The shared `create-checkout` Edge Function:
- *   - Verifies the user is authenticated (`requireUser`)
- *   - Gets-or-creates a Stripe customer attached to the user's profile
- *   - Validates the optional promo code
- *   - Creates an ad-hoc Stripe Price in XOF (FCFA)
- *   - Returns the Checkout Session URL
- */
-export async function startCheckout(plan: PlanId, promoCode?: string): Promise<string> {
-  const planDesc = PLANS.find((p) => p.id === plan);
-  if (!planDesc || planDesc.price === null) {
-    throw new Error(`Plan "${plan}" non commercialisable via Stripe (contact direct requis)`);
-  }
-  const { data, error } = await supabase.functions.invoke<{
-    url: string;
-    discount?: number;
-    finalPrice?: number;
-  }>('create-checkout', {
-    body: {
-      appId: APP_ID,
-      plan,
-      priceAmount: planDesc.price,
-      promoCode: promoCode?.trim() || undefined,
-    },
-  });
-  if (error || !data?.url) {
-    throw new Error(error?.message || 'Création du checkout échouée');
-  }
-  return data.url;
-}
-
-/**
- * Open the Stripe Customer Portal (manage payment method, view invoices,
- * cancel subscription). The shared `portal-session` Edge Function creates
- * a one-time URL.
- */
-export async function openCustomerPortal(): Promise<string> {
-  const { data, error } = await supabase.functions.invoke<{ url: string }>('portal-session', {
-    body: { appId: APP_ID },
-  });
-  if (error || !data?.url) {
-    throw new Error(error?.message || 'Ouverture du portail échouée');
-  }
-  return data.url;
-}
-
-/**
- * Switch to a different plan WITHOUT going through Stripe Checkout
- * again. The shared `change-plan` Edge Function pro-rates the diff
- * server-side and updates the Stripe subscription in place.
- */
-export async function changePlan(plan: PlanId): Promise<void> {
-  const planDesc = PLANS.find((p) => p.id === plan);
-  if (!planDesc || planDesc.price === null) {
-    throw new Error(`Plan "${plan}" requiert un contact commercial`);
-  }
-  const { error } = await supabase.functions.invoke('change-plan', {
-    body: { appId: APP_ID, plan, newPriceAmount: planDesc.price },
-  });
-  if (error) throw new Error(error.message || 'Changement de plan échoué');
-}
-
-/**
- * Cancel the subscription at period end (user keeps access until paid
- * period expires). Implemented server-side via `cancel-subscription`.
- */
-export async function cancelSubscription(): Promise<void> {
-  const { error } = await supabase.functions.invoke('cancel-subscription', {
-    body: { appId: APP_ID },
-  });
-  if (error) throw new Error(error.message || 'Annulation échouée');
 }
 
 /**

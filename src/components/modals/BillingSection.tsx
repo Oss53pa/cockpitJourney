@@ -1,35 +1,36 @@
 /**
  * Billing section embedded in the Settings modal.
  *
- * Three states:
- *   1. No subscription → show plan grid + "Souscrire" CTAs (Stripe Checkout)
- *   2. Active sub on plan X → show current plan + upgrade/downgrade + portal/cancel buttons
- *   3. Past-due / canceled → warning banner + "Renouveler" CTA
+ * READ-ONLY surface — CockpitJourney does NOT host a checkout flow
+ * itself. All subscription management (subscribe, upgrade, downgrade,
+ * payment method, cancel) happens on the centralized Atlas Studio
+ * portal (atlas-studio.org/portal), which Pamela also operates for
+ * Cockpit F&A, Atlas Compta, TableSmart, etc.
  *
- * All Stripe interactions go through the shared Atlas Studio Edge
- * Functions — no Stripe SDK client-side, no API keys in the bundle.
+ * Two states:
+ *   1. Active sub on plan X → bandeau "Plan actuel · X · prochain prélèvement le DD/MM"
+ *      + bouton "Gérer sur Atlas Studio"
+ *   2. No sub OR canceled → bandeau "Pas d'abonnement actif" + bouton
+ *      "Voir les plans sur Atlas Studio"
+ *
+ * Plan grid is shown for reference (FCFA prices, plan names) but every
+ * CTA links out to the central portal.
  */
 import { useEffect, useState } from 'react';
-import { CreditCard, Check, Loader2, ExternalLink, AlertTriangle, Mail, Sparkles } from 'lucide-react';
+import { Check, Loader2, ExternalLink, AlertTriangle, Sparkles } from 'lucide-react';
 import {
   PLANS,
-  type PlanId,
   type SubscriptionState,
   getCurrentSubscription,
-  startCheckout,
-  openCustomerPortal,
-  cancelSubscription,
   isSubscriptionActive,
+  atlasPortalUrl,
   formatXof,
 } from '../../lib/billing';
-import { useApp } from '../../stores/appStore';
 import { cn } from '../../lib/utils';
 
 export function BillingSection() {
-  const pushToast = useApp((s) => s.pushToast);
   const [sub, setSub] = useState<SubscriptionState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [actionInFlight, setActionInFlight] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -42,59 +43,8 @@ export function BillingSection() {
     })();
   }, []);
 
-  const handleCheckout = async (plan: PlanId) => {
-    setActionInFlight(`checkout-${plan}`);
-    try {
-      const url = await startCheckout(plan);
-      window.location.href = url;
-    } catch (err) {
-      pushToast({
-        kind: 'error',
-        title: 'Checkout impossible',
-        body: err instanceof Error ? err.message : 'Réessayez dans un instant',
-      });
-    } finally {
-      setActionInFlight(null);
-    }
-  };
-
-  const handlePortal = async () => {
-    setActionInFlight('portal');
-    try {
-      const url = await openCustomerPortal();
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (err) {
-      pushToast({
-        kind: 'error',
-        title: 'Portail indisponible',
-        body: err instanceof Error ? err.message : 'Réessayez dans un instant',
-      });
-    } finally {
-      setActionInFlight(null);
-    }
-  };
-
-  const handleCancel = async () => {
-    if (!confirm('Annuler votre abonnement à la fin de la période courante ?')) return;
-    setActionInFlight('cancel');
-    try {
-      await cancelSubscription();
-      pushToast({
-        kind: 'success',
-        title: 'Annulation programmée',
-        body: 'Vous gardez l’accès jusqu’à la fin de la période payée',
-      });
-      const s = await getCurrentSubscription();
-      setSub(s);
-    } catch (err) {
-      pushToast({
-        kind: 'error',
-        title: 'Annulation échouée',
-        body: err instanceof Error ? err.message : 'Réessayez dans un instant',
-      });
-    } finally {
-      setActionInFlight(null);
-    }
+  const goToPortal = (action: 'subscribe' | 'manage') => {
+    window.open(atlasPortalUrl(action), '_blank', 'noopener,noreferrer');
   };
 
   if (loading) {
@@ -106,43 +56,40 @@ export function BillingSection() {
   }
 
   const active = isSubscriptionActive(sub);
+  const currentPlan = sub ? PLANS.find((p) => p.id === sub.plan) : undefined;
 
   return (
     <div className="space-y-4">
       {/* Status banner */}
-      {sub && active && (
+      {active && currentPlan && (
         <div className="panel p-4 flex items-start gap-3 border-signal-green/30 bg-signal-green/5">
           <div className="w-9 h-9 rounded-xl bg-signal-green/15 text-signal-green grid place-items-center shrink-0">
             <Check className="w-4 h-4" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-atlas-fg-1">
-              Abonnement actif · plan {PLANS.find((p) => p.id === sub.plan)?.label}
-            </div>
+            <div className="text-sm font-medium text-atlas-fg-1">Plan {currentPlan.label} · actif</div>
             <div className="text-2xs text-atlas-fg-3 mt-0.5">
-              {sub.status === 'trialing' && sub.trialEndsAt
-                ? `Essai jusqu'au ${new Date(sub.trialEndsAt).toLocaleDateString('fr-FR')}`
-                : sub.currentPeriodEnd
-                  ? sub.cancelAtPeriodEnd
-                    ? `Se termine le ${new Date(sub.currentPeriodEnd).toLocaleDateString('fr-FR')} (annulation programmée)`
-                    : `Prochaine facturation le ${new Date(sub.currentPeriodEnd).toLocaleDateString('fr-FR')}`
+              {sub!.status === 'trialing' && sub!.trialEndsAt
+                ? `Essai jusqu'au ${new Date(sub!.trialEndsAt).toLocaleDateString('fr-FR')}`
+                : sub!.currentPeriodEnd
+                  ? sub!.cancelAtPeriodEnd
+                    ? `Se termine le ${new Date(sub!.currentPeriodEnd).toLocaleDateString('fr-FR')} (annulation programmée)`
+                    : `Prochain prélèvement le ${new Date(sub!.currentPeriodEnd).toLocaleDateString('fr-FR')}`
                   : 'Période en cours'}
               {' · '}
-              {sub.seats} {sub.seats > 1 ? 'utilisateurs' : 'utilisateur'} {' · '}
-              {sub.provider === 'stripe' ? 'Stripe' : sub.provider === 'cinetpay' ? 'CinetPay' : 'Manuel'}
+              {sub!.seats} {sub!.seats > 1 ? 'utilisateurs' : 'utilisateur'} {' · '}
+              {sub!.provider === 'stripe'
+                ? 'Stripe'
+                : sub!.provider === 'cinetpay'
+                  ? 'CinetPay'
+                  : 'Activation manuelle'}
             </div>
           </div>
           <button
-            onClick={() => void handlePortal()}
-            disabled={actionInFlight === 'portal'}
+            onClick={() => goToPortal('manage')}
             className="btn-secondary text-xs px-2.5 py-1.5 shrink-0"
           >
-            {actionInFlight === 'portal' ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <ExternalLink className="w-3 h-3" />
-            )}
-            Gérer
+            <ExternalLink className="w-3 h-3" /> Gérer
           </button>
         </div>
       )}
@@ -153,21 +100,39 @@ export function BillingSection() {
           <div className="flex-1">
             <div className="text-sm font-medium text-atlas-fg-1">Paiement en attente</div>
             <p className="text-xs text-atlas-fg-2 mt-1">
-              Votre dernière facture n'a pas pu être prélevée. Mettez à jour votre moyen de paiement pour
-              conserver l'accès.
+              Votre dernière facture n'a pas pu être prélevée. Mettez à jour votre moyen de paiement sur Atlas
+              Studio pour conserver l'accès.
             </p>
-            <button onClick={() => void handlePortal()} className="mt-2 btn-primary text-xs px-2.5 py-1.5">
-              <ExternalLink className="w-3 h-3" /> Mettre à jour
+            <button onClick={() => goToPortal('manage')} className="mt-2 btn-primary text-xs px-2.5 py-1.5">
+              <ExternalLink className="w-3 h-3" /> Mettre à jour sur Atlas Studio
             </button>
           </div>
         </div>
       )}
 
-      {/* Plan grid */}
+      {!active && (
+        <div className="panel p-4 flex items-start gap-3 border-atlas-amber/30 bg-atlas-amber/5">
+          <Sparkles className="w-5 h-5 text-atlas-amber-deep shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <div className="text-sm font-medium text-atlas-fg-1">Pas d'abonnement actif</div>
+            <p className="text-xs text-atlas-fg-2 mt-1 leading-relaxed">
+              Souscrivez sur le portail Atlas Studio pour débloquer Reports avancés, Goals hiérarchiques, et
+              utilisateurs supplémentaires. Cartes Visa/Mastercard, Orange Money, Wave et virement acceptés.
+            </p>
+            <button
+              onClick={() => goToPortal('subscribe')}
+              className="mt-2 btn-primary text-xs px-2.5 py-1.5"
+            >
+              <ExternalLink className="w-3 h-3" /> Voir les plans sur Atlas Studio
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Plan grid — informational. Every CTA links to the central portal. */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {PLANS.map((p) => {
           const isCurrent = sub?.plan === p.id && active;
-          const isBusy = actionInFlight === `checkout-${p.id}`;
           const isContact = p.price === null;
           return (
             <div
@@ -184,11 +149,9 @@ export function BillingSection() {
                 {isContact ? (
                   <span className="text-lg font-display font-medium text-atlas-fg-1">Sur devis</span>
                 ) : (
-                  <>
-                    <span className="text-2xl font-display font-medium text-atlas-fg-1">
-                      {formatXof(p.price!)}
-                    </span>
-                  </>
+                  <span className="text-2xl font-display font-medium text-atlas-fg-1">
+                    {formatXof(p.price!)}
+                  </span>
                 )}
               </div>
               <div className="text-2xs text-atlas-fg-3 mb-2">/ {p.period}</div>
@@ -198,25 +161,13 @@ export function BillingSection() {
                   <div className="w-full text-center py-2 rounded-lg bg-atlas-sage-deep/10 text-atlas-sage-deep text-xs font-medium uppercase tracking-wider">
                     <Sparkles className="w-3 h-3 inline mr-1" /> Plan actuel
                   </div>
-                ) : isContact ? (
-                  <a
-                    href="mailto:bonjour@atlas-studio.org?subject=CockpitJourney%20Entreprise"
-                    className="btn-secondary text-xs px-2.5 py-1.5 w-full justify-center"
-                  >
-                    <Mail className="w-3 h-3" /> Nous contacter
-                  </a>
                 ) : (
                   <button
-                    onClick={() => void handleCheckout(p.id)}
-                    disabled={!!actionInFlight}
-                    className="btn-primary text-xs px-2.5 py-1.5 w-full justify-center disabled:opacity-50"
+                    onClick={() => goToPortal(active ? 'manage' : 'subscribe')}
+                    className="btn-secondary text-xs px-2.5 py-1.5 w-full justify-center"
                   >
-                    {isBusy ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <CreditCard className="w-3 h-3" />
-                    )}
-                    {sub && active ? 'Changer pour ce plan' : 'Souscrire'}
+                    <ExternalLink className="w-3 h-3" />
+                    {active ? 'Changer pour ce plan' : 'Souscrire sur Atlas Studio'}
                   </button>
                 )}
               </div>
@@ -225,26 +176,10 @@ export function BillingSection() {
         })}
       </div>
 
-      {sub && active && !sub.cancelAtPeriodEnd && (
-        <div className="flex items-center justify-end pt-2">
-          <button
-            onClick={() => void handleCancel()}
-            disabled={actionInFlight === 'cancel'}
-            className="btn-ghost text-xs text-signal-red hover:bg-signal-red/10"
-          >
-            {actionInFlight === 'cancel' ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-            Annuler l'abonnement
-          </button>
-        </div>
-      )}
-
       <p className="text-2xs text-atlas-fg-3 leading-relaxed">
-        Facturation en FCFA (XOF) via Stripe. Cartes Visa, Mastercard, et virements bancaires acceptés. Pour
-        Orange Money / Wave / MTN Mobile Money, demandez l'activation manuelle à{' '}
-        <a href="mailto:bonjour@atlas-studio.org" className="text-atlas-sage-deep underline">
-          bonjour@atlas-studio.org
-        </a>
-        .
+        La facturation est centralisée sur le portail Atlas Studio — un seul endroit pour gérer vos
+        abonnements à tous les produits Atlas (CockpitJourney, Cockpit F&A, Atlas Compta…). Moyens de paiement
+        : Visa/Mastercard, Orange Money, Wave, MTN Mobile Money, virement bancaire.
       </p>
     </div>
   );
