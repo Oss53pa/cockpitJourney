@@ -14,6 +14,7 @@ import {
   writeSnapshotCache,
   clearSnapshotCache,
 } from '../lib/snapshotCache';
+import { setMonitoringUser, captureException } from '../lib/monitoring';
 import type {
   User,
   Project,
@@ -485,7 +486,11 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
     if (!import.meta.env.DEV) {
       console.warn('[hydrate] Supabase unreachable in production —', reason);
       console.warn('[hydrate] falling back to signed_out (NO offline mockData in prod).');
+      // Report the offline fallback to Sentry so we know when prod users
+      // hit this — could be transient (network) or systemic (RLS change).
+      captureException(new Error(`hydrate-offline-fallback: ${reason}`));
       setCurrentAuthUserId(null);
+      setMonitoringUser(null);
       set({
         authStatus: 'signed_out',
         ready: false,
@@ -538,6 +543,9 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
       console.info('[hydrate] start for user', authUserId.slice(0, 8));
       set({ authStatus: 'signed_in', authEmail: email });
       setCurrentAuthUserId(authUserId);
+      // Attach the user's namespace to every subsequent Sentry event so
+      // we can group crashes per-user without leaking PII.
+      setMonitoringUser(authUserId);
 
       // ONE round-trip: combined isEmpty-check + profile-resolution + seed.
       // Returning user → single SELECT, no writes. New user → single SELECT
@@ -756,6 +764,9 @@ const initialState = (set: SetFn, get: GetFn): State => ({
           const prevUserId = getCurrentAuthUserId();
           if (prevUserId) clearSnapshotCache(prevUserId);
           setCurrentAuthUserId(null);
+          // Untag the Sentry scope so subsequent crashes don't get
+          // attributed to the previous user.
+          setMonitoringUser(null);
           set({
             authStatus: 'signed_out',
             authEmail: undefined,

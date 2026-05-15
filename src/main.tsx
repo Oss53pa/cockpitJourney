@@ -3,14 +3,23 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App.tsx';
 import './index.css';
+import { initMonitoring, captureException } from './lib/monitoring.ts';
 
-// Global error capture (logged to console for now; can be wired to Sentry later)
+// Initialize Sentry as early as possible so React render errors are
+// caught. The init is async (dynamic import of @sentry/react) so we
+// kick it off but don't block the app — render starts immediately.
+void initMonitoring();
+
+// Global error capture — forward to Sentry (with our noise filters)
+// and keep the console log for local dev visibility.
 if (typeof window !== 'undefined') {
   window.addEventListener('error', (e) => {
     console.error('[CockpitJourney] window error:', e.error || e.message, e.filename, e.lineno);
+    captureException(e.error ?? new Error(e.message), { filename: e.filename, lineno: e.lineno });
   });
   window.addEventListener('unhandledrejection', (e) => {
     console.error('[CockpitJourney] unhandled promise:', e.reason);
+    captureException(e.reason instanceof Error ? e.reason : new Error(String(e.reason)));
   });
 }
 

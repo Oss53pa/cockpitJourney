@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
+import { captureException } from '../lib/monitoring';
 
 function isChunkLoadError(error: Error): boolean {
   return (
@@ -32,8 +33,16 @@ export class ErrorBoundary extends Component<Props, State> {
       if (!sessionStorage.getItem(key)) {
         sessionStorage.setItem(key, '1');
         location.reload();
+        return;
       }
     }
+    // Forward to Sentry with the React component stack so we can locate
+    // the failing component in the dashboard. Chunk-load errors are
+    // already filtered out by the noise patterns in monitoring.ts.
+    captureException(error, {
+      componentStack: info.componentStack,
+      pathname: location.pathname,
+    });
   }
 
   reset = () => this.setState({ error: null });
