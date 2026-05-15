@@ -1,0 +1,27 @@
+-- NOTE: this migration was originally going to create a CockpitJourney-
+-- specific `cj_subscriptions` table, but inspection of the shared Atlas
+-- Studio backend revealed that a richer `subscriptions` table already
+-- exists, used by every Atlas Studio product (Cockpit F&A, Atlas
+-- Compta, TableSmart…) and kept in sync by the existing `stripe-webhook`
+-- + `cinetpay-webhook` Edge Functions.
+--
+-- Reusing that table avoids:
+--   - duplicating customer/subscription state in two places
+--   - re-implementing the Stripe → cj_subscriptions sync
+--   - drift between what CockpitJourney sees and what Atlas Studio
+--     admin tools see (refunds, manual activation, etc.)
+--
+-- CockpitJourney queries `subscriptions` directly with the predicate
+-- `app_id = 'cockpit-journey' AND user_id = auth.uid()`. RLS on the
+-- shared table already enforces the second clause via `(auth.uid() =
+-- user_id)` so we cannot leak other users' subs.
+--
+-- See: src/lib/billing.ts for the client adapter, and Atlas Studio's
+-- `create-checkout` / `stripe-webhook` / `change-plan` /
+-- `cancel-subscription` Edge Functions for the server side.
+--
+-- This file is kept (not deleted) to document the decision in git
+-- history and to avoid a gap in the migration timestamp sequence.
+
+-- No-op for re-applies.
+SELECT 1 WHERE FALSE;
