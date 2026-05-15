@@ -6,6 +6,7 @@ import { Avatar } from '../ui/Avatar';
 import { RotateCcw, Sparkles, ExternalLink, KeyRound, LogOut, Pencil, Check, X } from 'lucide-react';
 import { PROVIDERS, type ProphProvider } from '../../lib/proph3t';
 import { BillingSection } from './BillingSection';
+import { SectionErrorBoundary } from '../SectionErrorBoundary';
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const settings = useApp((s) => s.settings);
@@ -129,7 +130,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
         <section>
           <h3 className="text-2xs uppercase tracking-wider font-medium text-atlas-fg-3 mb-3">Facturation</h3>
-          <BillingSection />
+          <SectionErrorBoundary section="La facturation" scope="settings:billing">
+            <BillingSection />
+          </SectionErrorBoundary>
         </section>
 
         <section>

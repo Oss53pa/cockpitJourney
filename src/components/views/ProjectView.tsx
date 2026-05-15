@@ -48,6 +48,7 @@ import { StatusBadge, ProgressBar } from '../ui/StatusBadge';
 import { HealthDot } from '../ui/HealthDot';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../ui/Menu';
 import { cn, formatDate } from '../../lib/utils';
+import { SectionErrorBoundary } from '../SectionErrorBoundary';
 import {
   DndContext,
   type DragEndEvent,
@@ -399,23 +400,65 @@ export function ProjectView({ project, onOpenTask }: Props) {
       </div>
 
       <div className="px-8 py-6">
+        {/* Each board / tab is wrapped in its own SectionErrorBoundary so a
+            crash inside (e.g. Gantt date math on a malformed task) doesn't
+            collapse the whole project view — the user can still switch to
+            another view and keep working. */}
         {tab === 'tasks' && taskView === 'kanban' && (
-          <KanbanBoard sections={sections} tasks={tasks} onOpenTask={onOpenTask} projectId={project.id} />
+          <SectionErrorBoundary section="Le Kanban" scope="project:kanban">
+            <KanbanBoard sections={sections} tasks={tasks} onOpenTask={onOpenTask} projectId={project.id} />
+          </SectionErrorBoundary>
         )}
         {tab === 'tasks' && taskView === 'list' && (
-          <ListBoard sections={sections} tasks={tasks} onOpenTask={onOpenTask} projectId={project.id} />
+          <SectionErrorBoundary section="La liste" scope="project:list">
+            <ListBoard sections={sections} tasks={tasks} onOpenTask={onOpenTask} projectId={project.id} />
+          </SectionErrorBoundary>
         )}
         {tab === 'tasks' && taskView === 'calendar' && (
-          <CalendarBoard tasks={tasks} onOpenTask={onOpenTask} />
+          <SectionErrorBoundary section="Le calendrier" scope="project:calendar">
+            <CalendarBoard tasks={tasks} onOpenTask={onOpenTask} />
+          </SectionErrorBoundary>
         )}
-        {tab === 'tasks' && taskView === 'gantt' && <GanttBoard sections={sections} tasks={tasks} />}
-        {tab === 'tasks' && taskView === 'table' && <TableBoard tasks={tasks} onOpenTask={onOpenTask} />}
-        {tab === 'notes' && <ProjectNotesTab projectId={project.id} />}
-        {tab === 'files' && <ProjectFilesTab projectId={project.id} />}
-        {tab === 'brief' && <ProjectBriefTab project={project} tasks={tasks} />}
-        {tab === 'dashboard' && <ProjectDashboardTab project={project} tasks={tasks} sections={sections} />}
-        {tab === 'goals' && <ProjectGoalsTab project={project} />}
-        {tab === 'activity' && <ActivityFeed projectId={project.id} />}
+        {tab === 'tasks' && taskView === 'gantt' && (
+          <SectionErrorBoundary section="La timeline" scope="project:gantt">
+            <GanttBoard sections={sections} tasks={tasks} />
+          </SectionErrorBoundary>
+        )}
+        {tab === 'tasks' && taskView === 'table' && (
+          <SectionErrorBoundary section="Le tableau" scope="project:table">
+            <TableBoard tasks={tasks} onOpenTask={onOpenTask} />
+          </SectionErrorBoundary>
+        )}
+        {tab === 'notes' && (
+          <SectionErrorBoundary section="Les notes" scope="project:notes">
+            <ProjectNotesTab projectId={project.id} />
+          </SectionErrorBoundary>
+        )}
+        {tab === 'files' && (
+          <SectionErrorBoundary section="Les fichiers" scope="project:files">
+            <ProjectFilesTab projectId={project.id} />
+          </SectionErrorBoundary>
+        )}
+        {tab === 'brief' && (
+          <SectionErrorBoundary section="Le brief PROPH3T" scope="project:brief">
+            <ProjectBriefTab project={project} tasks={tasks} />
+          </SectionErrorBoundary>
+        )}
+        {tab === 'dashboard' && (
+          <SectionErrorBoundary section="Le dashboard" scope="project:dashboard">
+            <ProjectDashboardTab project={project} tasks={tasks} sections={sections} />
+          </SectionErrorBoundary>
+        )}
+        {tab === 'goals' && (
+          <SectionErrorBoundary section="Les goals" scope="project:goals">
+            <ProjectGoalsTab project={project} />
+          </SectionErrorBoundary>
+        )}
+        {tab === 'activity' && (
+          <SectionErrorBoundary section="L'activité" scope="project:activity">
+            <ActivityFeed projectId={project.id} />
+          </SectionErrorBoundary>
+        )}
       </div>
     </div>
   );
