@@ -12,6 +12,11 @@ import {
   Hand,
   Headphones,
   Sunrise,
+  Coffee,
+  Moon,
+  Users,
+  RefreshCw,
+  BookOpen,
   Plus,
   ListChecks,
   Clock4,
@@ -90,10 +95,13 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
   const currentProfileId = useApp((s) => s.currentProfileId);
   const dismissInsight = useApp((s) => s.dismissInsight);
   const regenerateBrief = useApp((s) => s.regenerateBrief);
+  const regenerateTimeBlocks = useApp((s) => s.regenerateTimeBlocks);
+  const cachedTimeBlocks = useApp((s) => s.settings.timeBlocks);
   const startFocus = useApp((s) => s.startFocusSession);
   const openModal = useApp((s) => s.openModal);
   const createTask = useApp((s) => s.createTask);
   const pushToast = useApp((s) => s.pushToast);
+  const [regeneratingPlan, setRegeneratingPlan] = useState(false);
 
   // Real user's first name (no more "Pamela" hardcoded for everyone).
   const me = currentProfileId ? users.find((u) => u.id === currentProfileId) : undefined;
@@ -109,35 +117,78 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
     (t) => t.dueDate && new Date(t.dueDate).toDateString() === todayStr && t.status !== 'done'
   );
 
-  // Build the day's agenda from the user's REAL due-today tasks plus a
-  // single "Daily Brief" anchor at their configured brief hour. We used
-  // to hardcode 6 fake blocks (Deep Work, Pauses, etc.) for everyone —
-  // that's now gone; until PROPH3T can plan blocks from the user's own
-  // patterns, we only show what's real.
+  // Build the day's agenda. Prefer PROPH3T's persisted plan when available
+  // AND generated today; otherwise fall back to "Daily Brief anchor + real
+  // tasks by due time" so the panel is never empty.
+  const todayLocalKey = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
   const briefHour = useApp.getState().settings.dailyBriefHour ?? 7;
-  const briefBlock = {
-    time: `${String(briefHour).padStart(2, '0')}:00`,
-    label: 'Daily Brief PROPH3T',
-    icon: Sunrise,
-    kind: 'brief' as const,
-    taskId: undefined as string | undefined,
+
+  const blockIconByKind: Record<string, LucideIcon> = {
+    brief: Sunrise,
+    focus: Headphones,
+    task: Sparkles,
+    meeting: Users,
+    break: Coffee,
+    review: Moon,
+    admin: BookOpen,
   };
 
-  const taskBlocks = dueToday
-    .slice()
-    .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''))
-    .map((t) => ({
-      time: t.dueDate
-        ? new Date(t.dueDate).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-        : '—',
-      label: t.title,
-      icon: Sparkles,
-      kind: 'task' as const,
-      taskId: t.id as string | undefined,
-    }));
+  const fromPlan =
+    cachedTimeBlocks && cachedTimeBlocks.date === todayLocalKey ? cachedTimeBlocks.blocks : null;
 
-  // Brief anchor first, then real tasks ordered by due time.
-  const focusBlocks = [briefBlock, ...taskBlocks];
+  const focusBlocks = fromPlan
+    ? fromPlan.map((b) => ({
+        time: b.startTime,
+        label: b.label,
+        icon: blockIconByKind[b.kind] ?? Sparkles,
+        kind: (['brief', 'focus', 'break', 'meeting', 'review'].includes(b.kind) ? b.kind : 'task') as
+          | 'brief'
+          | 'focus'
+          | 'break'
+          | 'meeting'
+          | 'task'
+          | 'review',
+        taskId: b.taskId,
+        rationale: b.rationale,
+        durationMinutes: b.durationMinutes,
+      }))
+    : [
+        {
+          time: `${String(briefHour).padStart(2, '0')}:00`,
+          label: 'Daily Brief PROPH3T',
+          icon: Sunrise,
+          kind: 'brief' as const,
+          taskId: undefined as string | undefined,
+          rationale: undefined as string | undefined,
+          durationMinutes: 15,
+        },
+        ...dueToday
+          .slice()
+          .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''))
+          .map((t) => ({
+            time: t.dueDate
+              ? new Date(t.dueDate).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+              : '—',
+            label: t.title,
+            icon: Sparkles,
+            kind: 'task' as const,
+            taskId: t.id as string | undefined,
+            rationale: undefined as string | undefined,
+            durationMinutes: t.estimatedMinutes ?? 60,
+          })),
+      ];
+
+  const onRegeneratePlan = async () => {
+    setRegeneratingPlan(true);
+    try {
+      await regenerateTimeBlocks();
+    } finally {
+      setRegeneratingPlan(false);
+    }
+  };
 
   // Compute real deep work minutes from tasks completed today
   const todayDoneTasks = tasks.filter(
@@ -427,19 +478,34 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
             <div>
               <h2 className="font-display text-xl font-medium tracking-tight">Votre journée</h2>
               <p className="text-sm text-atlas-fg-3">
-                {taskBlocks.length > 0
-                  ? `${taskBlocks.length} tâche${taskBlocks.length > 1 ? 's' : ''} planifiée${
-                      taskBlocks.length > 1 ? 's' : ''
-                    } aujourd'hui`
-                  : 'Aucune tâche due aujourd’hui — ajoutez-en pour structurer votre journée'}
+                {fromPlan
+                  ? `Plan PROPH3T · ${fromPlan.length} bloc${fromPlan.length > 1 ? 's' : ''} · ${new Date(
+                      cachedTimeBlocks!.generatedAt
+                    ).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+                  : dueToday.length > 0
+                    ? `${dueToday.length} tâche${dueToday.length > 1 ? 's' : ''} due${
+                        dueToday.length > 1 ? 's' : ''
+                      } aujourd'hui · cliquez Régénérer pour un plan IA`
+                    : 'Aucune tâche due aujourd’hui — ajoutez-en pour structurer votre journée'}
               </p>
             </div>
-            <button
-              onClick={() => pushToast({ kind: 'info', title: 'Bloc personnalisé à venir' })}
-              className="btn-secondary text-sm px-3 py-1.5"
-            >
-              <Plus className="w-3.5 h-3.5" /> Bloc
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => void onRegeneratePlan()}
+                disabled={regeneratingPlan}
+                className="btn-secondary text-sm px-3 py-1.5 disabled:opacity-60"
+                title="Régénérer le planning de la journée"
+              >
+                <RefreshCw className={cn('w-3.5 h-3.5', regeneratingPlan && 'animate-spin')} />
+                {regeneratingPlan ? 'Génération…' : fromPlan ? 'Régénérer' : 'Plan PROPH3T'}
+              </button>
+              <button
+                onClick={() => pushToast({ kind: 'info', title: 'Bloc personnalisé à venir' })}
+                className="btn-secondary text-sm px-3 py-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" /> Bloc
+              </button>
+            </div>
           </div>
           <div className="relative pl-3">
             <div className="absolute left-[44px] top-2 bottom-2 w-px bg-gradient-to-b from-atlas-line via-atlas-line to-transparent" />
@@ -489,14 +555,22 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
                       )}
                     </div>
                     <div className="flex-1 min-w-0 py-0.5">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <div className="text-sm font-medium text-atlas-fg-1">{b.label}</div>
+                        {b.durationMinutes && (
+                          <span className="text-2xs text-atlas-fg-3 font-mono">{b.durationMinutes}min</span>
+                        )}
                         {isActive && (
                           <span className="chip bg-atlas-amber/15 text-atlas-amber-deep border border-atlas-amber/30">
                             En cours
                           </span>
                         )}
                       </div>
+                      {b.rationale && (
+                        <div className="mt-0.5 text-2xs text-atlas-fg-3 italic line-clamp-1">
+                          {b.rationale}
+                        </div>
+                      )}
                       {linkedTask && (
                         <div className="mt-1 inline-flex items-center gap-1.5 text-2xs text-atlas-fg-3">
                           <span

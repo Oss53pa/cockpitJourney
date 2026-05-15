@@ -289,6 +289,16 @@ interface State {
     weeklyCapacityHours: number;
     /** Set to true after the user finishes the first-boot onboarding wizard. */
     onboardingDone?: boolean;
+    /**
+     * PROPH3T-generated day plan, cached for the date it was generated for.
+     * Cleared / regenerated when the local date rolls over or the user
+     * clicks "Regénérer le planning" on Today.
+     */
+    timeBlocks?: {
+      date: string; // YYYY-MM-DD local
+      blocks: import('../lib/proph3t').GeneratedTimeBlock[];
+      generatedAt: string; // ISO timestamp
+    };
     proph3t: {
       provider: 'groq' | 'openrouter' | 'ollama-cloud';
       apiKey: string;
@@ -381,6 +391,17 @@ interface State {
   // insights
   dismissInsight: (id: string) => void;
   regenerateBrief: () => void;
+
+  /**
+   * Ask PROPH3T to generate the day's time-blocking plan from the user's
+   * actual due-today tasks, capacity, and brief hour. Resolves with the
+   * fresh blocks (also written to settings.timeBlocks so the next reload
+   * skips the regeneration cost).
+   *
+   * Falls back to a heuristic plan (just Daily Brief + tasks ordered by
+   * dueDate) if PROPH3T isn't configured.
+   */
+  regenerateTimeBlocks: () => Promise<void>;
 
   // focus
   startFocusSession: (preset: FocusSession['preset'], taskId?: string) => void;
@@ -1667,6 +1688,109 @@ Reste sous 400 mots, ton factuel et engagé.`,
         body: err?.message || 'Vérifiez votre clé API',
       });
     }
+  },
+
+  regenerateTimeBlocks: async () => {
+    const cfg = get().settings.proph3t;
+    const todayLocal = (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
+    const todayStr = new Date().toDateString();
+    const dueToday = get().tasks.filter(
+      (t) => t.dueDate && new Date(t.dueDate).toDateString() === todayStr && t.status !== 'done'
+    );
+    const projects = get().projects;
+    const profileId = get().currentProfileId;
+    const me = profileId ? get().users.find((u) => u.id === profileId) : undefined;
+
+    // Heuristic fallback when PROPH3T isn't configured: Daily Brief +
+    // tasks ordered by dueDate, padded with default durations.
+    const heuristic = (): import('../lib/proph3t').GeneratedTimeBlock[] => {
+      const briefHour = get().settings.dailyBriefHour ?? 7;
+      const blocks: import('../lib/proph3t').GeneratedTimeBlock[] = [
+        {
+          startTime: `${String(briefHour).padStart(2, '0')}:00`,
+          durationMinutes: 15,
+          label: 'Daily Brief PROPH3T',
+          kind: 'brief',
+        },
+      ];
+      // Cursor starts at briefHour + 30 min (15 min brief + 15 min buffer).
+      let cursorMin = briefHour * 60 + 30;
+      const sorted = [...dueToday].sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''));
+      for (const t of sorted) {
+        const duration = t.estimatedMinutes ?? 60;
+        const hh = Math.floor(cursorMin / 60);
+        const mm = cursorMin % 60;
+        if (hh >= 19) break; // don't schedule after 7pm
+        blocks.push({
+          startTime: `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`,
+          durationMinutes: duration,
+          label: t.title.slice(0, 60),
+          kind: 'focus',
+          taskId: t.id,
+        });
+        cursorMin += duration + 10; // 10 min buffer between tasks
+      }
+      return blocks;
+    };
+
+    let blocks: import('../lib/proph3t').GeneratedTimeBlock[] = [];
+
+    if (cfg.apiKey || cfg.provider === 'ollama-cloud') {
+      get().pushToast({ kind: 'info', title: 'PROPH3T planifie votre journée…', duration: 1500 });
+      try {
+        const { ProphClient, generateTimeBlocks } = await import('../lib/proph3t');
+        const client = new ProphClient(cfg);
+        const dailyCapacity = Math.round((get().settings.weeklyCapacityHours * 60) / 5);
+        blocks = await generateTimeBlocks(client, {
+          user: me?.name ?? 'Vous',
+          date: new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }),
+          briefHour: get().settings.dailyBriefHour ?? 7,
+          dailyCapacityMinutes: dailyCapacity,
+          tasks: dueToday.map((t) => ({
+            id: t.id,
+            title: t.title,
+            priority: t.priority,
+            project: projects.find((p) => p.id === t.projectId)?.name || '—',
+            estimateMinutes: t.estimatedMinutes,
+            due: t.dueDate
+              ? new Date(t.dueDate).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+              : undefined,
+          })),
+        });
+        if (blocks.length === 0) {
+          // LLM returned nothing parseable — fall back to heuristic.
+          blocks = heuristic();
+          get().pushToast({
+            kind: 'warning',
+            title: "PROPH3T n'a rien renvoyé — plan heuristique appliqué",
+          });
+        } else {
+          get().pushToast({
+            kind: 'success',
+            title: `${blocks.length} bloc${blocks.length > 1 ? 's' : ''} planifié${blocks.length > 1 ? 's' : ''}`,
+            body: cfg.model,
+          });
+        }
+      } catch (err: any) {
+        console.warn('[regenerateTimeBlocks] PROPH3T failed, using heuristic', err);
+        blocks = heuristic();
+        get().pushToast({ kind: 'warning', title: 'PROPH3T indisponible — plan heuristique' });
+      }
+    } else {
+      // No API key — silent heuristic plan (no toast spam on every reload).
+      blocks = heuristic();
+    }
+
+    const payload = {
+      date: todayLocal,
+      blocks,
+      generatedAt: new Date().toISOString(),
+    };
+    set((s) => ({ settings: { ...s.settings, timeBlocks: payload } }));
+    dbPersist.setSetting('timeBlocks', payload);
   },
 
   startFocusSession: (preset, taskId) => {

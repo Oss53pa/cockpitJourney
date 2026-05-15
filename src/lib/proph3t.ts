@@ -207,6 +207,137 @@ Donne un verdict clair (vert/jaune/rouge), 2 risques principaux, 2 actions recom
   );
 }
 
+/* ───────────── Time-blocking ───────────── */
+
+export type TimeBlockKind = 'brief' | 'focus' | 'task' | 'meeting' | 'break' | 'review' | 'admin';
+
+export interface GeneratedTimeBlock {
+  /** "HH:MM" 24h format, local time. */
+  startTime: string;
+  /** Duration in minutes. */
+  durationMinutes: number;
+  /** Short label (≤ 50 chars). */
+  label: string;
+  /** Block category — drives the icon + accent. */
+  kind: TimeBlockKind;
+  /** Optional task id this block is dedicated to (drawn from the candidate list). */
+  taskId?: string;
+  /** One-liner rationale from PROPH3T (≤ 80 chars). */
+  rationale?: string;
+}
+
+/**
+ * Ask PROPH3T to plan the user's day. Returns an ordered list of
+ * non-overlapping time blocks anchored to their actual rhythm
+ * (brief hour, capacity) and prioritized tasks.
+ */
+export async function generateTimeBlocks(
+  client: ProphClient,
+  context: {
+    user: string;
+    date: string;
+    briefHour: number;
+    dailyCapacityMinutes: number;
+    tasks: {
+      id: string;
+      title: string;
+      priority: number;
+      project: string;
+      estimateMinutes?: number;
+      due?: string;
+    }[];
+  }
+): Promise<GeneratedTimeBlock[]> {
+  const tasksJson = JSON.stringify(
+    context.tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      priority: t.priority,
+      project: t.project,
+      estimateMinutes: t.estimateMinutes ?? null,
+      due: t.due ?? null,
+    })),
+    null,
+    2
+  );
+
+  const out = await client.chat(
+    [
+      {
+        role: 'user',
+        content: `Tu planifies la journée de ${context.user} pour le ${context.date}.
+
+CONTRAINTES :
+- Daily Brief à ${String(context.briefHour).padStart(2, '0')}:00 (durée 15 min, kind="brief").
+- Capacité Deep Work cible : ${context.dailyCapacityMinutes} min sur la journée.
+- Insère 1 pause active (~10 min) au moins toutes les 2h.
+- Insère un déjeuner ~12:00-13:00 (kind="break").
+- Termine par une revue de journée ~17:30-18:00 (kind="review", 15 min).
+- Blocs Deep Work : 50-90 min (kind="focus"), avec un taskId pointant sur la tâche traitée.
+- Pas de chevauchement, ordre chronologique strict.
+- Travaille en heure locale (HH:MM 24h).
+
+TÂCHES CANDIDATES (par priorité décroissante) :
+${tasksJson}
+
+Réponds UNIQUEMENT avec un objet JSON valide de la forme :
+{
+  "blocks": [
+    {
+      "startTime": "07:00",
+      "durationMinutes": 15,
+      "label": "Daily Brief PROPH3T",
+      "kind": "brief",
+      "rationale": "Cadrage de la journée"
+    },
+    ...
+  ]
+}
+
+Le champ "taskId" est obligatoire pour kind="focus" ou kind="task", égal à l'id de la tâche traitée.
+Aucune autre prose autour du JSON.`,
+      },
+    ],
+    { json: true, temperature: 0.3, maxTokens: 1200 }
+  );
+
+  try {
+    const parsed = JSON.parse(out);
+    const blocks: unknown = parsed?.blocks;
+    if (!Array.isArray(blocks)) return [];
+    return blocks
+      .map((b) => normalizeBlock(b as Record<string, unknown>))
+      .filter((b): b is GeneratedTimeBlock => b !== null);
+  } catch {
+    return [];
+  }
+}
+
+function normalizeBlock(raw: Record<string, unknown>): GeneratedTimeBlock | null {
+  const startTime = typeof raw.startTime === 'string' ? raw.startTime : null;
+  const durationMinutes = typeof raw.durationMinutes === 'number' ? raw.durationMinutes : null;
+  const label = typeof raw.label === 'string' ? raw.label : null;
+  const kindRaw = typeof raw.kind === 'string' ? raw.kind : null;
+  const validKinds: TimeBlockKind[] = ['brief', 'focus', 'task', 'meeting', 'break', 'review', 'admin'];
+  const kind = validKinds.find((k) => k === kindRaw) ?? 'admin';
+  if (!startTime || !durationMinutes || !label) return null;
+  // Guard against weird minute values from the LLM (e.g. 1200).
+  const safeDuration = Math.max(5, Math.min(240, Math.round(durationMinutes)));
+  // "9:00" → "09:00", reject malformed.
+  const m = startTime.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const hh = Math.min(23, Math.max(0, parseInt(m[1], 10)));
+  const mm = Math.min(59, Math.max(0, parseInt(m[2], 10)));
+  return {
+    startTime: `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`,
+    durationMinutes: safeDuration,
+    label: label.slice(0, 80),
+    kind,
+    taskId: typeof raw.taskId === 'string' ? raw.taskId : undefined,
+    rationale: typeof raw.rationale === 'string' ? raw.rationale.slice(0, 120) : undefined,
+  };
+}
+
 export async function reformulateDescription(client: ProphClient, original: string): Promise<string> {
   return client.chat(
     [
