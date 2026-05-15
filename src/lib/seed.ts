@@ -9,7 +9,7 @@
 // are demo teammates owned by the same auth user.
 
 import { supabase } from './supabase';
-import { isEmpty, persist, setCurrentProfileId, setCurrentAuthUserId, getCurrentProfileId } from './repo';
+import { persist, setCurrentProfileId, setCurrentAuthUserId, getCurrentProfileId } from './repo';
 // mockData (full demo personas: Pamela, Koffi, Aminata, Cosmos Group,
 // DocJourney…) is dev-only — it's never seeded into a production
 // account. We dynamic-import it from the two functions that need it
@@ -333,53 +333,6 @@ function nsClone<T>(value: T, prefix: string): T {
 }
 
 /* ───────────── Bootstrap (per-user) ───────────── */
-
-/**
- * On first login (no cj_profiles row yet), seed the user's namespace.
- *
- * In **production** this seeds a CLEAN minimal starter — the user's own
- * profile + one "Mon premier projet" with 3 onboarding tasks. NO fake
- * teammates, NO fake company names — the user only ever sees their
- * own data.
- *
- * In **dev** (or when VITE_SEED_DEMO=1), we additionally clone the
- * full mockData demo so the cockpit looks lived-in for screenshots /
- * UX testing — the demo personas (Pamela, Koffi, Aminata, etc.) are
- * useful to see the multi-user UI features but should NEVER appear in
- * a production user's cockpit.
- */
-export async function seedDatabaseIfEmpty(): Promise<boolean> {
-  console.info('[seed] checking isEmpty()');
-  const isEmptyResult = await Promise.race([
-    isEmpty(),
-    new Promise<'__timeout__'>((resolve) => setTimeout(() => resolve('__timeout__'), 8000)),
-  ]);
-  if (isEmptyResult === '__timeout__') {
-    console.warn(
-      '[seed] ⚠ isEmpty() timed out > 8s — assuming non-empty and skipping seed. Check Supabase CORS / network.'
-    );
-    return false;
-  }
-  if (!isEmptyResult) {
-    console.info('[seed] not empty — skip');
-    return false;
-  }
-
-  console.info('[seed] reading auth session');
-  const { data: sessionData } = await supabase.auth.getSession();
-  const session = sessionData.session;
-  const authUserId = session?.user.id;
-  if (!authUserId) {
-    console.warn('[seed] no auth session — abort');
-    return false;
-  }
-
-  const useFullDemo = import.meta.env.DEV || import.meta.env.VITE_SEED_DEMO === '1';
-  if (useFullDemo) {
-    return await seedFullDemo(authUserId, session.user.email ?? '');
-  }
-  return await seedCleanStarter(authUserId, session.user);
-}
 
 /**
  * Unified boot path — combines what used to be three separate Supabase
@@ -734,54 +687,6 @@ export async function buildOfflineSnapshot(authUserId: string) {
   };
 }
 
-/**
- * Ensure the current auth user has a profile row to act as. We use
- * `<prefix>_u_pame` as the canonical "self" profile id since the seed
- * always creates it. If no seed has run yet (returning user, no demo
- * data), this still returns the conventional id so the rest of the
- * app keeps working.
- *
- * Called by appStore right after `setCurrentAuthUserId`. Returns the
- * profileId to wire into the in-memory store.
- */
-export async function linkAuthUserToProfile(authUserId: string, email: string) {
-  setCurrentAuthUserId(authUserId);
-  const prefix = authUserId.slice(0, 8);
-
-  // Find ANY profile owned by this auth user — could be `_u_me` (clean
-  // starter) or `_u_pame` (legacy demo seed). Whichever exists, use it.
-  // The previous version hardcoded `_u_pame` and silently created a 2nd
-  // (empty) profile for clean-starter users, breaking identity:
-  // tasks were assigned to `_u_me`, `currentProfileId` was `_u_pame`,
-  // and TodayView / PROPH3T couldn't match the user to their own data.
-  const { data: rows } = await supabase
-    .from('cj_profiles')
-    .select('id')
-    .eq('auth_user_id', authUserId)
-    .order('id')
-    .limit(2);
-
-  const existingId = (rows && (rows[0] as { id?: string } | undefined))?.id;
-  if (existingId) {
-    setCurrentProfileId(existingId);
-    return existingId;
-  }
-
-  // No profile at all — returning user whose seed didn't run, or fresh
-  // user whose seed silently failed. Create a minimal one under the
-  // canonical `_u_me` id so the user is consistent with the clean-starter
-  // convention going forward.
-  const fallbackId = `${prefix}_u_me`;
-  const profile = {
-    id: fallbackId,
-    name: email.split('@')[0] || 'Utilisateur',
-    initials: ((email[0] || 'U').toUpperCase() + (email[1] || '')).toUpperCase().slice(0, 2),
-    email,
-    role: 'admin' as const,
-    color: '#6E8B58',
-  };
-  await persist.put('users', profile);
-
-  setCurrentProfileId(fallbackId);
-  return fallbackId;
-}
+// (`linkAuthUserToProfile` was removed when `bootstrapUserData` above
+// replaced the seed → link → load 3-step sequence. The boot path is now
+// a single SELECT against cj_profiles.)

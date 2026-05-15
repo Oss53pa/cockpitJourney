@@ -9,7 +9,6 @@
  * Writes go through .insert / .update with both indexed cols and `data`
  * staying in sync — same pattern as the web app's repo.ts adapter.
  */
-import type { CjSession } from '../auth.js';
 import { requireScope } from '../auth.js';
 import { pickRow, type ToolDefinition } from './common.js';
 

@@ -21,7 +21,7 @@
  *     an instant boot); explicit `wipeDatabase()` purges it.
  */
 
-import type { Snapshot } from './repo';
+import { type Snapshot, normalizeProject, normalizeFolder, normalizeSection } from './repo';
 
 // Bumped from v1 → v2 when we added normalizeProject/Section/Folder at
 // load-time. Older caches may hold projects without membersIds/progress/
@@ -30,6 +30,18 @@ import type { Snapshot } from './repo';
 const SCHEMA_VERSION = 'v2';
 const SNAP_KEY_PREFIX = `cj-snap-${SCHEMA_VERSION}:`;
 const SUPABASE_STORAGE_KEY = 'cj-supabase-auth';
+
+// Hard upper bound on cache age. Beyond this, we ignore the mirror and
+// force a fresh `loadSnapshot` against Supabase — protects against
+// hydrating a months-old snapshot on a device that hasn't been opened
+// in a long while (e.g. backup laptop, returning user after sabbatical).
+const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// Settings keys we deliberately STRIP before writing to localStorage to
+// avoid exposing secrets if the device is compromised (XSS via a future
+// dependency, malicious extension, shared computer). The Supabase server-
+// side row is still the source of truth — these come back on next load.
+const SETTINGS_BLOCKLIST = new Set<string>(['proph3t']);
 
 export interface CachedSnapshot extends Snapshot {
   /** The profile id that was active when this snapshot was captured. */
@@ -56,7 +68,26 @@ export function readSnapshotCache(authUserId: string): CachedSnapshot | null {
       localStorage.removeItem(SNAP_KEY_PREFIX + authUserId);
       return null;
     }
-    return parsed as CachedSnapshot;
+    // TTL check — beyond CACHE_MAX_AGE_MS we drop the cache so we don't
+    // hydrate something stale by months.
+    if (typeof parsed.cachedAt === 'string') {
+      const age = Date.now() - new Date(parsed.cachedAt).getTime();
+      if (isFinite(age) && age > CACHE_MAX_AGE_MS) {
+        console.info('[snap-cache] expired (age=' + Math.round(age / 86400000) + 'd), dropping');
+        localStorage.removeItem(SNAP_KEY_PREFIX + authUserId);
+        return null;
+      }
+    }
+    // Apply the same normalizers we use on Supabase loads, so a cache
+    // written by an older client (pre-membersIds backfill) doesn't crash
+    // the UI on hydrate. This is the read-side belt to the write-side
+    // braces in repo.normalize*.
+    return {
+      ...parsed,
+      folders: Array.isArray(parsed.folders) ? parsed.folders.map(normalizeFolder) : [],
+      projects: parsed.projects.map(normalizeProject),
+      sections: Array.isArray(parsed.sections) ? parsed.sections.map(normalizeSection) : [],
+    } as CachedSnapshot;
   } catch {
     return null;
   }
@@ -65,8 +96,16 @@ export function readSnapshotCache(authUserId: string): CachedSnapshot | null {
 export function writeSnapshotCache(authUserId: string, snapshot: Snapshot, profileId: string): void {
   if (typeof localStorage === 'undefined') return;
   try {
+    // Strip secrets (proph3t.apiKey + anything else in SETTINGS_BLOCKLIST)
+    // from the localStorage mirror. The server-side cj_settings row is the
+    // source of truth — those values come back on the next `loadSnapshot`.
+    const safeSettings: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(snapshot.settings ?? {})) {
+      if (!SETTINGS_BLOCKLIST.has(k)) safeSettings[k] = v;
+    }
     const payload: CachedSnapshot = {
       ...snapshot,
+      settings: safeSettings,
       profileId,
       cachedAt: new Date().toISOString(),
     };

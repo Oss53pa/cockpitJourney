@@ -231,7 +231,7 @@ async function fetchData<T>(sqlTable: string): Promise<T[]> {
  * the cache mirror picks up the normalized shape on next write, so the
  * defensive code only matters once per legacy row.
  */
-function normalizeProject(p: Project): Project {
+export function normalizeProject(p: Project): Project {
   return {
     ...p,
     health: p.health ?? 'green',
@@ -241,14 +241,14 @@ function normalizeProject(p: Project): Project {
   };
 }
 
-function normalizeFolder(f: Folder): Folder {
+export function normalizeFolder(f: Folder): Folder {
   return {
     ...f,
     projectIds: Array.isArray(f.projectIds) ? f.projectIds : [],
   };
 }
 
-function normalizeSection(s: Section): Section {
+export function normalizeSection(s: Section): Section {
   // Older seeds wrote `order` instead of `position`, and skipped `color`.
   const legacyOrder = (s as unknown as { order?: number }).order;
   return {
@@ -528,28 +528,5 @@ export async function wipeDatabase(): Promise<void> {
   }
 }
 
-/**
- * Returns true when the current auth user has no cj_profiles row yet
- * (i.e. their first login — we should run the seed).
- *
- * Implementation note: we deliberately use `select('id').limit(1)` (a
- * regular GET, returns at most 1 row) rather than `select('id', { count:
- * 'exact', head: true })` (which sends an HTTP HEAD with `Prefer:
- * count=exact`). Some browser/proxy/network combinations silently drop
- * HEAD requests with custom Prefer headers, causing the call to hang
- * forever — that's the bug the user hit. A 1-row GET is universally
- * supported and is functionally equivalent for "is anything there?".
- */
-export async function isEmpty(): Promise<boolean> {
-  if (!SUPABASE_CONFIGURED || !currentAuthUserId) return false;
-  const { data, error } = await supabase
-    .from('cj_profiles')
-    .select('id')
-    .eq('auth_user_id', currentAuthUserId)
-    .limit(1);
-  if (error) {
-    console.error('[repo] isEmpty failed', error);
-    return false;
-  }
-  return (data?.length ?? 0) === 0;
-}
+// (`isEmpty` was removed when `bootstrapUserData` collapsed the
+// isEmpty + linkAuthUserToProfile + INSERT sequence into one SELECT.)

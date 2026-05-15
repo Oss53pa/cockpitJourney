@@ -5,7 +5,11 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist'] },
+  // Ignore root build output + sub-project build artefacts. The mcp-server
+  // ships its own dist/ (compiled JS) which we don't want to re-lint with
+  // the front-end's TS rules — that triggers "rule not found" errors for
+  // typescript-eslint rules on plain JS.
+  { ignores: ['dist', 'mcp-server/dist', '**/dist/**'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],

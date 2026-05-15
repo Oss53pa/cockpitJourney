@@ -34,6 +34,17 @@ import type {
 // second invocation literally cannot start.
 let bootstrapStarted = false;
 
+// Reset the guard on Vite HMR so a hot-reloaded store module re-subscribes
+// to auth changes — otherwise dev iteration freezes on the splash forever.
+// `import.meta.hot` is undefined in prod, so this branch tree-shakes away.
+const hmr = (import.meta as { hot?: { dispose: (cb: () => void) => void } }).hot;
+if (hmr) {
+  hmr.dispose(() => {
+    bootstrapStarted = false;
+    hydrateInFlight = null;
+  });
+}
+
 /** Derive the current sprint label from non-done tasks' customFields.Sprint */
 export function getCurrentSprint(tasks: Task[]): string {
   const counts: Record<string, number> = {};
