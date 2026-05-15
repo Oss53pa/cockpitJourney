@@ -313,7 +313,8 @@ Aucune autre prose autour du JSON.`,
   }
 }
 
-function normalizeBlock(raw: Record<string, unknown>): GeneratedTimeBlock | null {
+// Exported for testability — see proph3t.test.ts.
+export function normalizeBlock(raw: Record<string, unknown>): GeneratedTimeBlock | null {
   const startTime = typeof raw.startTime === 'string' ? raw.startTime : null;
   const durationMinutes = typeof raw.durationMinutes === 'number' ? raw.durationMinutes : null;
   const label = typeof raw.label === 'string' ? raw.label : null;

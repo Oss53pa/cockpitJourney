@@ -125,9 +125,16 @@ export function clearSnapshotCache(authUserId?: string): void {
       return;
     }
     // Wipe ALL snapshot caches across users — used by full database wipe.
-    Object.keys(localStorage)
-      .filter((k) => k.startsWith(SNAP_KEY_PREFIX))
-      .forEach((k) => localStorage.removeItem(k));
+    // Use `localStorage.length` + `.key(i)` rather than `Object.keys()`
+    // because the latter only enumerates own properties (works in real
+    // browsers, but not in our jsdom fake-storage mock; this form is
+    // portable across both).
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(SNAP_KEY_PREFIX)) toRemove.push(k);
+    }
+    toRemove.forEach((k) => localStorage.removeItem(k));
   } catch {
     /* localStorage unavailable — nothing to do */
   }

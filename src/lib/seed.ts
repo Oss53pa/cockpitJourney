@@ -626,7 +626,7 @@ async function seedFullDemo(authUserId: string, _email: string): Promise<boolean
 }
 
 /** Best-effort name extraction from an e-mail address: "j.dupont@x.com" → "J. Dupont". */
-function extractNameFromEmail(email: string): string {
+export function extractNameFromEmail(email: string): string {
   if (!email) return 'Vous';
   const local = email.split('@')[0] || '';
   return (
@@ -640,7 +640,7 @@ function extractNameFromEmail(email: string): string {
   );
 }
 
-function computeInitials(name: string): string {
+export function computeInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return 'V';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
