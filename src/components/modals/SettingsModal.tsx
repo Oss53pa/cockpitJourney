@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { useApp, useCurrentUser } from '../../stores/appStore';
 import { FieldLabel, NativeSelect, Switch, TextInput } from '../ui/Field';
 import { Avatar } from '../ui/Avatar';
-import { RotateCcw, Sparkles, ExternalLink, KeyRound, LogOut } from 'lucide-react';
+import { RotateCcw, Sparkles, ExternalLink, KeyRound, LogOut, Pencil, Check, X } from 'lucide-react';
 import { PROVIDERS, type ProphProvider } from '../../lib/proph3t';
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
@@ -12,6 +13,29 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const resetSeed = useApp((s) => s.resetSeed);
   const signOut = useApp((s) => s.signOut);
   const authEmail = useApp((s) => s.authEmail);
+  const updateProfile = useApp((s) => s.updateProfile);
+
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [draftName, setDraftName] = useState(me.name);
+  const [draftRole, setDraftRole] = useState(me.role);
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  const saveProfile = async () => {
+    if (!draftName.trim()) return;
+    setSavingProfile(true);
+    try {
+      await updateProfile({ name: draftName.trim(), role: draftRole });
+      setEditingProfile(false);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const cancelEdit = () => {
+    setDraftName(me.name);
+    setDraftRole(me.role);
+    setEditingProfile(false);
+  };
 
   return (
     <Modal
@@ -29,15 +53,76 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       <div className="space-y-6">
         <section>
           <h3 className="text-2xs uppercase tracking-wider font-medium text-atlas-fg-3 mb-3">Profil</h3>
-          <div className="flex items-center gap-3 panel p-4">
+          <div className="flex items-start gap-3 panel p-4">
             <Avatar user={me} size="lg" />
-            <div className="flex-1">
-              <div className="text-sm font-medium text-atlas-fg-1">{me.name}</div>
-              <div className="text-2xs text-atlas-fg-3">
-                {me.email} · {me.role}
+            {editingProfile ? (
+              <div className="flex-1 space-y-2.5">
+                <div>
+                  <FieldLabel>Nom complet</FieldLabel>
+                  <TextInput
+                    autoFocus
+                    value={draftName}
+                    onChange={(e) => setDraftName(e.target.value)}
+                    placeholder="Pamela ATOKOUNA"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void saveProfile();
+                      if (e.key === 'Escape') cancelEdit();
+                    }}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Rôle / fonction</FieldLabel>
+                  <TextInput
+                    value={draftRole}
+                    onChange={(e) => setDraftRole(e.target.value)}
+                    placeholder="CEO · Atlas Studio"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void saveProfile();
+                      if (e.key === 'Escape') cancelEdit();
+                    }}
+                  />
+                </div>
+                <div className="text-2xs text-atlas-fg-3">
+                  E-mail : <span className="font-mono">{me.email}</span> · non modifiable ici (passe par
+                  Supabase Auth)
+                </div>
+                <div className="flex items-center gap-1.5 pt-1">
+                  <button
+                    onClick={() => void saveProfile()}
+                    disabled={savingProfile || !draftName.trim()}
+                    className="btn-primary text-xs px-2.5 py-1.5 disabled:opacity-50"
+                  >
+                    <Check className="w-3 h-3" /> Enregistrer
+                  </button>
+                  <button
+                    onClick={cancelEdit}
+                    disabled={savingProfile}
+                    className="btn-ghost text-xs px-2.5 py-1.5"
+                  >
+                    <X className="w-3 h-3" /> Annuler
+                  </button>
+                </div>
               </div>
-            </div>
-            <button className="btn-secondary text-xs px-2.5 py-1.5">Changer la photo</button>
+            ) : (
+              <>
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-atlas-fg-1">{me.name}</div>
+                  <div className="text-2xs text-atlas-fg-3">
+                    {me.email} · {me.role}
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setDraftName(me.name);
+                    setDraftRole(me.role);
+                    setEditingProfile(true);
+                  }}
+                  className="btn-secondary text-xs px-2.5 py-1.5"
+                >
+                  <Pencil className="w-3 h-3" /> Modifier
+                </button>
+              </>
+            )}
           </div>
         </section>
 

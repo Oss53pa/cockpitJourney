@@ -337,6 +337,11 @@ interface State {
   updateProject: (id: string, patch: Partial<Project>) => void;
   deleteProject: (id: string) => void;
 
+  // folders
+  createFolder: (input: { name: string; color?: string; icon?: string }) => Folder;
+  updateFolder: (id: string, patch: Partial<Folder>) => void;
+  deleteFolder: (id: string) => void;
+
   // automations
   toggleAutomation: (id: string) => void;
   deleteAutomation: (id: string) => void;
@@ -385,6 +390,13 @@ interface State {
 
   // settings
   updateSettings: (patch: Partial<State['settings']>) => void;
+  /**
+   * Edit the current user's profile (name / color / avatarUrl). Recomputes
+   * initials when `name` changes, syncs the in-memory User row, persists
+   * to cj_profiles, and mirrors `full_name` to Supabase `auth.users.
+   * raw_user_meta_data` so sibling Atlas Studio apps see the new name too.
+   */
+  updateProfile: (patch: Partial<Pick<User, 'name' | 'color' | 'avatarUrl' | 'role'>>) => Promise<void>;
 }
 
 export type ModalKind =
@@ -1016,11 +1028,64 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       projects: s.projects.filter((p) => p.id !== id),
       tasks: s.tasks.filter((t) => t.projectId !== id),
       sections: s.sections.filter((sec) => sec.projectId !== id),
+      // Also strip this project id from any folder that listed it.
+      folders: s.folders.map((f) =>
+        f.projectIds?.includes(id) ? { ...f, projectIds: f.projectIds.filter((pid) => pid !== id) } : f
+      ),
     }));
     dbPersist.delete('projects', id);
     dbPersist.bulkDelete('tasks', taskIds);
     dbPersist.bulkDelete('sections', sectionIds);
+    // Persist folder updates that lost this project id.
+    for (const folder of get().folders) {
+      if (folder.projectIds && !folder.projectIds.includes(id)) {
+        // (already filtered out above — refresh DB row)
+        dbPersist.put('folders', folder);
+      }
+    }
     get().pushToast({ kind: 'info', title: 'Projet supprimé' });
+  },
+
+  createFolder: ({ name, color, icon }) => {
+    const folder: Folder = {
+      id: uid('f'),
+      name: name.trim(),
+      color: color ?? '#6E8B58',
+      icon: icon ?? 'briefcase',
+      projectIds: [],
+    };
+    set((s) => ({ folders: [...s.folders, folder] }));
+    dbPersist.put('folders', folder);
+    get().pushToast({ kind: 'success', title: 'Dossier créé', body: folder.name });
+    return folder;
+  },
+  updateFolder: (id, patch) => {
+    set((s) => ({ folders: s.folders.map((f) => (f.id === id ? { ...f, ...patch } : f)) }));
+    const updated = get().folders.find((f) => f.id === id);
+    if (updated) dbPersist.put('folders', updated);
+  },
+  deleteFolder: (id) => {
+    // Folder removal does NOT delete projects — those move back to the
+    // "ungrouped" pool (folderId becomes undefined). Safer default than
+    // cascading a project tree the user may not have meant to nuke.
+    const orphanedProjects = get().projects.filter((p) => p.folderId === id);
+    set((s) => ({
+      folders: s.folders.filter((f) => f.id !== id),
+      projects: s.projects.map((p) => (p.folderId === id ? { ...p, folderId: undefined } : p)),
+    }));
+    dbPersist.delete('folders', id);
+    for (const p of orphanedProjects) {
+      const updated = get().projects.find((x) => x.id === p.id);
+      if (updated) dbPersist.put('projects', updated);
+    }
+    get().pushToast({
+      kind: 'info',
+      title: 'Dossier supprimé',
+      body:
+        orphanedProjects.length > 0
+          ? `${orphanedProjects.length} projet${orphanedProjects.length > 1 ? 's déplacés' : ' déplacé'} hors dossier`
+          : undefined,
+    });
   },
 
   toggleAutomation: (id) => {
@@ -1641,6 +1706,51 @@ Reste sous 400 mots, ton factuel et engagé.`,
     // Write each setting key to its own row (so partial updates don't require full snapshot)
     Object.entries(patch).forEach(([k, v]) => dbPersist.setSetting(k, v));
     get().pushToast({ kind: 'success', title: 'Préférences enregistrées', duration: 2000 });
+  },
+
+  updateProfile: async (patch) => {
+    const profileId = get().currentProfileId;
+    if (!profileId) {
+      get().pushToast({ kind: 'error', title: 'Profil introuvable' });
+      return;
+    }
+    const me = get().users.find((u) => u.id === profileId);
+    if (!me) {
+      get().pushToast({ kind: 'error', title: 'Profil introuvable' });
+      return;
+    }
+    // Recompute initials if name changed (e.g. "Pamela ATOKOUNA" → "PA").
+    const nextName = patch.name?.trim() || me.name;
+    const nextInitials =
+      patch.name !== undefined
+        ? (() => {
+            const parts = nextName.split(/\s+/).filter(Boolean);
+            if (parts.length === 0) return me.initials;
+            if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+          })()
+        : me.initials;
+    const updated: User = {
+      ...me,
+      ...patch,
+      name: nextName,
+      initials: nextInitials,
+    };
+    set((s: any) => ({
+      users: s.users.map((u: User) => (u.id === profileId ? updated : u)),
+    }));
+    // Persist to cj_profiles (write-through).
+    dbPersist.put('users', updated);
+    // Also mirror `full_name` to Supabase auth metadata so the same name
+    // shows up in sibling Atlas Studio apps + email templates.
+    if (patch.name !== undefined) {
+      try {
+        await supabase.auth.updateUser({ data: { full_name: nextName } });
+      } catch (err) {
+        console.warn('[updateProfile] auth.updateUser failed (non-fatal)', err);
+      }
+    }
+    get().pushToast({ kind: 'success', title: 'Profil mis à jour', duration: 2000 });
   },
 
   addSubtask: (taskId, title) => {
