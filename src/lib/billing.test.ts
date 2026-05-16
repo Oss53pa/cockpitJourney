@@ -5,27 +5,59 @@ import {
   isSubscriptionActive,
   atlasPortalUrl,
   formatXof,
+  computeMonthlyBill,
   type SubscriptionState,
 } from './billing';
 
 describe('PLANS', () => {
-  it('exposes the three CockpitJourney plans', () => {
-    expect(PLANS.map((p) => p.id)).toEqual(['particulier', 'equipe', 'entreprise']);
+  it('exposes two CockpitJourney plans (Solo + Entreprise)', () => {
+    expect(PLANS.map((p) => p.id)).toEqual(['solo', 'entreprise']);
   });
 
-  it('prices Particulier and Équipe at 15 000 FCFA / month', () => {
-    expect(PLANS.find((p) => p.id === 'particulier')?.price).toBe(15_000);
-    expect(PLANS.find((p) => p.id === 'equipe')?.price).toBe(15_000);
+  it('prices both plans at 25 000 FCFA base / month', () => {
+    expect(PLANS.find((p) => p.id === 'solo')?.price).toBe(25_000);
+    expect(PLANS.find((p) => p.id === 'entreprise')?.price).toBe(25_000);
   });
 
-  it('marks Entreprise as null price (sur devis)', () => {
-    expect(PLANS.find((p) => p.id === 'entreprise')?.price).toBeNull();
+  it('includes 5 seats in the base price for both plans', () => {
+    expect(PLANS.find((p) => p.id === 'solo')?.seats).toBe(5);
+    expect(PLANS.find((p) => p.id === 'entreprise')?.seats).toBe(5);
   });
 
-  it('caps Équipe at 10 seats, Particulier at 1, Entreprise unlimited', () => {
-    expect(PLANS.find((p) => p.id === 'particulier')?.seats).toBe(1);
-    expect(PLANS.find((p) => p.id === 'equipe')?.seats).toBe(10);
-    expect(PLANS.find((p) => p.id === 'entreprise')?.seats).toBe('unlimited');
+  it('caps Solo at exactly 5 seats (forfait pur)', () => {
+    const solo = PLANS.find((p) => p.id === 'solo')!;
+    expect(solo.seatsMax).toBe(5);
+    expect(solo.perSeatOverage).toBe(0);
+  });
+
+  it('adds 15 000 FCFA / seat overage on Entreprise (no cap)', () => {
+    const ent = PLANS.find((p) => p.id === 'entreprise')!;
+    expect(ent.seatsMax).toBe('unlimited');
+    expect(ent.perSeatOverage).toBe(15_000);
+  });
+});
+
+describe('computeMonthlyBill', () => {
+  it('returns the flat 25 000 base for a Solo plan, regardless of headcount ≤5', () => {
+    expect(computeMonthlyBill('solo', 1)).toBe(25_000);
+    expect(computeMonthlyBill('solo', 3)).toBe(25_000);
+    expect(computeMonthlyBill('solo', 5)).toBe(25_000);
+  });
+
+  it('returns the flat 25 000 base for Entreprise when headcount ≤5', () => {
+    expect(computeMonthlyBill('entreprise', 1)).toBe(25_000);
+    expect(computeMonthlyBill('entreprise', 5)).toBe(25_000);
+  });
+
+  it('adds 15 000 per seat beyond 5 on Entreprise', () => {
+    expect(computeMonthlyBill('entreprise', 6)).toBe(25_000 + 15_000); // 40 000
+    expect(computeMonthlyBill('entreprise', 10)).toBe(25_000 + 5 * 15_000); // 100 000
+    expect(computeMonthlyBill('entreprise', 20)).toBe(25_000 + 15 * 15_000); // 250 000
+  });
+
+  it('returns 0 for an unknown plan id', () => {
+    // @ts-expect-error — testing the defensive branch
+    expect(computeMonthlyBill('inexistant', 5)).toBe(0);
   });
 });
 

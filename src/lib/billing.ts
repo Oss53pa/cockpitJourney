@@ -35,47 +35,58 @@ export function atlasPortalUrl(action: 'subscribe' | 'manage' = 'manage'): strin
   return `${ATLAS_PORTAL_URL}?app=${APP_ID}&action=${action}`;
 }
 
-export type PlanId = 'particulier' | 'equipe' | 'entreprise';
+export type PlanId = 'solo' | 'entreprise';
 
 export interface PlanDescriptor {
   id: PlanId;
   label: string;
-  price: number | null; // null = "sur devis"
+  price: number; // FCFA base / month
+  /** Per-seat additional cost beyond `seats` included in the base price. 0 = forfait pur. */
+  perSeatOverage: number;
   currency: 'FCFA';
   period: string;
-  seats: number | 'unlimited';
+  /** Number of users covered by the base price. */
+  seats: number;
+  /** Soft cap on the plan — `unlimited` means seats can grow indefinitely with overage. */
+  seatsMax: number | 'unlimited';
   tagline: string;
 }
 
 export const PLANS: PlanDescriptor[] = [
   {
-    id: 'particulier',
-    label: 'Particulier',
-    price: 15_000,
-    currency: 'FCFA',
-    period: 'mois',
-    seats: 1,
-    tagline: 'pour le dirigeant solo',
-  },
-  {
-    id: 'equipe',
-    label: 'Équipe',
-    price: 15_000,
+    id: 'solo',
+    label: 'Solo & petite équipe',
+    price: 25_000,
+    perSeatOverage: 0,
     currency: 'FCFA',
     period: 'mois · forfait',
-    seats: 10,
-    tagline: 'jusqu’à 10 collaborateurs inclus',
+    seats: 5,
+    seatsMax: 5,
+    tagline: 'jusqu’à 5 utilisateurs inclus',
   },
   {
     id: 'entreprise',
     label: 'Entreprise',
-    price: null,
+    price: 25_000,
+    perSeatOverage: 15_000,
     currency: 'FCFA',
-    period: '10 000 FCFA / mois / utilisateur > 10',
-    seats: 'unlimited',
-    tagline: 'au-delà de 10 collaborateurs · devis personnalisé',
+    period: 'mois · forfait + utilisateurs',
+    seats: 5,
+    seatsMax: 'unlimited',
+    tagline: 'au-delà de 5 collaborateurs · +15 000 FCFA / user',
   },
 ];
+
+/**
+ * Compute the monthly bill for a given plan + headcount.
+ * Useful for the in-app billing section and devis pages.
+ */
+export function computeMonthlyBill(planId: PlanId, headcount: number): number {
+  const plan = PLANS.find((p) => p.id === planId);
+  if (!plan) return 0;
+  const overSeats = Math.max(0, headcount - plan.seats);
+  return plan.price + overSeats * plan.perSeatOverage;
+}
 
 /**
  * Current subscription row from cj_subscriptions. Null = no active sub.
@@ -128,8 +139,20 @@ export async function getCurrentSubscription(): Promise<SubscriptionState | null
         : 'incomplete';
   const provider: SubscriptionState['provider'] =
     data.payment_method === 'cinetpay' ? 'cinetpay' : data.payment_method === 'stripe' ? 'stripe' : 'manual';
+  // Legacy plan names → new ids: anything ≤5 seats counts as solo, the
+  // multi-seat / per-seat plans become entreprise. Defensive against
+  // historic rows in the subscriptions table.
+  const rawPlan = String(data.plan ?? '').toLowerCase();
+  const plan: PlanId =
+    rawPlan === 'solo' || rawPlan === 'entreprise'
+      ? rawPlan
+      : ['particulier', 'individual', 'starter'].includes(rawPlan)
+        ? 'solo'
+        : ['equipe', 'team', 'business', 'pro'].includes(rawPlan)
+          ? 'entreprise'
+          : 'solo';
   return {
-    plan: (data.plan as PlanId) ?? 'particulier',
+    plan,
     status,
     seats: (data.seats_limit as number) ?? 1,
     trialEndsAt: data.trial_ends_at as string | null,

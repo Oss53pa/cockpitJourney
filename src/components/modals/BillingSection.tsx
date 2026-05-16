@@ -130,10 +130,9 @@ export function BillingSection() {
       )}
 
       {/* Plan grid — informational. Every CTA links to the central portal. */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {PLANS.map((p) => {
           const isCurrent = sub?.plan === p.id && active;
-          const isContact = p.price === null;
           return (
             <div
               key={p.id}
@@ -146,15 +145,16 @@ export function BillingSection() {
                 {p.label}
               </div>
               <div className="flex items-baseline gap-1.5 mb-1">
-                {isContact ? (
-                  <span className="text-lg font-display font-medium text-atlas-fg-1">Sur devis</span>
-                ) : (
-                  <span className="text-2xl font-display font-medium text-atlas-fg-1">
-                    {formatXof(p.price!)}
-                  </span>
-                )}
+                <span className="text-2xl font-display font-medium text-atlas-fg-1">
+                  {formatXof(p.price)}
+                </span>
               </div>
-              <div className="text-2xs text-atlas-fg-3 mb-2">/ {p.period}</div>
+              <div className="text-2xs text-atlas-fg-3 mb-1">/ {p.period}</div>
+              {p.perSeatOverage > 0 && (
+                <div className="text-2xs text-atlas-fg-3 mb-2">
+                  + {formatXof(p.perSeatOverage)} / utilisateur au-delà de {p.seats}
+                </div>
+              )}
               <div className="text-xs text-atlas-fg-2 mb-3 leading-relaxed">{p.tagline}</div>
               <div className="mt-auto">
                 {isCurrent ? (

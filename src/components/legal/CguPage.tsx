@@ -39,16 +39,18 @@ export function CguPage() {
       <LegalH3>3.1. Plans</LegalH3>
       <LegalUL>
         <li>
-          <strong>Particulier</strong> — 15 000 FCFA (XOF) par mois, 1 utilisateur.
+          <strong>Solo &amp; petite équipe</strong> — 25 000 FCFA (XOF) par mois, forfait jusqu'à 5
+          utilisateurs inclus. Pas de coût additionnel.
         </li>
         <li>
-          <strong>Équipe</strong> — 15 000 FCFA (XOF) par mois, forfait jusqu'à 10 utilisateurs inclus.
-        </li>
-        <li>
-          <strong>Entreprise</strong> — sur devis, 10 000 FCFA (XOF) par utilisateur supplémentaire au-delà du
-          10ᵉ collaborateur, par mois.
+          <strong>Entreprise</strong> — 25 000 FCFA (XOF) par mois en base (5 utilisateurs inclus) puis 15 000
+          FCFA (XOF) par utilisateur supplémentaire par mois au-delà du 5ᵉ collaborateur. Sans plafond.
         </li>
       </LegalUL>
+      <LegalP>
+        Exemple Entreprise : une équipe de 8 utilisateurs paie 25 000 + (8 − 5) × 15 000 = 70 000 FCFA / mois
+        ; une équipe de 12 paie 25 000 + 7 × 15 000 = 130 000 FCFA / mois.
+      </LegalP>
       <LegalH3>3.2. Facturation</LegalH3>
       <LegalP>
         La facturation est mensuelle, prélevée le jour anniversaire de la souscription. Les paiements sont
