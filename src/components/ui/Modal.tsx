@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -42,7 +43,15 @@ export function Modal({
   }, [open, onClose, hideCloseButton]);
 
   if (!open) return null;
-  return (
+
+  // Render via React Portal directly into document.body so we escape any
+  // ancestor that defines a `transform`, `filter`, or `backdrop-filter`
+  // — those CSS properties create a new "containing block" for fixed-
+  // positioned descendants (CSS spec), which would otherwise pin this
+  // modal to the size of the ancestor instead of the viewport. The
+  // LandingPage nav uses `backdrop-blur-md`, so without this portal the
+  // PWA install modal renders ~60px tall stuck to the top of the screen.
+  const modalNode = (
     <div className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fade-in">
       {/* Backdrop — clicks dismiss UNLESS hideCloseButton (required flow) */}
       <div
@@ -81,4 +90,10 @@ export function Modal({
       </div>
     </div>
   );
+
+  // SSR-safe: `document` only exists client-side. Vite/Vercel build is
+  // browser-only anyway, but the guard keeps the type narrow for any
+  // future SSR/SSG migration.
+  if (typeof document === 'undefined') return modalNode;
+  return createPortal(modalNode, document.body);
 }
