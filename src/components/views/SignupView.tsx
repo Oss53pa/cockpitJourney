@@ -209,20 +209,22 @@ export function SignupView() {
 
       <p className="mt-4 text-center text-2xs text-atlas-fg-3 font-light leading-relaxed">
         En créant un compte, vous acceptez les{' '}
-        <a
-          href="https://atlas-studio.org/portal/legal/cgu"
+        <Link
+          to="/legal/cgu"
+          target="_blank"
           className="text-atlas-fg-2 hover:text-atlas-sage-deep underline underline-offset-2"
         >
           CGU
-        </a>{' '}
+        </Link>{' '}
         et la{' '}
-        <a
-          href="https://atlas-studio.org/portal/legal/privacy"
+        <Link
+          to="/legal/confidentialite"
+          target="_blank"
           className="text-atlas-fg-2 hover:text-atlas-sage-deep underline underline-offset-2"
         >
           politique de confidentialité
-        </a>{' '}
-        d'Atlas Studio.
+        </Link>
+        .
       </p>
     </AuthLayout>
   );

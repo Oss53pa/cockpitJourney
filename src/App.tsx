@@ -13,6 +13,18 @@ import { ForgotPasswordView } from './components/views/ForgotPasswordView';
 import { ResetPasswordView } from './components/views/ResetPasswordView';
 import { LandingPage } from './components/views/LandingPage';
 import { AuthCallback } from './components/AuthCallback';
+// Legal pages are lazy — they're crawler-visible static content but
+// rarely loaded by signed-in users.
+const CguPage = lazy(() => import('./components/legal/CguPage').then((m) => ({ default: m.CguPage })));
+const ConfidentialitePage = lazy(() =>
+  import('./components/legal/ConfidentialitePage').then((m) => ({ default: m.ConfidentialitePage }))
+);
+const CookiesPage = lazy(() =>
+  import('./components/legal/CookiesPage').then((m) => ({ default: m.CookiesPage }))
+);
+const MentionsPage = lazy(() =>
+  import('./components/legal/MentionsPage').then((m) => ({ default: m.MentionsPage }))
+);
 const AcceptInvite = lazy(() => import('./pages/auth/AcceptInvite'));
 import { ModalRoot } from './components/modals/ModalRoot';
 import { OnboardingModal } from './components/modals/OnboardingModal';
@@ -394,6 +406,40 @@ function App() {
           (Standard SaaS pattern: Linear, Notion, etc. — / is marketing, not
           the app shell. Signed-in users get a "Mon cockpit" CTA in the nav.) */}
       <Route path="/" element={<LandingPage />} />
+
+      {/* Legal — public, crawlable, no auth required */}
+      <Route
+        path="/legal/cgu"
+        element={
+          <Suspense fallback={<div />}>
+            <CguPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/legal/confidentialite"
+        element={
+          <Suspense fallback={<div />}>
+            <ConfidentialitePage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/legal/cookies"
+        element={
+          <Suspense fallback={<div />}>
+            <CookiesPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/legal/mentions"
+        element={
+          <Suspense fallback={<div />}>
+            <MentionsPage />
+          </Suspense>
+        }
+      />
 
       {/* SSO callback (Atlas Studio token handoff or magic-link redirect) */}
       <Route path="/auth" element={<AuthCallback />} />

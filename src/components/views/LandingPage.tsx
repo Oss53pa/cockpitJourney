@@ -1203,16 +1203,23 @@ function Footer() {
               </a>
             </li>
             <li>
-              <a href={`${ATLAS_STUDIO_URL}/portal/legal/cgu`} className="hover:text-atlas-fg-1 transition">
+              <a href="/legal/cgu" className="hover:text-atlas-fg-1 transition">
                 CGU
               </a>
             </li>
             <li>
-              <a
-                href={`${ATLAS_STUDIO_URL}/portal/legal/privacy`}
-                className="hover:text-atlas-fg-1 transition"
-              >
+              <a href="/legal/confidentialite" className="hover:text-atlas-fg-1 transition">
                 Confidentialité
+              </a>
+            </li>
+            <li>
+              <a href="/legal/cookies" className="hover:text-atlas-fg-1 transition">
+                Cookies
+              </a>
+            </li>
+            <li>
+              <a href="/legal/mentions" className="hover:text-atlas-fg-1 transition">
+                Mentions légales
               </a>
             </li>
             <li>
