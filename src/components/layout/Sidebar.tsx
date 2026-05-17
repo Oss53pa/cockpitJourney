@@ -18,6 +18,11 @@ import {
   Building2,
   Globe2,
   Heart,
+  Briefcase,
+  Folder as FolderIc,
+  Rocket,
+  GraduationCap,
+  FolderPlus,
   Compass,
   FileText,
   Wallet,
@@ -41,7 +46,26 @@ import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../ui/Menu';
 import { cn } from '../../lib/utils';
 import type { ViewKey } from '../../types';
 
-const folderIcons: Record<string, LucideIcon> = { Building2, Globe2, Heart };
+// Folder icon registry — keys match the slugs persisted by the seed
+// and the FolderFormModal. PascalCase legacy keys are kept for
+// backward compat with folders created before the slug migration.
+const folderIcons: Record<string, LucideIcon> = {
+  briefcase: Briefcase,
+  'building-2': Building2,
+  home: Home,
+  folder: FolderIc,
+  rocket: Rocket,
+  compass: Compass,
+  'graduation-cap': GraduationCap,
+  heart: Heart,
+  // Legacy PascalCase mappings (pre-2026-05 folders).
+  Briefcase,
+  Building2,
+  Globe2,
+  Heart,
+  Home,
+  Folder: FolderIc,
+};
 const projectIcons: Record<string, LucideIcon> = {
   Compass,
   FileText,
@@ -190,13 +214,41 @@ export function Sidebar({
       <div className="mt-6 px-3 flex-1 overflow-y-auto">
         <div className="flex items-center justify-between px-3 mb-2">
           <span className="text-2xs uppercase tracking-[0.18em] font-medium text-atlas-fg-3">Projets</span>
-          <button
-            onClick={() => openModal('project-create')}
-            title="Nouveau projet"
-            className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-black/[0.06] text-atlas-fg-3 hover:text-atlas-fg-1"
+          <Menu
+            align="right"
+            width={200}
+            trigger={
+              <button
+                title="Nouveau projet ou dossier"
+                className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-black/[0.06] text-atlas-fg-3 hover:text-atlas-fg-1"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            }
           >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
+            {(close) => (
+              <>
+                <MenuItem
+                  icon={ClipboardList}
+                  onClick={() => {
+                    close();
+                    openModal('project-create');
+                  }}
+                >
+                  Nouveau projet
+                </MenuItem>
+                <MenuItem
+                  icon={FolderPlus}
+                  onClick={() => {
+                    close();
+                    openModal('folder-create');
+                  }}
+                >
+                  Nouveau dossier
+                </MenuItem>
+              </>
+            )}
+          </Menu>
         </div>
 
         <div className="space-y-0.5">
@@ -210,18 +262,64 @@ export function Sidebar({
               folder.projectIds ? folder.projectIds.includes(p.id) : p.folderId === folder.id
             );
             return (
-              <div key={folder.id}>
-                <button
-                  onClick={() => setOpenFolders((s) => ({ ...s, [folder.id]: !s[folder.id] }))}
-                  className="group w-full flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-black/[0.04] text-atlas-fg-2 hover:text-atlas-fg-1"
-                >
-                  <ChevronRight
-                    className={cn('w-3.5 h-3.5 text-atlas-fg-3 transition-transform', isOpen && 'rotate-90')}
-                  />
-                  <FolderIcon className="w-[14px] h-[14px]" style={{ color: folder.color }} strokeWidth={2} />
-                  <span className="text-sm font-medium flex-1 text-left">{folder.name}</span>
-                  <span className="text-2xs text-atlas-fg-3">{folderProjects.length}</span>
-                </button>
+              <div key={folder.id} className="group/folder">
+                <div className="flex items-center gap-1 pr-1">
+                  <button
+                    onClick={() => setOpenFolders((s) => ({ ...s, [folder.id]: !s[folder.id] }))}
+                    className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-black/[0.04] text-atlas-fg-2 hover:text-atlas-fg-1"
+                  >
+                    <ChevronRight
+                      className={cn(
+                        'w-3.5 h-3.5 text-atlas-fg-3 transition-transform',
+                        isOpen && 'rotate-90'
+                      )}
+                    />
+                    <FolderIcon
+                      className="w-[14px] h-[14px]"
+                      style={{ color: folder.color }}
+                      strokeWidth={2}
+                    />
+                    <span className="text-sm font-medium flex-1 text-left">{folder.name}</span>
+                    <span className="text-2xs text-atlas-fg-3">{folderProjects.length}</span>
+                  </button>
+                  <Menu
+                    align="right"
+                    width={180}
+                    trigger={
+                      <button
+                        title="Options du dossier"
+                        className="w-6 h-6 rounded-md flex items-center justify-center text-atlas-fg-3 hover:text-atlas-fg-1 hover:bg-black/[0.06] opacity-0 group-hover/folder:opacity-100 transition"
+                      >
+                        <MoreHorizontal className="w-3.5 h-3.5" />
+                      </button>
+                    }
+                  >
+                    {(close) => (
+                      <>
+                        <MenuItem
+                          icon={Edit3}
+                          onClick={() => {
+                            close();
+                            openModal('folder-edit', folder);
+                          }}
+                        >
+                          Renommer
+                        </MenuItem>
+                        <MenuSeparator />
+                        <MenuItem
+                          icon={Trash2}
+                          danger
+                          onClick={() => {
+                            close();
+                            openModal('folder-edit', folder);
+                          }}
+                        >
+                          Supprimer…
+                        </MenuItem>
+                      </>
+                    )}
+                  </Menu>
+                </div>
                 {isOpen && (
                   <div className="pl-2 space-y-0.5 mt-0.5 mb-1">
                     {folderProjects.map((p) => {

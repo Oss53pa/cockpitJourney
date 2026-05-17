@@ -424,7 +424,11 @@ async function seedCleanStarter(
 
   const projectId = `${prefix}_p_starter`;
 
-  const folder = {
+  // Three default folders so the user has somewhere to organize different
+  // areas of life right away — not just one "Personnel" dropdown choice.
+  // The starter project goes into "Personnel"; the other two are empty
+  // buckets the user can fill (or rename/delete).
+  const folderPersonnel = {
     id: `${prefix}_f_personal`,
     name: 'Personnel',
     color: '#6E8B58',
@@ -433,6 +437,25 @@ async function seedCleanStarter(
     projectIds: [projectId],
     createdAt: isoNow,
   };
+  const folderEntreprise = {
+    id: `${prefix}_f_entreprise`,
+    name: 'Entreprise',
+    color: '#8AA6C4',
+    icon: 'building-2',
+    order: 1,
+    projectIds: [] as string[],
+    createdAt: isoNow,
+  };
+  const folderFamille = {
+    id: `${prefix}_f_famille`,
+    name: 'Famille',
+    color: '#D58FA7',
+    icon: 'home',
+    order: 2,
+    projectIds: [] as string[],
+    createdAt: isoNow,
+  };
+  const allFolders = [folderPersonnel, folderEntreprise, folderFamille];
 
   const project = {
     id: projectId,
@@ -442,7 +465,7 @@ async function seedCleanStarter(
       'Découvrez CockpitJourney en trois étapes. Cliquez sur chaque tâche pour voir comment elles s’éditent — ou créez les vôtres.',
     color: '#6E8B58',
     icon: 'target',
-    folderId: folder.id,
+    folderId: folderPersonnel.id,
     ownerId: profileId,
     status: 'active' as const,
     // Fields required by the Project type — must be populated or
@@ -545,7 +568,7 @@ async function seedCleanStarter(
   const t0 = performance.now();
   const settled = await Promise.allSettled([
     persist.bulkPut('users', [userProfile]),
-    persist.bulkPut('folders', [folder]),
+    persist.bulkPut('folders', allFolders),
     persist.bulkPut('projects', [project]),
     persist.bulkPut('sections', [sectionTodo, sectionInProgress, sectionDone]),
     persist.bulkPut('tasks', onboardingTasks),

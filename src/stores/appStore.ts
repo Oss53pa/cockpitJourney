@@ -441,6 +441,8 @@ export type ModalKind =
   | 'project-create'
   | 'project-edit'
   | 'project-delete'
+  | 'folder-create'
+  | 'folder-edit'
   | 'goal-create'
   | 'goal-edit'
   | 'goal-bump'

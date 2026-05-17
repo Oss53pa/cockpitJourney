@@ -16,7 +16,15 @@ export function ProjectFormModal({ onClose, initial }: Props) {
   const folders = useApp((s) => s.folders);
   const createProject = useApp((s) => s.createProject);
   const updateProject = useApp((s) => s.updateProject);
+  const createFolder = useApp((s) => s.createFolder);
   const isEdit = !!initial;
+
+  // Inline folder creation — if the user picks the "+ Nouveau dossier"
+  // synthetic option, we show a one-line input instead of bouncing them
+  // to a separate modal. They type a name, hit Enter, and the folder is
+  // created on the fly + auto-selected.
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
 
   const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
@@ -93,13 +101,72 @@ export function ProjectFormModal({ onClose, initial }: Props) {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <FieldLabel>Dossier</FieldLabel>
-            <NativeSelect value={folderId} onChange={(e) => setFolderId(e.target.value)}>
-              {folders.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </NativeSelect>
+            {creatingFolder ? (
+              <div className="flex items-center gap-1.5">
+                <TextInput
+                  autoFocus
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  placeholder="Nom du nouveau dossier"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newFolderName.trim()) {
+                      const f = createFolder({ name: newFolderName.trim() });
+                      setFolderId(f.id);
+                      setCreatingFolder(false);
+                      setNewFolderName('');
+                    }
+                    if (e.key === 'Escape') {
+                      setCreatingFolder(false);
+                      setNewFolderName('');
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!newFolderName.trim()) return;
+                    const f = createFolder({ name: newFolderName.trim() });
+                    setFolderId(f.id);
+                    setCreatingFolder(false);
+                    setNewFolderName('');
+                  }}
+                  disabled={!newFolderName.trim()}
+                  className="btn-primary text-xs px-2.5 py-1.5 shrink-0 disabled:opacity-50"
+                  title="Créer le dossier"
+                >
+                  OK
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreatingFolder(false);
+                    setNewFolderName('');
+                  }}
+                  className="btn-ghost text-xs px-2 py-1.5 shrink-0"
+                  title="Annuler"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <NativeSelect
+                value={folderId}
+                onChange={(e) => {
+                  if (e.target.value === '__new__') {
+                    setCreatingFolder(true);
+                  } else {
+                    setFolderId(e.target.value);
+                  }
+                }}
+              >
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+                <option value="__new__">+ Nouveau dossier…</option>
+              </NativeSelect>
+            )}
           </div>
           <div>
             <FieldLabel>Échéance cible</FieldLabel>

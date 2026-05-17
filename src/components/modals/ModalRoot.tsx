@@ -1,6 +1,7 @@
 import { useApp } from '../../stores/appStore';
 import { TaskFormModal } from './TaskFormModal';
 import { ProjectFormModal } from './ProjectFormModal';
+import { FolderFormModal } from './FolderFormModal';
 import { GoalFormModal } from './GoalFormModal';
 import { ConfirmModal } from './ConfirmModal';
 import { SettingsModal } from './SettingsModal';
@@ -35,6 +36,10 @@ export function ModalRoot() {
       return <ProjectFormModal onClose={close} />;
     case 'project-edit':
       return <ProjectFormModal initial={modal.payload} onClose={close} />;
+    case 'folder-create':
+      return <FolderFormModal onClose={close} />;
+    case 'folder-edit':
+      return <FolderFormModal initial={modal.payload} onClose={close} />;
     case 'project-delete':
       return (
         <ConfirmModal
