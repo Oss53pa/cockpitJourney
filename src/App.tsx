@@ -28,6 +28,7 @@ const MentionsPage = lazy(() =>
 const AcceptInvite = lazy(() => import('./pages/auth/AcceptInvite'));
 import { ModalRoot } from './components/modals/ModalRoot';
 import { OnboardingModal } from './components/modals/OnboardingModal';
+import { InstallPromptBanner } from './components/pwa/InstallPromptBanner';
 const TeamSettingsPage = lazy(() => import('./pages/settings/TeamSettingsPage'));
 const IntegrationsSettingsPage = lazy(() => import('./pages/settings/IntegrationsSettingsPage'));
 import { Toaster } from './components/ui/Toaster';
@@ -401,157 +402,166 @@ function App() {
   }
 
   return (
-    <Routes>
-      {/* Public landing — ALWAYS shown at root URL, even for signed-in users.
+    <>
+      {/* Global PWA install nudge — appears bottom-right ~3s after page
+          load when `beforeinstallprompt` fires AND the user hasn't
+          dismissed it in the last 7 days. Sits at z-90, below modals
+          (z-100) and above all page content. Renders nothing if the
+          app is already installed standalone, or on browsers that
+          don't expose beforeinstallprompt (Safari, iOS). */}
+      <InstallPromptBanner />
+      <Routes>
+        {/* Public landing — ALWAYS shown at root URL, even for signed-in users.
           (Standard SaaS pattern: Linear, Notion, etc. — / is marketing, not
           the app shell. Signed-in users get a "Mon cockpit" CTA in the nav.) */}
-      <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={<LandingPage />} />
 
-      {/* Legal — public, crawlable, no auth required */}
-      <Route
-        path="/legal/cgu"
-        element={
-          <Suspense fallback={<div />}>
-            <CguPage />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/legal/confidentialite"
-        element={
-          <Suspense fallback={<div />}>
-            <ConfidentialitePage />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/legal/cookies"
-        element={
-          <Suspense fallback={<div />}>
-            <CookiesPage />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/legal/mentions"
-        element={
-          <Suspense fallback={<div />}>
-            <MentionsPage />
-          </Suspense>
-        }
-      />
-
-      {/* SSO callback (Atlas Studio token handoff or magic-link redirect) */}
-      <Route path="/auth" element={<AuthCallback />} />
-      <Route
-        path="/auth/accept-invite"
-        element={
-          <Suspense fallback={<div />}>
-            <AcceptInvite />
-          </Suspense>
-        }
-      />
-
-      {/* Team settings — gestion equipe via licence_seats */}
-      <Route
-        path="/settings/team"
-        element={
-          authStatus === 'signed_in' ? (
-            <Suspense fallback={<ViewSkeleton />}>
-              <TeamSettingsPage />
+        {/* Legal — public, crawlable, no auth required */}
+        <Route
+          path="/legal/cgu"
+          element={
+            <Suspense fallback={<div />}>
+              <CguPage />
             </Suspense>
-          ) : (
-            <SignedOutRedirect />
-          )
-        }
-      />
-
-      {/* Integrations settings — Personal Access Tokens for Claude Cowork & MCP clients */}
-      <Route
-        path="/settings/integrations"
-        element={
-          authStatus === 'signed_in' ? (
-            <Suspense fallback={<ViewSkeleton />}>
-              <IntegrationsSettingsPage />
+          }
+        />
+        <Route
+          path="/legal/confidentialite"
+          element={
+            <Suspense fallback={<div />}>
+              <ConfidentialitePage />
             </Suspense>
-          ) : (
-            <SignedOutRedirect />
-          )
-        }
-      />
+          }
+        />
+        <Route
+          path="/legal/cookies"
+          element={
+            <Suspense fallback={<div />}>
+              <CookiesPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/legal/mentions"
+          element={
+            <Suspense fallback={<div />}>
+              <MentionsPage />
+            </Suspense>
+          }
+        />
 
-      {/* Login (email + password OR Google OAuth). Magic-link OTP a
+        {/* SSO callback (Atlas Studio token handoff or magic-link redirect) */}
+        <Route path="/auth" element={<AuthCallback />} />
+        <Route
+          path="/auth/accept-invite"
+          element={
+            <Suspense fallback={<div />}>
+              <AcceptInvite />
+            </Suspense>
+          }
+        />
+
+        {/* Team settings — gestion equipe via licence_seats */}
+        <Route
+          path="/settings/team"
+          element={
+            authStatus === 'signed_in' ? (
+              <Suspense fallback={<ViewSkeleton />}>
+                <TeamSettingsPage />
+              </Suspense>
+            ) : (
+              <SignedOutRedirect />
+            )
+          }
+        />
+
+        {/* Integrations settings — Personal Access Tokens for Claude Cowork & MCP clients */}
+        <Route
+          path="/settings/integrations"
+          element={
+            authStatus === 'signed_in' ? (
+              <Suspense fallback={<ViewSkeleton />}>
+                <IntegrationsSettingsPage />
+              </Suspense>
+            ) : (
+              <SignedOutRedirect />
+            )
+          }
+        />
+
+        {/* Login (email + password OR Google OAuth). Magic-link OTP a
           été retiré au profit du flow password — la création de compte
           passe par /signup, le reset par /forgot-password. */}
-      <Route
-        path="/login"
-        element={
-          authStatus === 'signed_in' ? (
-            <Navigate to={consumePostLoginTarget()} replace />
-          ) : (
+        <Route
+          path="/login"
+          element={
+            authStatus === 'signed_in' ? (
+              <Navigate to={consumePostLoginTarget()} replace />
+            ) : (
+              <ErrorBoundary>
+                <LoginView />
+                <Toaster />
+              </ErrorBoundary>
+            )
+          }
+        />
+
+        {/* Sign-up (création compte avec email + mot de passe + nom) */}
+        <Route
+          path="/signup"
+          element={
+            authStatus === 'signed_in' ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <ErrorBoundary>
+                <SignupView />
+                <Toaster />
+              </ErrorBoundary>
+            )
+          }
+        />
+
+        {/* Forgot password — déclenche l'envoi de l'e-mail de récupération */}
+        <Route
+          path="/forgot-password"
+          element={
+            authStatus === 'signed_in' ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <ErrorBoundary>
+                <ForgotPasswordView />
+                <Toaster />
+              </ErrorBoundary>
+            )
+          }
+        />
+
+        {/* Reset password — landing page après clic du lien recovery */}
+        <Route
+          path="/reset-password"
+          element={
             <ErrorBoundary>
-              <LoginView />
+              <ResetPasswordView />
               <Toaster />
             </ErrorBoundary>
-          )
-        }
-      />
+          }
+        />
 
-      {/* Sign-up (création compte avec email + mot de passe + nom) */}
-      <Route
-        path="/signup"
-        element={
-          authStatus === 'signed_in' ? (
-            <Navigate to="/dashboard" replace />
-          ) : (
-            <ErrorBoundary>
-              <SignupView />
-              <Toaster />
-            </ErrorBoundary>
-          )
-        }
-      />
+        {/* Authenticated cockpit */}
+        <Route
+          path="/dashboard"
+          element={authStatus === 'signed_in' ? <CockpitShell /> : <SignedOutRedirect />}
+        />
 
-      {/* Forgot password — déclenche l'envoi de l'e-mail de récupération */}
-      <Route
-        path="/forgot-password"
-        element={
-          authStatus === 'signed_in' ? (
-            <Navigate to="/dashboard" replace />
-          ) : (
-            <ErrorBoundary>
-              <ForgotPasswordView />
-              <Toaster />
-            </ErrorBoundary>
-          )
-        }
-      />
-
-      {/* Reset password — landing page après clic du lien recovery */}
-      <Route
-        path="/reset-password"
-        element={
-          <ErrorBoundary>
-            <ResetPasswordView />
-            <Toaster />
-          </ErrorBoundary>
-        }
-      />
-
-      {/* Authenticated cockpit */}
-      <Route
-        path="/dashboard"
-        element={authStatus === 'signed_in' ? <CockpitShell /> : <SignedOutRedirect />}
-      />
-
-      {/* Fallback: unknown URL → /dashboard if signed in, / (landing) otherwise */}
-      <Route
-        path="*"
-        element={
-          authStatus === 'signed_in' ? <Navigate to="/dashboard" replace /> : <Navigate to="/" replace />
-        }
-      />
-    </Routes>
+        {/* Fallback: unknown URL → /dashboard if signed in, / (landing) otherwise */}
+        <Route
+          path="*"
+          element={
+            authStatus === 'signed_in' ? <Navigate to="/dashboard" replace /> : <Navigate to="/" replace />
+          }
+        />
+      </Routes>
+    </>
   );
 }
 
