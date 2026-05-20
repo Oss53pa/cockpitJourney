@@ -1,11 +1,12 @@
 /**
  * Public surface of the report exporter system.
  *
- * Each format (`pdf`/`docx`/`xlsx`/`pptx`) is **lazy-loaded** via
- * dynamic import — that's how we keep the main bundle small. A user
- * who never exports a report never pays the cost of the 4 underlying
- * libraries (~2 MB combined). Vite/Rollup will emit one chunk per
- * format and the browser fetches only the one the user asks for.
+ * Each format (`pdf`/`docx`/`xlsx`/`pptx`/`html`) is **lazy-loaded**
+ * via dynamic import — that's how we keep the main bundle small. A
+ * user who never exports a report never pays the cost of the 4 heavy
+ * underlying libraries (~2 MB combined). The HTML exporter is the
+ * only one with zero npm dependencies (pure string templating), so
+ * its chunk is tiny (~3 KB).
  */
 import type { Report } from '../../stores/appStore';
 import type { Task, User } from '../../types';
@@ -45,6 +46,10 @@ export async function exportReport(
     case 'pptx': {
       const { exportToPptx } = await import('./pptx');
       return exportToPptx(fullPayload);
+    }
+    case 'html': {
+      const { exportToHtml } = await import('./html');
+      return exportToHtml(fullPayload);
     }
     default: {
       const exhaustive: never = format;

@@ -10,7 +10,17 @@
  * one-shot avec les options choisies. Le rapport en base reste intact.
  */
 import { useMemo, useState } from 'react';
-import { FileText, FileSpreadsheet, Presentation, Sparkles, Loader2, Check, Download, X } from 'lucide-react';
+import {
+  FileText,
+  FileSpreadsheet,
+  Presentation,
+  Globe,
+  Sparkles,
+  Loader2,
+  Check,
+  Download,
+  X,
+} from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { useApp, type Report } from '../../stores/appStore';
 import { cn } from '../../lib/utils';
@@ -29,6 +39,7 @@ const FORMAT_ICONS: Record<ExportFormat, React.ComponentType<{ className?: strin
   docx: FileText,
   xlsx: FileSpreadsheet,
   pptx: Presentation,
+  html: Globe,
 };
 
 const FORMAT_ACCENT: Record<ExportFormat, string> = {
@@ -36,6 +47,7 @@ const FORMAT_ACCENT: Record<ExportFormat, string> = {
   docx: 'border-signal-blue/40 bg-signal-blue/[0.06] text-signal-blue',
   xlsx: 'border-signal-green/40 bg-signal-green/[0.06] text-signal-green',
   pptx: 'border-signal-yellow/40 bg-signal-yellow/[0.06] text-signal-yellow',
+  html: 'border-signal-violet/40 bg-signal-violet/[0.06] text-signal-violet',
 };
 
 export function ReportExportDialog({

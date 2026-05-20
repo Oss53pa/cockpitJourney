@@ -9,7 +9,7 @@
 import type { Report } from '../../stores/appStore';
 import type { Task, User } from '../../types';
 
-export type ExportFormat = 'pdf' | 'docx' | 'xlsx' | 'pptx';
+export type ExportFormat = 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'html';
 
 export type SectionKey =
   | 'cover'
@@ -79,6 +79,7 @@ export const FORMAT_LABELS: Record<ExportFormat, string> = {
   docx: 'Word (.docx)',
   xlsx: 'Excel (.xlsx)',
   pptx: 'PowerPoint (.pptx)',
+  html: 'Web (.html)',
 };
 
 export const FORMAT_DESCRIPTIONS: Record<ExportFormat, string> = {
@@ -86,6 +87,7 @@ export const FORMAT_DESCRIPTIONS: Record<ExportFormat, string> = {
   docx: 'Document éditable Microsoft Word, parfait pour annoter et reformuler.',
   xlsx: 'Tableur Excel multi-onglets : un onglet par section, valeurs brutes manipulables.',
   pptx: 'Présentation PowerPoint, une diapo par section. Idéal CoDir / lecture rapide.',
+  html: 'Page web autonome (.html), ouvre dans n’importe quel navigateur. Idéal partage intranet / pièce jointe email.',
 };
 
 /* ─── Helpers ─── */

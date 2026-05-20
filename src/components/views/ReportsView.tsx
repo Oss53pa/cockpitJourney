@@ -366,7 +366,7 @@ function ReportsHistoryTable({
               <th className="text-center text-2xs uppercase tracking-[0.18em] text-atlas-fg-3 font-medium px-4 py-3 w-20">
                 Narration
               </th>
-              <th className="text-right text-2xs uppercase tracking-[0.18em] text-atlas-fg-3 font-medium px-4 py-3 w-1">
+              <th className="text-right text-2xs uppercase tracking-[0.18em] text-atlas-fg-3 font-medium px-4 py-3 whitespace-nowrap sticky right-0 bg-atlas-panel-2 z-10">
                 Actions
               </th>
             </tr>
@@ -452,7 +452,7 @@ function ReportRow({
   const time = generatedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
   return (
-    <tr className="border-b border-atlas-line/50 last:border-0 hover:bg-atlas-amber/[0.03] transition-colors">
+    <tr className="group/row border-b border-atlas-line/50 last:border-0 hover:bg-atlas-amber/[0.03] transition-colors">
       <td className="px-4 py-3 align-top tabular-nums">
         <div className="text-sm font-medium text-atlas-fg-1">{fullDate}</div>
         <div className="text-2xs text-atlas-fg-3">
@@ -519,8 +519,8 @@ function ReportRow({
           <span className="text-2xs text-atlas-fg-3">—</span>
         )}
       </td>
-      <td className="px-4 py-3 align-top">
-        <div className="inline-flex items-center gap-1 justify-end">
+      <td className="px-4 py-3 align-top text-right whitespace-nowrap sticky right-0 bg-white group-hover/row:bg-atlas-amber/[0.03] transition-colors">
+        <div className="inline-flex items-center gap-0.5 justify-end">
           <button onClick={onOpen} className="btn-ghost !p-1.5" title="Ouvrir" aria-label="Ouvrir le rapport">
             <FileText className="w-3.5 h-3.5" />
           </button>
