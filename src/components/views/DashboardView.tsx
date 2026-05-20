@@ -75,7 +75,7 @@ export function DashboardView() {
           <div className="text-2xs uppercase tracking-[0.18em] text-atlas-fg-3 font-medium mb-1">
             Dashboard exécutif
           </div>
-          <h1 className="font-display text-3xl font-medium tracking-tight">Vue 360 — Atlas Studio</h1>
+          <h1 className="font-display text-3xl font-medium tracking-tight">Vue 360° — CockpitJourney</h1>
           <p className="text-sm text-atlas-fg-3 mt-1">
             Mise à jour temps réel · {widgets.length} widgets configurables · {kpis.activeProjects} projets
             actifs

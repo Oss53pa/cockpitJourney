@@ -230,7 +230,7 @@ function CockpitShell() {
       case 'project': {
         const p = activeProjectId ? projects.find((x) => x.id === activeProjectId) : undefined;
         return [
-          { label: 'Projets', sub: 'Atlas Studio' },
+          { label: 'Projets', sub: 'CockpitJourney' },
           { label: p?.name || 'Projet', sub: p?.slug },
         ];
       }
