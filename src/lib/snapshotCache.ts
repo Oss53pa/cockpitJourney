@@ -23,13 +23,39 @@
 
 import { type Snapshot, normalizeProject, normalizeFolder, normalizeSection } from './repo';
 
-// Bumped from v1 → v2 when we added normalizeProject/Section/Folder at
-// load-time. Older caches may hold projects without membersIds/progress/
-// health, which crash ProjectView on .map() / .toUpperCase(). Bump
-// invalidates all stale caches so users get a fresh, normalized snapshot.
-const SCHEMA_VERSION = 'v2';
+// Bumped v2 → v3 (2026-05-20) — after the "mock data still showing"
+// reports. Some users had pre-cleanup snapshots cached with demo
+// personas (Pamela/Koffi/Aminata, Cosmos Group projects, fake KPIs).
+// The schema didn't actually change, but the bump forces every device
+// to drop its stale localStorage mirror and rehydrate fresh from
+// Supabase — eliminating the "ghost demo data after deploy" trap.
+const SCHEMA_VERSION = 'v3';
 const SNAP_KEY_PREFIX = `cj-snap-${SCHEMA_VERSION}:`;
+// Legacy prefixes that older clients wrote — purged opportunistically
+// on every boot so they don't accumulate forever in users' localStorage.
+const LEGACY_SNAP_PREFIXES = ['cj-snap-v1:', 'cj-snap-v2:'];
 const SUPABASE_STORAGE_KEY = 'cj-supabase-auth';
+
+// One-time-per-tab cleanup: drop every legacy-prefixed key as soon as
+// this module is imported. Idempotent (the keys disappear after the
+// first pass) and bounded (only runs once per page load, max O(n) on
+// localStorage entry count). Side effect at module top-level — accept
+// the no-side-effect lint exception for a focused, deterministic op.
+if (typeof localStorage !== 'undefined') {
+  try {
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && LEGACY_SNAP_PREFIXES.some((p) => k.startsWith(p))) toRemove.push(k);
+    }
+    if (toRemove.length > 0) {
+      toRemove.forEach((k) => localStorage.removeItem(k));
+      console.info(`[snap-cache] purged ${toRemove.length} legacy snapshot key(s)`);
+    }
+  } catch {
+    /* localStorage unavailable (private mode, quota etc.) — skip */
+  }
+}
 
 // Hard upper bound on cache age. Beyond this, we ignore the mirror and
 // force a fresh `loadSnapshot` against Supabase — protects against

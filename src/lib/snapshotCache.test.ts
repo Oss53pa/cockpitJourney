@@ -60,13 +60,13 @@ describe('writeSnapshotCache + readSnapshotCache', () => {
   });
 
   it('returns null and drops the key when shape is invalid', () => {
-    localStorage.setItem('cj-snap-v2:user-x', '{"garbage":"yes"}');
+    localStorage.setItem('cj-snap-v3:user-x', '{"garbage":"yes"}');
     expect(readSnapshotCache('user-x')).toBeNull();
-    expect(localStorage.getItem('cj-snap-v2:user-x')).toBeNull();
+    expect(localStorage.getItem('cj-snap-v3:user-x')).toBeNull();
   });
 
   it('returns null when JSON is malformed', () => {
-    localStorage.setItem('cj-snap-v2:user-x', '{not json');
+    localStorage.setItem('cj-snap-v3:user-x', '{not json');
     expect(readSnapshotCache('user-x')).toBeNull();
   });
 
@@ -90,7 +90,7 @@ describe('writeSnapshotCache + readSnapshotCache', () => {
       },
     };
     writeSnapshotCache('user-x', withSecret, 'prof-x');
-    const raw = localStorage.getItem('cj-snap-v2:user-x');
+    const raw = localStorage.getItem('cj-snap-v3:user-x');
     expect(raw).not.toBeNull();
     expect(raw!).not.toContain('gsk_supersecret123');
     expect(raw!).not.toContain('proph3t');
@@ -99,10 +99,10 @@ describe('writeSnapshotCache + readSnapshotCache', () => {
 
   it('expires snapshots older than 7 days (TTL)', () => {
     const stale = { ...emptySnap, cachedAt: '2020-01-01T00:00:00.000Z' };
-    localStorage.setItem('cj-snap-v2:user-stale', JSON.stringify({ ...stale, profileId: 'p' }));
+    localStorage.setItem('cj-snap-v3:user-stale', JSON.stringify({ ...stale, profileId: 'p' }));
     expect(readSnapshotCache('user-stale')).toBeNull();
     // After read, the stale entry should be removed.
-    expect(localStorage.getItem('cj-snap-v2:user-stale')).toBeNull();
+    expect(localStorage.getItem('cj-snap-v3:user-stale')).toBeNull();
   });
 
   it('returns fresh snapshots within the TTL window', () => {
@@ -122,7 +122,7 @@ describe('readSnapshotCache normalization', () => {
       profileId: 'p1',
       cachedAt: new Date().toISOString(),
     };
-    localStorage.setItem('cj-snap-v2:legacy-user', JSON.stringify(broken));
+    localStorage.setItem('cj-snap-v3:legacy-user', JSON.stringify(broken));
     const out = readSnapshotCache('legacy-user');
     expect(out).not.toBeNull();
     expect(out!.projects[0].membersIds).toEqual(['u1']);
