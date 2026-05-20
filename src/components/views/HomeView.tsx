@@ -43,6 +43,46 @@ export function HomeView({ onEnter }: Props) {
   const totalTasks = tasks.length || 1;
   const sprintProgress = Math.round((completedTasks / totalTasks) * 100);
 
+  // Real 14-day activity series for the KPI sparklines — derived from the
+  // user's actual tasks (completion dates, deep-work minutes per day,
+  // active task count). Replaces the previous fake `Math.sin + random()`
+  // sparkline which was generating mock-looking trend lines on every
+  // KPI card even for fresh accounts with no history.
+  const DAYS = 14;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dayKeys: string[] = [];
+  for (let i = DAYS - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    dayKeys.push(d.toISOString().slice(0, 10));
+  }
+  // Tasks completed per day (last 14 d)
+  const completedSeries = dayKeys.map(
+    (key) => tasks.filter((t) => t.completionDate && t.completionDate.slice(0, 10) === key).length
+  );
+  // Deep work minutes per day — uses task.completionDate as the day
+  // anchor (we don't track time per day yet).
+  const deepWorkSeries = dayKeys.map((key) =>
+    tasks
+      .filter((t) => t.completionDate && t.completionDate.slice(0, 10) === key)
+      .reduce((sum, t) => sum + (t.actualMinutes || 0), 0)
+  );
+  // Active tasks "trajectory" — count of tasks that existed and weren't
+  // done as of each day. Approximated by createdAt ≤ day < completionDate.
+  const activeSeries = dayKeys.map((key) => {
+    const dayMs = new Date(key).getTime();
+    return tasks.filter((t) => {
+      const created = t.createdAt ? new Date(t.createdAt).getTime() : 0;
+      const done = t.completionDate ? new Date(t.completionDate).getTime() : Infinity;
+      return created <= dayMs && dayMs < done;
+    }).length;
+  });
+  // Projects active per day — same shape as activeSeries but on the
+  // project collection (status active, with status changes not tracked
+  // historically, we approximate with current value).
+  const projectsSeries = dayKeys.map(() => projectsCount);
+
   return (
     <div className="min-h-screen w-full bg-atlas-black bg-noise overflow-x-hidden">
       {/* Top bar */}
@@ -114,7 +154,7 @@ export function HomeView({ onEnter }: Props) {
               value={String(activeTasks)}
               sub={`${completedTasks} complétées récemment`}
               sparklineColor="#6E8B58"
-              trend="up"
+              series={activeSeries}
             />
           </button>
           <button onClick={() => onEnter('goals')} className="text-left">
@@ -123,7 +163,7 @@ export function HomeView({ onEnter }: Props) {
               value={`${onTrack} / ${goals.length}`}
               sub={`${atRisk} à arbitrer`}
               sparklineColor="#5C7BA1"
-              trend="up"
+              series={completedSeries}
               arrow
             />
           </button>
@@ -133,7 +173,7 @@ export function HomeView({ onEnter }: Props) {
               value={`${deepWorkHours}h`}
               sub={`Objectif ${deepWorkTarget}h cette semaine`}
               sparklineColor="#7E6BA8"
-              trend="up"
+              series={deepWorkSeries}
             />
           </button>
           <button onClick={() => onEnter('dashboards')} className="text-left">
@@ -142,7 +182,7 @@ export function HomeView({ onEnter }: Props) {
               value={String(projectsCount)}
               sub={`${tasks.length} tâches · ${users.length} membre${users.length > 1 ? 's' : ''}`}
               sparklineColor="#B69248"
-              trend="flat"
+              series={projectsSeries}
               arrow
             />
           </button>
@@ -266,21 +306,33 @@ function Kpi({
   value,
   sub,
   sparklineColor,
+  series,
   arrow,
 }: {
   label: string;
   value: string;
   sub: string;
   sparklineColor: string;
-  trend: 'up' | 'flat' | 'down';
+  /** Real time-series for the sparkline. One number per day, oldest → newest. */
+  series: number[];
   arrow?: boolean;
 }) {
-  // Decorative sparkline (sin curve)
-  const points = Array.from({ length: 24 }, (_, i) => {
-    const x = (i / 23) * 100;
-    const y = 30 - Math.sin(i * 0.55 + Math.random() * 0.4) * 8 - i * 0.45;
-    return `${x},${Math.max(2, Math.min(34, y))}`;
+  // Normalize the series to viewport coords. If the series is all zeros
+  // (e.g. fresh account with no completion history yet), we render a
+  // flat baseline instead of a fake curve — the goal is to avoid LIES
+  // about the user's activity.
+  const max = Math.max(...series, 0);
+  const min = Math.min(...series, 0);
+  const range = max - min || 1;
+  const N = series.length || 1;
+  const allZero = max === 0;
+  const points = series.map((v, i) => {
+    const x = (i / Math.max(1, N - 1)) * 100;
+    // Top of card = 4, bottom of sparkline area = 32
+    const y = allZero ? 30 : 32 - ((v - min) / range) * 28;
+    return `${x},${y}`;
   });
+  const gradId = 'grad-' + sparklineColor.slice(1);
   return (
     <article className="relative panel p-5 overflow-hidden hover:border-atlas-line-2 transition-colors group">
       <div className="flex items-start justify-between">
@@ -293,16 +345,24 @@ function Kpi({
         {value}
       </div>
       <div className="mt-2 text-2xs text-atlas-fg-3">{sub}</div>
-      <svg viewBox="0 0 100 36" preserveAspectRatio="none" className="mt-4 w-full h-9 opacity-90">
-        <defs>
-          <linearGradient id={`grad-${sparklineColor.slice(1)}`} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={sparklineColor} stopOpacity="0.30" />
-            <stop offset="100%" stopColor={sparklineColor} stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <polygon fill={`url(#grad-${sparklineColor.slice(1)})`} points={`0,36 ${points.join(' ')} 100,36`} />
-        <polyline fill="none" stroke={sparklineColor} strokeWidth="1.2" points={points.join(' ')} />
-      </svg>
+      {allZero ? (
+        // No real activity yet — show a subtle dashed baseline rather
+        // than a fake trending curve. Honest empty state.
+        <div className="mt-4 h-9 flex items-end">
+          <div className="w-full h-px border-t border-dashed border-atlas-line" />
+        </div>
+      ) : (
+        <svg viewBox="0 0 100 36" preserveAspectRatio="none" className="mt-4 w-full h-9 opacity-90">
+          <defs>
+            <linearGradient id={gradId} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor={sparklineColor} stopOpacity="0.30" />
+              <stop offset="100%" stopColor={sparklineColor} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <polygon fill={`url(#${gradId})`} points={`0,36 ${points.join(' ')} 100,36`} />
+          <polyline fill="none" stroke={sparklineColor} strokeWidth="1.2" points={points.join(' ')} />
+        </svg>
+      )}
     </article>
   );
 }

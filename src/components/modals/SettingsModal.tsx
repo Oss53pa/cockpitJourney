@@ -65,7 +65,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     autoFocus
                     value={draftName}
                     onChange={(e) => setDraftName(e.target.value)}
-                    placeholder="Pamela ATOKOUNA"
+                    placeholder="Prénom Nom"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') void saveProfile();
                       if (e.key === 'Escape') cancelEdit();

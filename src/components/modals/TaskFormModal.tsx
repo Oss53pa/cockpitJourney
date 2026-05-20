@@ -499,7 +499,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
                     <TextInput
                       value={sprint}
                       onChange={(e) => setSprint(e.target.value)}
-                      placeholder="S-08"
+                      placeholder="ex : S-01 / Q3-W3 / Sprint Sept"
                     />
                   </div>
                   <div>

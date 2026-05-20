@@ -575,9 +575,34 @@ function DonutLegend() {
 }
 
 function Heatmap() {
+  // Real heatmap derived from the user's task completion + creation
+  // dates across the last 12 weeks (84 days). Each cell = one day of
+  // activity, intensity scaled to the busiest day in the window.
+  // Replaces the previous fake `Math.random()` heatmap which gave the
+  // illusion of activity even for fresh accounts.
+  const tasks = useApp((s) => s.tasks);
   const cols = 12,
     rows = 7;
-  const cells = Array.from({ length: rows * cols }, () => Math.random());
+  const todayMid = new Date();
+  todayMid.setHours(0, 0, 0, 0);
+  const dayMs = 24 * 3600_000;
+  // Build the per-day activity (count of events: created OR completed)
+  // for the last 84 days, oldest first.
+  const counts: number[] = [];
+  for (let i = rows * cols - 1; i >= 0; i--) {
+    const d = new Date(todayMid.getTime() - i * dayMs);
+    const key = d.toISOString().slice(0, 10);
+    const events = tasks.filter((t) => {
+      const c = t.createdAt?.slice(0, 10) === key;
+      const done = t.completionDate?.slice(0, 10) === key;
+      return c || done;
+    }).length;
+    counts.push(events);
+  }
+  const maxCount = Math.max(...counts, 1);
+  // Normalize to 0..1 for the palette lookup. allZero → flat grey grid
+  // (honest empty state instead of fake activity).
+  const cells = counts.map((c) => (maxCount === 0 ? 0 : c / maxCount));
   const palette = (v: number) => {
     if (v < 0.15) return 'rgba(0,0,0,0.04)';
     if (v < 0.35) return 'rgba(110,139,88,0.18)';
