@@ -187,7 +187,7 @@ export async function exportToHtml(payload: ExportPayload): Promise<void> {
     return `
       <section>
         <h2>${esc(SECTION_LABELS.projects)}</h2>
-        <table class="data-table">
+        <div class="data-table-wrap"><table class="data-table">
           <thead>
             <tr>
               <th>Projet</th>
@@ -212,7 +212,7 @@ export async function exportToHtml(payload: ExportPayload): Promise<void> {
               )
               .join('')}
           </tbody>
-        </table>
+        </table></div>
       </section>
     `;
   };
@@ -222,7 +222,7 @@ export async function exportToHtml(payload: ExportPayload): Promise<void> {
     return `
       <section>
         <h2>${esc(SECTION_LABELS.tasks)}</h2>
-        <table class="data-table">
+        <div class="data-table-wrap"><table class="data-table">
           <thead>
             <tr>
               <th>Tâche</th>
@@ -248,7 +248,7 @@ export async function exportToHtml(payload: ExportPayload): Promise<void> {
               )
               .join('')}
           </tbody>
-        </table>
+        </table></div>
         ${
           tasks.length > 200
             ? `<p class="muted">${esc(tasks.length - 200)} tâches supplémentaires non affichées — voir l'export Excel pour la liste complète.</p>`
@@ -350,6 +350,13 @@ export async function exportToHtml(payload: ExportPayload): Promise<void> {
       color: var(--fg1);
       background: var(--cream);
       padding: 32px 16px;
+      /* Preserve all background colors and gradients when the user prints
+       * this report — without this, Chrome/Edge default to "background
+       * colors stripped" which kills the cover gradient, the data-table
+       * header band, and the attention-point fills. */
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      color-adjust: exact;
     }
     .doc {
       max-width: 820px;
@@ -568,16 +575,56 @@ export async function exportToHtml(payload: ExportPayload): Promise<void> {
     }
     footer.doc-footer strong { color: var(--fg2); font-weight: 600; }
     @media print {
+      @page {
+        size: A4 portrait;
+        margin: 14mm 12mm 14mm 12mm;
+      }
       body { padding: 0; background: white; }
       .doc { box-shadow: none; border: none; border-radius: 0; max-width: none; }
-      section { page-break-inside: avoid; }
-      .cover { page-break-after: always; }
+      /* Each top-level section should sit on its own page slice when
+       * possible — but allow long tables to span multiple pages. */
+      section { page-break-inside: avoid; break-inside: avoid; }
+      .cover { page-break-after: always; break-after: page; }
+      /* Tables: repeat the header on every printed page, and keep each
+       * row intact (never split a row across two pages). */
+      .data-table { page-break-inside: auto; }
+      .data-table thead {
+        display: table-header-group;
+      }
+      .data-table tr {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      .metric-card, .attention li, .highlights li, .next-steps li, .toc li {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      /* Hide the footer's gradient bar in print — it doesn't render
+       * cleanly on most printers and wastes ink. */
+      footer.doc-footer { background: transparent; }
     }
     @media (max-width: 640px) {
-      .cover-inner { padding: 36px 24px 28px; }
-      .cover-meta { grid-template-columns: 1fr; }
-      .cover-title { font-size: 26px; }
-      section { padding: 24px; }
+      body { padding: 12px 8px; }
+      .doc { border-radius: 8px; }
+      .cover-inner { padding: 32px 20px 24px; }
+      .cover-meta { grid-template-columns: 1fr; gap: 10px; }
+      .cover-title { font-size: 24px; }
+      .cover-period { font-size: 14px; }
+      section { padding: 20px 16px; }
+      h2 { font-size: 17px; }
+      .metrics-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+      .metric-value { font-size: 20px; }
+      .data-table { font-size: 12px; }
+      .data-table th, .data-table td { padding: 8px 6px; }
+      /* On very narrow viewports, allow horizontal scroll on tables
+       * rather than truncating cells. Wrap the table in a scroll
+       * container automatically. */
+      .data-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      footer.doc-footer { flex-direction: column; padding: 20px 16px; gap: 6px; }
+    }
+    @media (max-width: 420px) {
+      .metrics-grid { grid-template-columns: 1fr; }
+      .cover-title { font-size: 20px; }
     }
   </style>
 </head>
