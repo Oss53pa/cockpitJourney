@@ -9,7 +9,8 @@ import { useState } from 'react';
 import { useApp } from '../../stores/appStore';
 import { Modal } from '../ui/Modal';
 import { FieldLabel, NativeSelect, TextInput } from '../ui/Field';
-import type { Folder } from '../../types';
+import { cn } from '../../lib/utils';
+import type { Folder, FolderSphere } from '../../types';
 
 const COLORS = [
   '#6E8B58', // sage-deep
@@ -35,48 +36,64 @@ const ICONS: { key: string; label: string }[] = [
 
 interface Props {
   onClose: () => void;
-  initial?: Folder;
+  /** Either an existing folder (edit mode) OR a payload to pre-fill
+   *  fields when creating from a specific sphere section. */
+  initial?: Folder | { sphere?: FolderSphere };
+}
+
+function isExistingFolder(x: Props['initial']): x is Folder {
+  return !!x && typeof (x as Folder).id === 'string';
 }
 
 export function FolderFormModal({ onClose, initial }: Props) {
   const createFolder = useApp((s) => s.createFolder);
   const updateFolder = useApp((s) => s.updateFolder);
   const deleteFolder = useApp((s) => s.deleteFolder);
+  const moveFolderToSphere = useApp((s) => s.moveFolderToSphere);
   const folders = useApp((s) => s.folders);
   const projects = useApp((s) => s.projects);
-  const isEdit = !!initial;
+  const editingFolder = isExistingFolder(initial) ? initial : undefined;
+  const isEdit = !!editingFolder;
 
-  const [name, setName] = useState(initial?.name ?? '');
-  const [color, setColor] = useState(initial?.color ?? COLORS[0]);
-  const [icon, setIcon] = useState(initial?.icon ?? ICONS[0].key);
+  const [name, setName] = useState(editingFolder?.name ?? '');
+  const [color, setColor] = useState(editingFolder?.color ?? COLORS[0]);
+  const [icon, setIcon] = useState(editingFolder?.icon ?? ICONS[0].key);
+  const [sphere, setSphere] = useState<FolderSphere>(
+    editingFolder?.sphere ?? (initial as { sphere?: FolderSphere } | undefined)?.sphere ?? 'personnel'
+  );
 
   // For the delete confirmation: count projects that would be orphaned.
-  const projectsInFolder = initial ? projects.filter((p) => p.folderId === initial.id).length : 0;
+  const projectsInFolder = editingFolder ? projects.filter((p) => p.folderId === editingFolder.id).length : 0;
 
   const submit = () => {
     if (!name.trim()) return;
-    if (isEdit) {
-      updateFolder(initial.id, { name: name.trim(), color, icon });
+    if (isEdit && editingFolder) {
+      updateFolder(editingFolder.id, { name: name.trim(), color, icon });
+      // If the user changed the sphere while editing, sync it through
+      // the dedicated action so the order rank gets recomputed.
+      if ((editingFolder.sphere ?? 'personnel') !== sphere) {
+        moveFolderToSphere(editingFolder.id, sphere);
+      }
     } else {
-      createFolder({ name: name.trim(), color, icon });
+      createFolder({ name: name.trim(), color, icon, sphere });
     }
     onClose();
   };
 
   const handleDelete = () => {
-    if (!initial) return;
+    if (!editingFolder) return;
     const msg =
       projectsInFolder > 0
-        ? `Supprimer le dossier "${initial.name}" ? Les ${projectsInFolder} projet${
+        ? `Supprimer le dossier "${editingFolder.name}" ? Les ${projectsInFolder} projet${
             projectsInFolder > 1 ? 's' : ''
           } qu'il contient ne ${
             projectsInFolder > 1 ? 'seront pas supprimés' : 'sera pas supprimé'
           }, ${projectsInFolder > 1 ? 'ils' : 'il'} ${
             projectsInFolder > 1 ? 'deviendront' : 'deviendra'
           } sans dossier.`
-        : `Supprimer le dossier "${initial.name}" ?`;
+        : `Supprimer le dossier "${editingFolder.name}" ?`;
     if (!confirm(msg)) return;
-    deleteFolder(initial.id);
+    deleteFolder(editingFolder.id);
     onClose();
   };
 
@@ -115,6 +132,29 @@ export function FolderFormModal({ onClose, initial }: Props) {
       }
     >
       <div className="space-y-4">
+        <div>
+          <FieldLabel>Sphère</FieldLabel>
+          <div className="grid grid-cols-2 gap-2">
+            {(['personnel', 'professionnel'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSphere(s)}
+                className={cn(
+                  'px-3 py-2 rounded-lg text-sm font-medium border transition',
+                  sphere === s
+                    ? 'border-atlas-amber-deep bg-atlas-amber/15 text-atlas-amber-deep shadow-amber-deep'
+                    : 'border-atlas-line text-atlas-fg-2 hover:border-atlas-line/80 hover:bg-black/[0.03]'
+                )}
+              >
+                {s === 'personnel' ? 'Personnel' : 'Professionnel'}
+              </button>
+            ))}
+          </div>
+          <p className="text-2xs text-atlas-fg-3 mt-1.5">
+            La sphère détermine sous quelle grande famille le dossier apparaît dans la sidebar.
+          </p>
+        </div>
         <div>
           <FieldLabel>Nom du dossier</FieldLabel>
           <TextInput

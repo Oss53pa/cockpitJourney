@@ -424,26 +424,17 @@ async function seedCleanStarter(
 
   const projectId = `${prefix}_p_starter`;
 
-  // Three default folders so the user has somewhere to organize different
-  // areas of life right away — not just one "Personnel" dropdown choice.
-  // The starter project goes into "Personnel"; the other two are empty
-  // buckets the user can fill (or rename/delete).
+  // Default folders, grouped by sphere (personnel / professionnel) — the
+  // sidebar renders these in 2 headers so the user organizes their
+  // life cleanly from day 1. The starter project lives in Personnel.
   const folderPersonnel = {
     id: `${prefix}_f_personal`,
     name: 'Personnel',
     color: '#6E8B58',
     icon: 'briefcase',
+    sphere: 'personnel' as const,
     order: 0,
     projectIds: [projectId],
-    createdAt: isoNow,
-  };
-  const folderEntreprise = {
-    id: `${prefix}_f_entreprise`,
-    name: 'Entreprise',
-    color: '#8AA6C4',
-    icon: 'building-2',
-    order: 1,
-    projectIds: [] as string[],
     createdAt: isoNow,
   };
   const folderFamille = {
@@ -451,11 +442,22 @@ async function seedCleanStarter(
     name: 'Famille',
     color: '#D58FA7',
     icon: 'home',
-    order: 2,
+    sphere: 'personnel' as const,
+    order: 1,
     projectIds: [] as string[],
     createdAt: isoNow,
   };
-  const allFolders = [folderPersonnel, folderEntreprise, folderFamille];
+  const folderEntreprise = {
+    id: `${prefix}_f_entreprise`,
+    name: 'Entreprise',
+    color: '#8AA6C4',
+    icon: 'building-2',
+    sphere: 'professionnel' as const,
+    order: 0,
+    projectIds: [] as string[],
+    createdAt: isoNow,
+  };
+  const allFolders = [folderPersonnel, folderFamille, folderEntreprise];
 
   const project = {
     id: projectId,

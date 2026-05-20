@@ -128,6 +128,18 @@ export function Sidebar({
     [folders]
   );
 
+  // Group folders by sphere (personnel / professionnel). Defaults to
+  // 'personnel' for any legacy folder that hasn't been classified yet.
+  const foldersBySphere = useMemo(() => {
+    const perso: typeof sortedFolders = [];
+    const pro: typeof sortedFolders = [];
+    for (const f of sortedFolders) {
+      if ((f.sphere ?? 'personnel') === 'professionnel') pro.push(f);
+      else perso.push(f);
+    }
+    return { personnel: perso, professionnel: pro };
+  }, [sortedFolders]);
+
   // dnd-kit setup — 5px activation threshold so a normal click (open
   // folder, navigate to project) isn't accidentally interpreted as a
   // drag start.
@@ -330,118 +342,81 @@ export function Sidebar({
             items={sortedFolders.map((f) => 'folder-' + f.id)}
             strategy={verticalListSortingStrategy}
           >
-            <div className="space-y-0.5">
-              {sortedFolders.map((folder) => {
-                const FolderIcon = folderIcons[folder.icon] || Building2;
-                const isOpen = isFolderOpen(folder.id);
-                // Older / freshly-seeded folders may not carry a `projectIds`
-                // array — fall back to `folderId` on the project itself so the
-                // sidebar never crashes on `undefined.includes(...)`.
-                const folderProjects = projects.filter((p) =>
-                  folder.projectIds ? folder.projectIds.includes(p.id) : p.folderId === folder.id
-                );
-                return (
-                  <SortableFolderRow key={folder.id} folderId={folder.id}>
-                    {({ dragHandle }) => (
-                      <>
-                        <div className="group/folder">
-                          <div className="flex items-center gap-0.5 pr-1 rounded-lg bg-black/[0.025] border border-transparent hover:border-atlas-line/60 transition-colors">
-                            {dragHandle}
-                            <button
-                              onClick={() => setOpenFolders((s) => ({ ...s, [folder.id]: !s[folder.id] }))}
-                              className="flex-1 flex items-center gap-2 px-2 py-1.5 rounded-lg text-atlas-fg-1 hover:text-atlas-fg-1"
-                            >
-                              <ChevronRight
-                                className={cn(
-                                  'w-3.5 h-3.5 text-atlas-fg-3 transition-transform',
-                                  isOpen && 'rotate-90'
-                                )}
-                              />
-                              <span
-                                className="w-5 h-5 rounded-md grid place-items-center shrink-0"
-                                style={{
-                                  background: `${folder.color}1f`,
-                                  color: folder.color,
-                                }}
-                              >
-                                <FolderIcon className="w-3.5 h-3.5" strokeWidth={2.2} />
-                              </span>
-                              <span className="text-2xs uppercase tracking-[0.12em] font-semibold flex-1 text-left">
-                                {folder.name}
-                              </span>
-                              <span className="text-2xs text-atlas-fg-3 font-mono">
-                                {folderProjects.length}
-                              </span>
-                            </button>
-                            <Menu
-                              align="right"
-                              width={180}
-                              trigger={
-                                <button
-                                  title="Options du dossier"
-                                  className="w-6 h-6 rounded-md flex items-center justify-center text-atlas-fg-3 hover:text-atlas-fg-1 hover:bg-black/[0.06] opacity-0 group-hover/folder:opacity-100 transition"
-                                >
-                                  <MoreHorizontal className="w-3.5 h-3.5" />
-                                </button>
-                              }
-                            >
-                              {(close) => (
-                                <>
-                                  <MenuItem
-                                    icon={Edit3}
-                                    onClick={() => {
-                                      close();
-                                      openModal('folder-edit', folder);
-                                    }}
-                                  >
-                                    Renommer
-                                  </MenuItem>
-                                  <MenuSeparator />
-                                  <MenuItem
-                                    icon={Trash2}
-                                    danger
-                                    onClick={() => {
-                                      close();
-                                      openModal('folder-edit', folder);
-                                    }}
-                                  >
-                                    Supprimer…
-                                  </MenuItem>
-                                </>
-                              )}
-                            </Menu>
-                          </div>
-                          {isOpen && (
-                            <div className="pl-2 space-y-0.5 mt-0.5 mb-1">
-                              {folderProjects.map((p) => {
-                                const Icon = projectIcons[p.icon] || Compass;
-                                const active = view === 'project' && activeProjectId === p.id;
-                                return (
-                                  <div
-                                    key={p.id}
-                                    className={cn(
-                                      'group flex items-center rounded-lg text-sm transition-colors',
-                                      active
-                                        ? 'bg-black/[0.06] text-atlas-fg-1'
-                                        : 'text-atlas-fg-2 hover:text-atlas-fg-1 hover:bg-black/[0.03]'
-                                    )}
-                                  >
+            {(['personnel', 'professionnel'] as const).map((sphereKey) => {
+              const sphereFolders = foldersBySphere[sphereKey];
+              return (
+                <div key={sphereKey} className="mb-3">
+                  {/* Sphere header — 2 grandes familles : Personnel / Professionnel */}
+                  <div className="flex items-center justify-between px-3 mb-1.5">
+                    <span className="text-[10px] uppercase tracking-[0.22em] font-semibold text-atlas-amber-deep">
+                      {sphereKey === 'personnel' ? 'Personnel' : 'Professionnel'}
+                    </span>
+                    <button
+                      onClick={() => openModal('folder-create', { sphere: sphereKey })}
+                      title={`Nouveau dossier ${sphereKey === 'personnel' ? 'personnel' : 'professionnel'}`}
+                      className="w-4 h-4 rounded text-atlas-fg-3 hover:text-atlas-fg-1 flex items-center justify-center"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {sphereFolders.length === 0 ? (
+                    <div className="text-2xs text-atlas-fg-3 italic px-3 py-1.5">
+                      Aucun dossier — cliquez sur + pour en ajouter
+                    </div>
+                  ) : (
+                    <div className="space-y-0.5">
+                      {sphereFolders.map((folder) => {
+                        const FolderIcon = folderIcons[folder.icon] || Building2;
+                        const isOpen = isFolderOpen(folder.id);
+                        // Older / freshly-seeded folders may not carry a `projectIds`
+                        // array — fall back to `folderId` on the project itself so the
+                        // sidebar never crashes on `undefined.includes(...)`.
+                        const folderProjects = projects.filter((p) =>
+                          folder.projectIds ? folder.projectIds.includes(p.id) : p.folderId === folder.id
+                        );
+                        return (
+                          <SortableFolderRow key={folder.id} folderId={folder.id}>
+                            {({ dragHandle }) => (
+                              <>
+                                <div className="group/folder">
+                                  <div className="flex items-center gap-0.5 pr-1 rounded-lg bg-black/[0.025] border border-transparent hover:border-atlas-line/60 transition-colors">
+                                    {dragHandle}
                                     <button
-                                      onClick={() => onNavigate('project', p.id)}
-                                      className="flex-1 flex items-center gap-2.5 px-3 py-1.5 min-w-0"
+                                      onClick={() =>
+                                        setOpenFolders((s) => ({ ...s, [folder.id]: !s[folder.id] }))
+                                      }
+                                      className="flex-1 flex items-center gap-2 px-2 py-1.5 rounded-lg text-atlas-fg-1 hover:text-atlas-fg-1"
                                     >
+                                      <ChevronRight
+                                        className={cn(
+                                          'w-3.5 h-3.5 text-atlas-fg-3 transition-transform',
+                                          isOpen && 'rotate-90'
+                                        )}
+                                      />
                                       <span
-                                        className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
-                                        style={{ background: `${p.color}22`, color: p.color }}
+                                        className="w-5 h-5 rounded-md grid place-items-center shrink-0"
+                                        style={{
+                                          background: `${folder.color}1f`,
+                                          color: folder.color,
+                                        }}
                                       >
-                                        <Icon className="w-3 h-3" strokeWidth={2.2} />
+                                        <FolderIcon className="w-3.5 h-3.5" strokeWidth={2.2} />
                                       </span>
-                                      <span className="flex-1 text-left truncate">{p.name}</span>
-                                      <HealthDot health={p.health} />
+                                      <span className="text-2xs uppercase tracking-[0.12em] font-semibold flex-1 text-left">
+                                        {folder.name}
+                                      </span>
+                                      <span className="text-2xs text-atlas-fg-3 font-mono">
+                                        {folderProjects.length}
+                                      </span>
                                     </button>
                                     <Menu
+                                      align="right"
+                                      width={180}
                                       trigger={
-                                        <button className="w-6 h-6 rounded-md flex items-center justify-center text-atlas-fg-3 opacity-0 group-hover:opacity-100 hover:bg-black/[0.06] hover:text-atlas-fg-1 shrink-0 mr-1">
+                                        <button
+                                          title="Options du dossier"
+                                          className="w-6 h-6 rounded-md flex items-center justify-center text-atlas-fg-3 hover:text-atlas-fg-1 hover:bg-black/[0.06] opacity-0 group-hover/folder:opacity-100 transition"
+                                        >
                                           <MoreHorizontal className="w-3.5 h-3.5" />
                                         </button>
                                       }
@@ -452,51 +427,116 @@ export function Sidebar({
                                             icon={Edit3}
                                             onClick={() => {
                                               close();
-                                              openModal('project-edit', p);
+                                              openModal('folder-edit', folder);
                                             }}
                                           >
-                                            Modifier
-                                          </MenuItem>
-                                          <MenuItem
-                                            icon={p.status === 'active' ? Pause : Play}
-                                            onClick={() => {
-                                              close();
-                                              updateProject(p.id, {
-                                                status: p.status === 'active' ? 'paused' : 'active',
-                                              });
-                                            }}
-                                          >
-                                            {p.status === 'active' ? 'Mettre en pause' : 'Réactiver'}
+                                            Renommer
                                           </MenuItem>
                                           <MenuSeparator />
                                           <MenuItem
-                                            danger
                                             icon={Trash2}
+                                            danger
                                             onClick={() => {
                                               close();
-                                              openModal('project-delete', {
-                                                title: p.name,
-                                                onConfirm: () => deleteProject(p.id),
-                                              });
+                                              openModal('folder-edit', folder);
                                             }}
                                           >
-                                            Supprimer
+                                            Supprimer…
                                           </MenuItem>
                                         </>
                                       )}
                                     </Menu>
                                   </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </SortableFolderRow>
-                );
-              })}
-            </div>
+                                  {isOpen && (
+                                    <div className="pl-2 space-y-0.5 mt-0.5 mb-1">
+                                      {folderProjects.map((p) => {
+                                        const Icon = projectIcons[p.icon] || Compass;
+                                        const active = view === 'project' && activeProjectId === p.id;
+                                        return (
+                                          <div
+                                            key={p.id}
+                                            className={cn(
+                                              'group flex items-center rounded-lg text-sm transition-colors',
+                                              active
+                                                ? 'bg-black/[0.06] text-atlas-fg-1'
+                                                : 'text-atlas-fg-2 hover:text-atlas-fg-1 hover:bg-black/[0.03]'
+                                            )}
+                                          >
+                                            <button
+                                              onClick={() => onNavigate('project', p.id)}
+                                              className="flex-1 flex items-center gap-2.5 px-3 py-1.5 min-w-0"
+                                            >
+                                              <span
+                                                className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
+                                                style={{ background: `${p.color}22`, color: p.color }}
+                                              >
+                                                <Icon className="w-3 h-3" strokeWidth={2.2} />
+                                              </span>
+                                              <span className="flex-1 text-left truncate">{p.name}</span>
+                                              <HealthDot health={p.health} />
+                                            </button>
+                                            <Menu
+                                              trigger={
+                                                <button className="w-6 h-6 rounded-md flex items-center justify-center text-atlas-fg-3 opacity-0 group-hover:opacity-100 hover:bg-black/[0.06] hover:text-atlas-fg-1 shrink-0 mr-1">
+                                                  <MoreHorizontal className="w-3.5 h-3.5" />
+                                                </button>
+                                              }
+                                            >
+                                              {(close) => (
+                                                <>
+                                                  <MenuItem
+                                                    icon={Edit3}
+                                                    onClick={() => {
+                                                      close();
+                                                      openModal('project-edit', p);
+                                                    }}
+                                                  >
+                                                    Modifier
+                                                  </MenuItem>
+                                                  <MenuItem
+                                                    icon={p.status === 'active' ? Pause : Play}
+                                                    onClick={() => {
+                                                      close();
+                                                      updateProject(p.id, {
+                                                        status: p.status === 'active' ? 'paused' : 'active',
+                                                      });
+                                                    }}
+                                                  >
+                                                    {p.status === 'active' ? 'Mettre en pause' : 'Réactiver'}
+                                                  </MenuItem>
+                                                  <MenuSeparator />
+                                                  <MenuItem
+                                                    danger
+                                                    icon={Trash2}
+                                                    onClick={() => {
+                                                      close();
+                                                      openModal('project-delete', {
+                                                        title: p.name,
+                                                        onConfirm: () => deleteProject(p.id),
+                                                      });
+                                                    }}
+                                                  >
+                                                    Supprimer
+                                                  </MenuItem>
+                                                </>
+                                              )}
+                                            </Menu>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </SortableFolderRow>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </SortableContext>
           <DragOverlay>
             {draggingFolderId && (

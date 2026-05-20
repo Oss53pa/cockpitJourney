@@ -242,8 +242,13 @@ export function normalizeProject(p: Project): Project {
 }
 
 export function normalizeFolder(f: Folder): Folder {
+  // Sphere defaults to 'personnel' for any legacy row pre-2026-05-17
+  // that hasn't been classified yet (SQL migration covers the prod row
+  // set; this guard handles offline mocks, fresh dev seeds, etc.).
+  const sphere = f.sphere ?? 'personnel';
   return {
     ...f,
+    sphere,
     projectIds: Array.isArray(f.projectIds) ? f.projectIds : [],
   };
 }

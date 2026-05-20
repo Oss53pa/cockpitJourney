@@ -362,11 +362,18 @@ interface State {
   deleteProject: (id: string) => void;
 
   // folders
-  createFolder: (input: { name: string; color?: string; icon?: string }) => Folder;
+  createFolder: (input: {
+    name: string;
+    color?: string;
+    icon?: string;
+    sphere?: 'personnel' | 'professionnel';
+  }) => Folder;
   updateFolder: (id: string, patch: Partial<Folder>) => void;
   deleteFolder: (id: string) => void;
   /** Reorder folders by passing the new full ordering as an array of ids. */
   reorderFolders: (orderedIds: string[]) => void;
+  /** Move a folder from one sphere to the other. */
+  moveFolderToSphere: (folderId: string, sphere: 'personnel' | 'professionnel') => void;
   /** Move a project to a different folder (drag-and-drop in the sidebar). */
   moveProjectToFolder: (projectId: string, targetFolderId: string) => void;
 
@@ -1097,12 +1104,20 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     get().pushToast({ kind: 'info', title: 'Projet supprimé' });
   },
 
-  createFolder: ({ name, color, icon }) => {
+  createFolder: ({ name, color, icon, sphere }) => {
+    // Compute the next `order` rank within the target sphere so the new
+    // folder lands at the bottom of its group instead of overlapping
+    // existing rows in a non-deterministic way.
+    const targetSphere: 'personnel' | 'professionnel' = sphere ?? 'personnel';
+    const existing = get().folders.filter((f) => (f.sphere ?? 'personnel') === targetSphere);
+    const nextOrder = existing.length;
     const folder: Folder = {
       id: uid('f'),
       name: name.trim(),
       color: color ?? '#6E8B58',
       icon: icon ?? 'briefcase',
+      sphere: targetSphere,
+      order: nextOrder,
       projectIds: [],
     };
     set((s) => ({ folders: [...s.folders, folder] }));
@@ -1157,6 +1172,24 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     });
     // Persist the new order on every affected row.
     for (const f of get().folders) dbPersist.put('folders', f);
+  },
+
+  moveFolderToSphere: (folderId, sphere) => {
+    const folder = get().folders.find((f) => f.id === folderId);
+    if (!folder) return;
+    if ((folder.sphere ?? 'personnel') === sphere) return;
+    // Append to the end of the target sphere group.
+    const sphereSize = get().folders.filter((f) => (f.sphere ?? 'personnel') === sphere).length;
+    set((s) => ({
+      folders: s.folders.map((f) => (f.id === folderId ? { ...f, sphere, order: sphereSize } : f)),
+    }));
+    const updated = get().folders.find((f) => f.id === folderId);
+    if (updated) dbPersist.put('folders', updated);
+    get().pushToast({
+      kind: 'info',
+      title: 'Dossier déplacé',
+      body: `Vers la sphère ${sphere === 'personnel' ? 'Personnel' : 'Professionnel'}`,
+    });
   },
 
   moveProjectToFolder: (projectId, targetFolderId) => {

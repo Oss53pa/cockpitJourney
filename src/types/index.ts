@@ -13,11 +13,26 @@ export interface User {
   avatarUrl?: string;
 }
 
+/**
+ * High-level "life sphere" a folder belongs to.
+ * - 'personnel' = perso, famille, santé, sport, loisirs, etc.
+ * - 'professionnel' = clients, entreprise, missions, formations, etc.
+ *
+ * Sphere is a fixed binary on purpose — keeps the sidebar mental model
+ * simple. If a user needs a third bucket (e.g. "Association"), they
+ * can create a folder with that name inside whichever sphere fits.
+ */
+export type FolderSphere = 'personnel' | 'professionnel';
+
 export interface Folder {
   id: string;
   name: string;
   icon: string;
   color: string;
+  /** Defaults to 'personnel' if missing (legacy folders pre-2026-05-17). */
+  sphere?: FolderSphere;
+  /** Optional rank within the sphere for drag-and-drop reorder. */
+  order?: number;
   projectIds: string[];
 }
 
