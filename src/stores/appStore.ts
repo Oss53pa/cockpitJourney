@@ -365,6 +365,10 @@ interface State {
   createFolder: (input: { name: string; color?: string; icon?: string }) => Folder;
   updateFolder: (id: string, patch: Partial<Folder>) => void;
   deleteFolder: (id: string) => void;
+  /** Reorder folders by passing the new full ordering as an array of ids. */
+  reorderFolders: (orderedIds: string[]) => void;
+  /** Move a project to a different folder (drag-and-drop in the sidebar). */
+  moveProjectToFolder: (projectId: string, targetFolderId: string) => void;
 
   // automations
   toggleAutomation: (id: string) => void;
@@ -1133,6 +1137,56 @@ const initialState = (set: SetFn, get: GetFn): State => ({
           ? `${orphanedProjects.length} projet${orphanedProjects.length > 1 ? 's déplacés' : ' déplacé'} hors dossier`
           : undefined,
     });
+  },
+
+  reorderFolders: (orderedIds) => {
+    // Re-order in-memory by mapping the passed id list back to folder
+    // objects (skipping unknown ids defensively), then write each folder
+    // back with its new `order` so subsequent reloads keep the layout.
+    set((s) => {
+      const byId = new Map(s.folders.map((f) => [f.id, f]));
+      const reordered: typeof s.folders = [];
+      orderedIds.forEach((id, idx) => {
+        const f = byId.get(id);
+        if (f) reordered.push({ ...f, order: idx });
+      });
+      // Append any folders not present in orderedIds (shouldn't happen
+      // but keeps the operation non-destructive).
+      for (const f of s.folders) if (!orderedIds.includes(f.id)) reordered.push(f);
+      return { folders: reordered };
+    });
+    // Persist the new order on every affected row.
+    for (const f of get().folders) dbPersist.put('folders', f);
+  },
+
+  moveProjectToFolder: (projectId, targetFolderId) => {
+    const project = get().projects.find((p) => p.id === projectId);
+    if (!project) return;
+    if (project.folderId === targetFolderId) return;
+    const prevFolderId = project.folderId;
+    set((s) => ({
+      projects: s.projects.map((p) => (p.id === projectId ? { ...p, folderId: targetFolderId } : p)),
+      folders: s.folders.map((f) => {
+        // Remove the project from the previous folder's projectIds list
+        if (f.id === prevFolderId) {
+          return { ...f, projectIds: (f.projectIds ?? []).filter((id) => id !== projectId) };
+        }
+        // Append it to the target folder's projectIds (avoid duplicates)
+        if (f.id === targetFolderId) {
+          const ids = f.projectIds ?? [];
+          return ids.includes(projectId) ? f : { ...f, projectIds: [...ids, projectId] };
+        }
+        return f;
+      }),
+    }));
+    // Persist the moved project + both impacted folders.
+    const updatedProject = get().projects.find((p) => p.id === projectId);
+    if (updatedProject) dbPersist.put('projects', updatedProject);
+    for (const fid of [prevFolderId, targetFolderId]) {
+      if (!fid) continue;
+      const f = get().folders.find((x) => x.id === fid);
+      if (f) dbPersist.put('folders', f);
+    }
   },
 
   toggleAutomation: (id) => {

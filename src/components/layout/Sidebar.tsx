@@ -1,4 +1,15 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import {
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+} from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   Inbox,
   Sun,
@@ -36,6 +47,7 @@ import {
   Pause,
   Play,
   MoreHorizontal,
+  GripVertical,
   type LucideIcon,
 } from 'lucide-react';
 import { Logo } from '../ui/Logo';
@@ -104,6 +116,56 @@ export function Sidebar({
   const openModal = useApp((s) => s.openModal);
   const updateProject = useApp((s) => s.updateProject);
   const deleteProject = useApp((s) => s.deleteProject);
+  const reorderFolders = useApp((s) => s.reorderFolders);
+  const moveProjectToFolder = useApp((s) => s.moveProjectToFolder);
+
+  // Sort folders by their `order` so reorder is consistent across reloads.
+  const sortedFolders = useMemo(
+    () =>
+      [...folders].sort(
+        (a, b) => ((a as { order?: number }).order ?? 0) - ((b as { order?: number }).order ?? 0)
+      ),
+    [folders]
+  );
+
+  // dnd-kit setup — 5px activation threshold so a normal click (open
+  // folder, navigate to project) isn't accidentally interpreted as a
+  // drag start.
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const [draggingFolderId, setDraggingFolderId] = useState<string | null>(null);
+  const [draggingProjectId, setDraggingProjectId] = useState<string | null>(null);
+
+  const onDragEnd = (e: DragEndEvent) => {
+    const activeId = String(e.active.id);
+    const overId = e.over ? String(e.over.id) : null;
+    setDraggingFolderId(null);
+    setDraggingProjectId(null);
+    if (!overId) return;
+
+    // Folder reorder: both ids are folder-X
+    if (activeId.startsWith('folder-') && overId.startsWith('folder-')) {
+      const draggedId = activeId.slice('folder-'.length);
+      const targetId = overId.slice('folder-'.length);
+      if (draggedId === targetId) return;
+      const ids = sortedFolders.map((f) => f.id);
+      const from = ids.indexOf(draggedId);
+      const to = ids.indexOf(targetId);
+      if (from < 0 || to < 0) return;
+      const next = [...ids];
+      next.splice(from, 1);
+      next.splice(to, 0, draggedId);
+      reorderFolders(next);
+      return;
+    }
+
+    // Project moved onto a folder header
+    if (activeId.startsWith('project-') && overId.startsWith('folder-')) {
+      const projectId = activeId.slice('project-'.length);
+      const targetFolderId = overId.slice('folder-'.length);
+      moveProjectToFolder(projectId, targetFolderId);
+      return;
+    }
+  };
   const pushToast = useApp((s) => s.pushToast);
 
   // Folder expand/collapse state is keyed by folder id and lazy-initialized:
@@ -251,158 +313,204 @@ export function Sidebar({
           </Menu>
         </div>
 
-        <div className="space-y-0.5">
-          {folders.map((folder) => {
-            const FolderIcon = folderIcons[folder.icon] || Building2;
-            const isOpen = isFolderOpen(folder.id);
-            // Older / freshly-seeded folders may not carry a `projectIds`
-            // array — fall back to `folderId` on the project itself so the
-            // sidebar never crashes on `undefined.includes(...)`.
-            const folderProjects = projects.filter((p) =>
-              folder.projectIds ? folder.projectIds.includes(p.id) : p.folderId === folder.id
-            );
-            return (
-              <div key={folder.id} className="group/folder">
-                <div className="flex items-center gap-1 pr-1">
-                  <button
-                    onClick={() => setOpenFolders((s) => ({ ...s, [folder.id]: !s[folder.id] }))}
-                    className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-black/[0.04] text-atlas-fg-2 hover:text-atlas-fg-1"
-                  >
-                    <ChevronRight
-                      className={cn(
-                        'w-3.5 h-3.5 text-atlas-fg-3 transition-transform',
-                        isOpen && 'rotate-90'
-                      )}
-                    />
-                    <FolderIcon
-                      className="w-[14px] h-[14px]"
-                      style={{ color: folder.color }}
-                      strokeWidth={2}
-                    />
-                    <span className="text-sm font-medium flex-1 text-left">{folder.name}</span>
-                    <span className="text-2xs text-atlas-fg-3">{folderProjects.length}</span>
-                  </button>
-                  <Menu
-                    align="right"
-                    width={180}
-                    trigger={
-                      <button
-                        title="Options du dossier"
-                        className="w-6 h-6 rounded-md flex items-center justify-center text-atlas-fg-3 hover:text-atlas-fg-1 hover:bg-black/[0.06] opacity-0 group-hover/folder:opacity-100 transition"
-                      >
-                        <MoreHorizontal className="w-3.5 h-3.5" />
-                      </button>
-                    }
-                  >
-                    {(close) => (
+        <DndContext
+          sensors={sensors}
+          onDragStart={(e) => {
+            const id = String(e.active.id);
+            if (id.startsWith('folder-')) setDraggingFolderId(id.slice('folder-'.length));
+            else if (id.startsWith('project-')) setDraggingProjectId(id.slice('project-'.length));
+          }}
+          onDragEnd={onDragEnd}
+          onDragCancel={() => {
+            setDraggingFolderId(null);
+            setDraggingProjectId(null);
+          }}
+        >
+          <SortableContext
+            items={sortedFolders.map((f) => 'folder-' + f.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-0.5">
+              {sortedFolders.map((folder) => {
+                const FolderIcon = folderIcons[folder.icon] || Building2;
+                const isOpen = isFolderOpen(folder.id);
+                // Older / freshly-seeded folders may not carry a `projectIds`
+                // array — fall back to `folderId` on the project itself so the
+                // sidebar never crashes on `undefined.includes(...)`.
+                const folderProjects = projects.filter((p) =>
+                  folder.projectIds ? folder.projectIds.includes(p.id) : p.folderId === folder.id
+                );
+                return (
+                  <SortableFolderRow key={folder.id} folderId={folder.id}>
+                    {({ dragHandle }) => (
                       <>
-                        <MenuItem
-                          icon={Edit3}
-                          onClick={() => {
-                            close();
-                            openModal('folder-edit', folder);
-                          }}
-                        >
-                          Renommer
-                        </MenuItem>
-                        <MenuSeparator />
-                        <MenuItem
-                          icon={Trash2}
-                          danger
-                          onClick={() => {
-                            close();
-                            openModal('folder-edit', folder);
-                          }}
-                        >
-                          Supprimer…
-                        </MenuItem>
+                        <div className="group/folder">
+                          <div className="flex items-center gap-0.5 pr-1 rounded-lg bg-black/[0.025] border border-transparent hover:border-atlas-line/60 transition-colors">
+                            {dragHandle}
+                            <button
+                              onClick={() => setOpenFolders((s) => ({ ...s, [folder.id]: !s[folder.id] }))}
+                              className="flex-1 flex items-center gap-2 px-2 py-1.5 rounded-lg text-atlas-fg-1 hover:text-atlas-fg-1"
+                            >
+                              <ChevronRight
+                                className={cn(
+                                  'w-3.5 h-3.5 text-atlas-fg-3 transition-transform',
+                                  isOpen && 'rotate-90'
+                                )}
+                              />
+                              <span
+                                className="w-5 h-5 rounded-md grid place-items-center shrink-0"
+                                style={{
+                                  background: `${folder.color}1f`,
+                                  color: folder.color,
+                                }}
+                              >
+                                <FolderIcon className="w-3.5 h-3.5" strokeWidth={2.2} />
+                              </span>
+                              <span className="text-2xs uppercase tracking-[0.12em] font-semibold flex-1 text-left">
+                                {folder.name}
+                              </span>
+                              <span className="text-2xs text-atlas-fg-3 font-mono">
+                                {folderProjects.length}
+                              </span>
+                            </button>
+                            <Menu
+                              align="right"
+                              width={180}
+                              trigger={
+                                <button
+                                  title="Options du dossier"
+                                  className="w-6 h-6 rounded-md flex items-center justify-center text-atlas-fg-3 hover:text-atlas-fg-1 hover:bg-black/[0.06] opacity-0 group-hover/folder:opacity-100 transition"
+                                >
+                                  <MoreHorizontal className="w-3.5 h-3.5" />
+                                </button>
+                              }
+                            >
+                              {(close) => (
+                                <>
+                                  <MenuItem
+                                    icon={Edit3}
+                                    onClick={() => {
+                                      close();
+                                      openModal('folder-edit', folder);
+                                    }}
+                                  >
+                                    Renommer
+                                  </MenuItem>
+                                  <MenuSeparator />
+                                  <MenuItem
+                                    icon={Trash2}
+                                    danger
+                                    onClick={() => {
+                                      close();
+                                      openModal('folder-edit', folder);
+                                    }}
+                                  >
+                                    Supprimer…
+                                  </MenuItem>
+                                </>
+                              )}
+                            </Menu>
+                          </div>
+                          {isOpen && (
+                            <div className="pl-2 space-y-0.5 mt-0.5 mb-1">
+                              {folderProjects.map((p) => {
+                                const Icon = projectIcons[p.icon] || Compass;
+                                const active = view === 'project' && activeProjectId === p.id;
+                                return (
+                                  <div
+                                    key={p.id}
+                                    className={cn(
+                                      'group flex items-center rounded-lg text-sm transition-colors',
+                                      active
+                                        ? 'bg-black/[0.06] text-atlas-fg-1'
+                                        : 'text-atlas-fg-2 hover:text-atlas-fg-1 hover:bg-black/[0.03]'
+                                    )}
+                                  >
+                                    <button
+                                      onClick={() => onNavigate('project', p.id)}
+                                      className="flex-1 flex items-center gap-2.5 px-3 py-1.5 min-w-0"
+                                    >
+                                      <span
+                                        className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
+                                        style={{ background: `${p.color}22`, color: p.color }}
+                                      >
+                                        <Icon className="w-3 h-3" strokeWidth={2.2} />
+                                      </span>
+                                      <span className="flex-1 text-left truncate">{p.name}</span>
+                                      <HealthDot health={p.health} />
+                                    </button>
+                                    <Menu
+                                      trigger={
+                                        <button className="w-6 h-6 rounded-md flex items-center justify-center text-atlas-fg-3 opacity-0 group-hover:opacity-100 hover:bg-black/[0.06] hover:text-atlas-fg-1 shrink-0 mr-1">
+                                          <MoreHorizontal className="w-3.5 h-3.5" />
+                                        </button>
+                                      }
+                                    >
+                                      {(close) => (
+                                        <>
+                                          <MenuItem
+                                            icon={Edit3}
+                                            onClick={() => {
+                                              close();
+                                              openModal('project-edit', p);
+                                            }}
+                                          >
+                                            Modifier
+                                          </MenuItem>
+                                          <MenuItem
+                                            icon={p.status === 'active' ? Pause : Play}
+                                            onClick={() => {
+                                              close();
+                                              updateProject(p.id, {
+                                                status: p.status === 'active' ? 'paused' : 'active',
+                                              });
+                                            }}
+                                          >
+                                            {p.status === 'active' ? 'Mettre en pause' : 'Réactiver'}
+                                          </MenuItem>
+                                          <MenuSeparator />
+                                          <MenuItem
+                                            danger
+                                            icon={Trash2}
+                                            onClick={() => {
+                                              close();
+                                              openModal('project-delete', {
+                                                title: p.name,
+                                                onConfirm: () => deleteProject(p.id),
+                                              });
+                                            }}
+                                          >
+                                            Supprimer
+                                          </MenuItem>
+                                        </>
+                                      )}
+                                    </Menu>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </>
                     )}
-                  </Menu>
-                </div>
-                {isOpen && (
-                  <div className="pl-2 space-y-0.5 mt-0.5 mb-1">
-                    {folderProjects.map((p) => {
-                      const Icon = projectIcons[p.icon] || Compass;
-                      const active = view === 'project' && activeProjectId === p.id;
-                      return (
-                        <div
-                          key={p.id}
-                          className={cn(
-                            'group flex items-center rounded-lg text-sm transition-colors',
-                            active
-                              ? 'bg-black/[0.06] text-atlas-fg-1'
-                              : 'text-atlas-fg-2 hover:text-atlas-fg-1 hover:bg-black/[0.03]'
-                          )}
-                        >
-                          <button
-                            onClick={() => onNavigate('project', p.id)}
-                            className="flex-1 flex items-center gap-2.5 px-3 py-1.5 min-w-0"
-                          >
-                            <span
-                              className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
-                              style={{ background: `${p.color}22`, color: p.color }}
-                            >
-                              <Icon className="w-3 h-3" strokeWidth={2.2} />
-                            </span>
-                            <span className="flex-1 text-left truncate">{p.name}</span>
-                            <HealthDot health={p.health} />
-                          </button>
-                          <Menu
-                            trigger={
-                              <button className="w-6 h-6 rounded-md flex items-center justify-center text-atlas-fg-3 opacity-0 group-hover:opacity-100 hover:bg-black/[0.06] hover:text-atlas-fg-1 shrink-0 mr-1">
-                                <MoreHorizontal className="w-3.5 h-3.5" />
-                              </button>
-                            }
-                          >
-                            {(close) => (
-                              <>
-                                <MenuItem
-                                  icon={Edit3}
-                                  onClick={() => {
-                                    close();
-                                    openModal('project-edit', p);
-                                  }}
-                                >
-                                  Modifier
-                                </MenuItem>
-                                <MenuItem
-                                  icon={p.status === 'active' ? Pause : Play}
-                                  onClick={() => {
-                                    close();
-                                    updateProject(p.id, {
-                                      status: p.status === 'active' ? 'paused' : 'active',
-                                    });
-                                  }}
-                                >
-                                  {p.status === 'active' ? 'Mettre en pause' : 'Réactiver'}
-                                </MenuItem>
-                                <MenuSeparator />
-                                <MenuItem
-                                  danger
-                                  icon={Trash2}
-                                  onClick={() => {
-                                    close();
-                                    openModal('project-delete', {
-                                      title: p.name,
-                                      onConfirm: () => deleteProject(p.id),
-                                    });
-                                  }}
-                                >
-                                  Supprimer
-                                </MenuItem>
-                              </>
-                            )}
-                          </Menu>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                  </SortableFolderRow>
+                );
+              })}
+            </div>
+          </SortableContext>
+          <DragOverlay>
+            {draggingFolderId && (
+              <div className="px-3 py-1.5 rounded-lg bg-white border border-atlas-line shadow-soft-pop text-2xs uppercase tracking-[0.12em] font-semibold text-atlas-fg-1">
+                {folders.find((f) => f.id === draggingFolderId)?.name}
               </div>
-            );
-          })}
-        </div>
+            )}
+            {draggingProjectId && (
+              <div className="px-3 py-1.5 rounded-lg bg-white border border-atlas-line shadow-soft-pop text-sm font-medium text-atlas-fg-1">
+                {projects.find((p) => p.id === draggingProjectId)?.name}
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
       </div>
 
       <div className="border-t border-black/[0.05] p-3">
@@ -501,5 +609,62 @@ export function Sidebar({
         </div>
       </div>
     </aside>
+  );
+}
+
+/* ───────────── Draggable wrappers for folders & projects ───────────── */
+
+/**
+ * Wraps a folder row with both:
+ *   - useSortable → allows the folder to be reordered within the list
+ *     (drag handle = GripVertical inside the `dragHandle` render prop)
+ *   - useDroppable → the folder header is a drop target for projects
+ *     dragged from elsewhere
+ *
+ * The drag handle is intentionally NOT the whole folder row — that
+ * would conflict with the expand/collapse click and the "Renommer /
+ * Supprimer" menu. Only the GripVertical icon initiates a drag.
+ */
+function SortableFolderRow({
+  folderId,
+  children,
+}: {
+  folderId: string;
+  children: (ctx: { dragHandle: React.ReactNode }) => React.ReactNode;
+}) {
+  const sortable = useSortable({ id: 'folder-' + folderId });
+  const droppable = useDroppable({ id: 'folder-' + folderId });
+  const style = {
+    transform: CSS.Transform.toString(sortable.transform),
+    transition: sortable.transition,
+  };
+  const setRefs = (node: HTMLDivElement | null) => {
+    sortable.setNodeRef(node);
+    droppable.setNodeRef(node);
+  };
+  const dragHandle = (
+    <button
+      ref={sortable.setActivatorNodeRef}
+      {...sortable.attributes}
+      {...sortable.listeners}
+      title="Glisser pour réorganiser"
+      aria-label="Glisser pour réorganiser"
+      className="w-5 h-7 flex items-center justify-center text-atlas-fg-3 hover:text-atlas-fg-1 opacity-0 group-hover/folder:opacity-100 cursor-grab active:cursor-grabbing shrink-0"
+    >
+      <GripVertical className="w-3.5 h-3.5" />
+    </button>
+  );
+  return (
+    <div
+      ref={setRefs}
+      style={style}
+      className={cn(
+        'transition-opacity',
+        sortable.isDragging && 'opacity-40',
+        droppable.isOver && !sortable.isDragging && 'rounded-lg ring-2 ring-atlas-sage-deep/40 ring-offset-1'
+      )}
+    >
+      {children({ dragHandle })}
+    </div>
   );
 }
