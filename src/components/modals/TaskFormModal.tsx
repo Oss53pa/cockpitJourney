@@ -133,7 +133,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
 
   // Links
-  const [goalId, setGoalId] = useState('');
+  const [goalId, setGoalId] = useState(initial?.goalId ?? '');
   const [multiProject, setMultiProject] = useState<boolean>(false);
   const [requiresApproval, setRequiresApproval] = useState<boolean>(false);
   const [makeTemplate, setMakeTemplate] = useState<boolean>(false);
@@ -196,6 +196,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
       estimatedMinutes: typeof estimateMinutes === 'number' ? estimateMinutes : undefined,
       actualMinutes: typeof actualMinutes === 'number' ? actualMinutes : undefined,
       tags,
+      goalId: goalId || undefined,
       customFields: Object.keys(customFields).length ? customFields : undefined,
     };
 
@@ -203,14 +204,6 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
       const created = createTask(payload);
       // Add subtasks
       subtasks.forEach((s) => addSubtaskAction(created.id, s.title));
-      if (goalId) {
-        // Lien vers goal — informatif via toast
-        pushToast({
-          kind: 'info',
-          title: 'Goal lié',
-          body: `Cette tâche contribue au goal "${goals.find((g) => g.id === goalId)?.title}"`,
-        });
-      }
       if (makeTemplate)
         pushToast({ kind: 'info', title: 'Template enregistré', body: 'Disponible dans la bibliothèque' });
     } else if (mode === 'edit' && initial?.id) {

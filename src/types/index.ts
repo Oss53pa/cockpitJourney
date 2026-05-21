@@ -94,6 +94,8 @@ export interface Task {
   commentCount?: number;
   attachmentCount?: number;
   source?: 'manual' | 'voice' | 'whatsapp' | 'email' | 'form' | 'recurring';
+  /** Goal this task contributes to (Cap stratégique → tâches). */
+  goalId?: string;
   /** ISO timestamp — set at creation; used by the activity trajectory charts. */
   createdAt?: string;
 }
