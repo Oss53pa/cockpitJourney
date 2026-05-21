@@ -13,9 +13,12 @@ import {
   Edit3,
   Trash2,
   Minus,
+  ListChecks,
+  Circle,
 } from 'lucide-react';
 import { useApp } from '../../stores/appStore';
 import { Avatar } from '../ui/Avatar';
+import { ProgressBar } from '../ui/StatusBadge';
 import { HealthDot } from '../ui/HealthDot';
 import { Menu, MenuItem, MenuSeparator, MenuLabel } from '../ui/Menu';
 import { cn, formatDate, formatNumber } from '../../lib/utils';
@@ -232,6 +235,12 @@ function GoalCard({
   const bumpGoalValue = useApp((s) => s.bumpGoalValue);
   const deleteGoal = useApp((s) => s.deleteGoal);
   const openModal = useApp((s) => s.openModal);
+  const allTasks = useApp((s) => s.tasks);
+  const [showTasks, setShowTasks] = useState(false);
+
+  const contributingTasks = allTasks.filter((t) => t.goalId === goal.id);
+  const doneCount = contributingTasks.filter((t) => t.status === 'done').length;
+  const execPct = contributingTasks.length ? Math.round((doneCount / contributingTasks.length) * 100) : 0;
 
   const pct = (goal.currentValue / Math.max(1, goal.targetValue)) * 100;
   const formatVal = (v: number) =>
@@ -386,6 +395,60 @@ function GoalCard({
               <Avatar user={owner} size="md" />
             </div>
           </div>
+
+          {contributingTasks.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-black/[0.05]">
+              <button
+                onClick={() => setShowTasks((v) => !v)}
+                className="w-full flex items-center justify-between gap-3"
+              >
+                <span className="inline-flex items-center gap-1.5 text-2xs text-atlas-fg-3">
+                  <ListChecks className="w-3.5 h-3.5" />
+                  Tâches contributrices
+                  <span className="font-mono font-medium text-atlas-fg-1">
+                    {doneCount}/{contributingTasks.length}
+                  </span>
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <span className="w-20 sm:w-28">
+                    <ProgressBar value={execPct} />
+                  </span>
+                  <span className="font-mono text-2xs text-atlas-fg-3 w-8 text-right">{execPct}%</span>
+                  {showTasks ? (
+                    <ChevronDown className="w-3.5 h-3.5 text-atlas-fg-3" />
+                  ) : (
+                    <ChevronRight className="w-3.5 h-3.5 text-atlas-fg-3" />
+                  )}
+                </span>
+              </button>
+              {showTasks && (
+                <ul className="mt-2.5 space-y-1.5">
+                  {contributingTasks.map((t) => (
+                    <li key={t.id} className="flex items-center gap-2 text-2xs">
+                      {t.status === 'done' ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-signal-green shrink-0" />
+                      ) : (
+                        <Circle className="w-3.5 h-3.5 text-atlas-fg-3 shrink-0" />
+                      )}
+                      <span
+                        className={cn(
+                          'truncate',
+                          t.status === 'done' ? 'text-atlas-fg-3 line-through' : 'text-atlas-fg-2'
+                        )}
+                      >
+                        {t.title}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {(goal.metricType === 'percentage' || goal.metricType === 'boolean') && (
+                <p className="mt-2 text-[10px] text-atlas-fg-3 italic">
+                  Progression auto-pilotée par ces tâches.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

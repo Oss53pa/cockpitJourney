@@ -355,6 +355,12 @@ interface State {
   updateGoal: (id: string, patch: Partial<Goal>) => void;
   deleteGoal: (id: string) => void;
   bumpGoalValue: (id: string, delta: number) => void;
+  /**
+   * Recompute a goal's value from its contributing tasks. Only auto-pilots
+   * percentage / boolean goals — currency & number goals keep their manual
+   * value (execution ratio is surfaced separately in the UI).
+   */
+  recomputeGoalFromTasks: (goalId: string) => void;
 
   // projects
   createProject: (p: Partial<Project> & { name: string; folderId?: string }) => Project;
@@ -880,6 +886,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       commentCount: 0,
       attachmentCount: 0,
       source: input.source ?? 'manual',
+      goalId: input.goalId,
       createdAt: new Date().toISOString(),
     };
     set((s: any) => ({ tasks: [t, ...s.tasks] }));
@@ -901,12 +908,21 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       target: t.title,
     });
     get().pushToast({ kind: 'success', title: 'Tâche créée', body: t.title });
+    if (t.goalId) get().recomputeGoalFromTasks(t.goalId);
     return t;
   },
   updateTask: (id, patch) => {
+    const before = get().tasks.find((t) => t.id === id);
     set((s: any) => ({ tasks: s.tasks.map((t: any) => (t.id === id ? { ...t, ...patch } : t)) }));
     const updated = get().tasks.find((t) => t.id === id);
     if (updated) dbPersist.put('tasks', updated);
+    // Roll up goal progress when a contribution changes (status or link).
+    if (before && ('status' in patch || 'goalId' in patch)) {
+      const affected = new Set<string>();
+      if (before.goalId) affected.add(before.goalId);
+      if (updated?.goalId) affected.add(updated.goalId);
+      affected.forEach((gid) => get().recomputeGoalFromTasks(gid));
+    }
   },
   deleteTask: (id) => {
     const t = get().tasks.find((x) => x.id === id);
@@ -927,6 +943,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
         target: t.title,
       });
       get().pushToast({ kind: 'info', title: 'Tâche supprimée', body: t.title });
+      if (t.goalId) get().recomputeGoalFromTasks(t.goalId);
     }
   },
   toggleTaskDone: (id) => {
@@ -1053,6 +1070,30 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     if (!g) return;
     const next = Math.max(0, g.currentValue + delta);
     get().updateGoal(id, { currentValue: next });
+  },
+  recomputeGoalFromTasks: (goalId) => {
+    const goal = get().goals.find((g) => g.id === goalId);
+    if (!goal) return;
+    // Currency / number goals stay manual — the execution ratio is shown
+    // alongside the metric in the UI rather than overwriting it.
+    if (goal.metricType !== 'percentage' && goal.metricType !== 'boolean') return;
+    const contributing = get().tasks.filter((t) => t.goalId === goalId);
+    const total = contributing.length;
+    const done = contributing.filter((t) => t.status === 'done').length;
+    const currentValue =
+      goal.metricType === 'percentage'
+        ? total
+          ? Math.round((done / total) * 100)
+          : 0
+        : total > 0 && done === total
+          ? goal.targetValue
+          : 0;
+    const pct = (currentValue / Math.max(1, goal.targetValue)) * 100;
+    get().updateGoal(goalId, {
+      currentValue,
+      health: pct >= 60 ? 'green' : pct >= 35 ? 'yellow' : 'red',
+      status: pct >= 100 ? 'achieved' : pct >= 60 ? 'on_track' : pct >= 35 ? 'at_risk' : 'off_track',
+    });
   },
 
   createProject: (p) => {

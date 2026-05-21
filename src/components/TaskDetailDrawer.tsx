@@ -34,6 +34,7 @@ import {
   Download,
   Star,
   Maximize2,
+  Target,
 } from 'lucide-react';
 import type { Task, Priority } from '../types';
 import { useApp, useCurrentUser, type Attachment } from '../stores/appStore';
@@ -377,11 +378,13 @@ function DetailsTab({ task }: { task: Task }) {
   const projects = useApp((s) => s.projects);
   const sections = useApp((s) => s.sections);
   const users = useApp((s) => s.users);
+  const goals = useApp((s) => s.goals);
   const updateTask = useApp((s) => s.updateTask);
   const moveTask = useApp((s) => s.moveTask);
   const changePriority = useApp((s) => s.changeTaskPriority);
   const toggleWatcher = useApp((s) => s.toggleWatcher);
   const project = projects.find((p) => p.id === task.projectId);
+  const goal = task.goalId ? goals.find((g) => g.id === task.goalId) : undefined;
   const projectSections = sections.filter((s) => s.projectId === task.projectId);
 
   return (
@@ -630,6 +633,24 @@ function DetailsTab({ task }: { task: Task }) {
             <button className="btn-ghost text-2xs px-2 py-1">
               <ArrowUpRight className="w-3 h-3" /> Ouvrir
             </button>
+          </div>
+        </div>
+      )}
+
+      {goal && (
+        <div>
+          <SectionTitle icon={Target}>Goal</SectionTitle>
+          <div className="flex items-center gap-3 panel p-3">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-atlas-amber/15 text-atlas-amber-deep shrink-0">
+              <Target className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-atlas-fg-1 truncate">{goal.title}</div>
+              <div className="text-2xs text-atlas-fg-3">
+                Contribue à ce cap stratégique ·{' '}
+                {Math.round((goal.currentValue / Math.max(1, goal.targetValue)) * 100)}%
+              </div>
+            </div>
           </div>
         </div>
       )}
