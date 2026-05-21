@@ -180,7 +180,7 @@ export async function exportToXlsx(payload: ExportPayload): Promise<void> {
   }
 
   if (options.sections.includes('tasks')) {
-    const tasks = filterTasks(payload).filter((t) => t.status !== 'cancelled');
+    const tasks = filterTasks(payload);
     const rows: Cell[][] = [
       ['Projet', 'Tâche', 'Statut', 'Priorité', 'Échéance', 'Tags', 'Description'],
       ...tasks.map((t) => [

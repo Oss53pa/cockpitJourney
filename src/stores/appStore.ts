@@ -880,6 +880,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       commentCount: 0,
       attachmentCount: 0,
       source: input.source ?? 'manual',
+      createdAt: new Date().toISOString(),
     };
     set((s: any) => ({ tasks: [t, ...s.tasks] }));
     dbPersist.put('tasks', t);

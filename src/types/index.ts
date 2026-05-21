@@ -94,6 +94,8 @@ export interface Task {
   commentCount?: number;
   attachmentCount?: number;
   source?: 'manual' | 'voice' | 'whatsapp' | 'email' | 'form' | 'recurring';
+  /** ISO timestamp — set at creation; used by the activity trajectory charts. */
+  createdAt?: string;
 }
 
 export interface Goal {
@@ -133,6 +135,8 @@ export interface PropheticInsight {
   title: string;
   body: string;
   confidence: number;
+  /** Optional area the insight concerns (project name, "Workspace", …). */
+  scope?: string;
   cta?: { label: string; action: string };
 }
 

@@ -116,12 +116,12 @@ export function ReportExportDialog({
       pushToast({
         kind: 'success',
         title: `Export ${FORMAT_LABELS[format]} prêt`,
-        description: 'Le fichier a été téléchargé.',
+        body: 'Le fichier a été téléchargé.',
       });
       onClose();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      pushToast({ kind: 'error', title: 'Échec de l’export', description: msg });
+      pushToast({ kind: 'error', title: 'Échec de l’export', body: msg });
     } finally {
       setBusy(false);
     }

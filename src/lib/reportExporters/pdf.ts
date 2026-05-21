@@ -566,7 +566,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
       }
 
       case 'tasks': {
-        const tasks = filterTasks(payload).filter((t) => t.status !== 'cancelled');
+        const tasks = filterTasks(payload);
         if (tasks.length === 0) break;
         const byProject = tasks.reduce<Record<string, typeof tasks>>((acc, t) => {
           (acc[t.projectId] ??= []).push(t);
