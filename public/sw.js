@@ -1,5 +1,5 @@
 /**
- * CockpitJourney Service Worker — PWA v3 (2026-05-09)
+ * CockpitJourney Service Worker — PWA v4 (2026-05-21)
  * ====================================================
  *
  * Strategy:
@@ -28,7 +28,7 @@
  *     to the new bundle on the next request.
  */
 
-const CACHE_VERSION = 'cj-v3-2026-05-09';
+const CACHE_VERSION = 'cj-v4-2026-05-21';
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
