@@ -68,7 +68,7 @@ describe('isSubscriptionActive', () => {
 
   it('returns true for active status', () => {
     const sub: SubscriptionState = {
-      plan: 'particulier',
+      plan: 'solo',
       status: 'active',
       seats: 1,
       trialEndsAt: null,
@@ -81,7 +81,7 @@ describe('isSubscriptionActive', () => {
 
   it('returns true for trialing status (paid features unlocked during trial)', () => {
     const sub: SubscriptionState = {
-      plan: 'equipe',
+      plan: 'entreprise',
       status: 'trialing',
       seats: 10,
       trialEndsAt: '2026-06-01T00:00:00Z',
@@ -96,7 +96,7 @@ describe('isSubscriptionActive', () => {
     'returns false for %s status',
     (status) => {
       const sub: SubscriptionState = {
-        plan: 'particulier',
+        plan: 'solo',
         status,
         seats: 1,
         trialEndsAt: null,

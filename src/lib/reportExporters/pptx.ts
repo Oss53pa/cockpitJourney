@@ -714,7 +714,7 @@ export async function exportToPptx(payload: ExportPayload): Promise<void> {
       }
 
       case 'tasks': {
-        const tasks = filterTasks(payload).filter((t) => t.status !== 'cancelled');
+        const tasks = filterTasks(payload);
         const byProject = tasks.reduce<Record<string, typeof tasks>>((acc, t) => {
           (acc[t.projectId] ??= []).push(t);
           return acc;

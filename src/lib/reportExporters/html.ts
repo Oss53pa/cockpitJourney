@@ -25,6 +25,7 @@ import {
   formatDate,
 } from './types';
 import { C, COPY, buildToc, buildDocRef, formatPeriodRange } from './design';
+import { healthLabel } from '../utils';
 
 /** HTML-escape — never inject raw user content. */
 function esc(s: string | number | null | undefined): string {
@@ -157,7 +158,7 @@ export async function exportToHtml(payload: ExportPayload): Promise<void> {
             <div class="metric-card">
               <div class="metric-label">${esc(m.label)}</div>
               <div class="metric-value">${esc(m.value)}</div>
-              ${m.trend ? `<div class="metric-trend">${esc(m.trend)}</div>` : ''}
+              ${typeof m.delta === 'number' ? `<div class="metric-trend">${m.delta >= 0 ? '+' : ''}${esc(m.delta)}%</div>` : ''}
             </div>
           `
             )
@@ -204,9 +205,9 @@ export async function exportToHtml(payload: ExportPayload): Promise<void> {
               <tr>
                 <td>${esc(projectNames[p.projectId] ?? p.projectId)}</td>
                 <td><div class="bar"><div class="bar-fill" style="width:${Math.max(0, Math.min(100, p.progress ?? 0))}%"></div></div><span class="mono">${esc(p.progress ?? 0)}%</span></td>
-                <td>${esc(p.status ?? '—')}</td>
-                <td class="num">${esc(p.taskCount ?? 0)}</td>
-                <td class="num">${esc(p.criticalCount ?? 0)}</td>
+                <td>${esc(p.health ? healthLabel(p.health) : '—')}</td>
+                <td class="num">${esc(p.tasksTotal ?? 0)}</td>
+                <td class="num">${esc(p.tasksCritical ?? 0)}</td>
               </tr>
             `
               )
@@ -269,7 +270,7 @@ export async function exportToHtml(payload: ExportPayload): Promise<void> {
             .map(
               (a) =>
                 `<li class="sev-${esc(a.severity)}"><strong>${esc(a.title)}</strong>${
-                  a.description ? ` — ${esc(a.description)}` : ''
+                  a.detail ? ` — ${esc(a.detail)}` : ''
                 }</li>`
             )
             .join('')}

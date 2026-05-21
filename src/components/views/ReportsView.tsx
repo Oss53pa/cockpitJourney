@@ -1194,7 +1194,6 @@ function ProjectBreakdownCard({
       done: [],
     };
     for (const t of tasks) {
-      if (t.status === 'cancelled') continue;
       (out[t.status] ??= []).push(t);
     }
     return out;

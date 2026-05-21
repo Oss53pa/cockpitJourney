@@ -507,7 +507,7 @@ export async function exportToDocx(payload: ExportPayload): Promise<void> {
       }
 
       case 'tasks': {
-        const tasks = filterTasks(payload).filter((t) => t.status !== 'cancelled');
+        const tasks = filterTasks(payload);
         if (tasks.length) {
           const byProject = tasks.reduce<Record<string, typeof tasks>>((acc, t) => {
             (acc[t.projectId] ??= []).push(t);
