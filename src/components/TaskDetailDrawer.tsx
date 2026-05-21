@@ -379,6 +379,7 @@ function DetailsTab({ task }: { task: Task }) {
   const sections = useApp((s) => s.sections);
   const users = useApp((s) => s.users);
   const goals = useApp((s) => s.goals);
+  const allTasks = useApp((s) => s.tasks);
   const updateTask = useApp((s) => s.updateTask);
   const moveTask = useApp((s) => s.moveTask);
   const changePriority = useApp((s) => s.changeTaskPriority);
@@ -386,6 +387,23 @@ function DetailsTab({ task }: { task: Task }) {
   const project = projects.find((p) => p.id === task.projectId);
   const goal = task.goalId ? goals.find((g) => g.id === task.goalId) : undefined;
   const projectSections = sections.filter((s) => s.projectId === task.projectId);
+
+  // Real estimate from past tasks sharing a tag (actual time preferred,
+  // else estimate). Only surfaced when there's enough signal.
+  const similarTasks = allTasks.filter(
+    (t) =>
+      t.id !== task.id &&
+      (t.actualMinutes || t.estimatedMinutes) &&
+      t.tags.some((tag) => task.tags.includes(tag))
+  );
+  const avgSimilarMinutes = similarTasks.length
+    ? Math.round(
+        similarTasks.reduce((s, t) => s + (t.actualMinutes || t.estimatedMinutes || 0), 0) /
+          similarTasks.length
+      )
+    : 0;
+  const fmtDuration = (m: number) =>
+    m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m} min`;
 
   return (
     <div className="px-6 py-5 space-y-6">
@@ -669,20 +687,24 @@ function DetailsTab({ task }: { task: Task }) {
         </div>
       )}
 
-      {/* PROPH3T panel */}
-      <div className="rounded-2xl border border-atlas-amber/25 bg-gradient-to-br from-atlas-amber/[0.10] to-transparent p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Sparkles className="w-4 h-4 text-atlas-amber-deep" />
-          <span className="text-2xs uppercase tracking-wider font-medium text-atlas-amber-deep">
-            PROPH3T · Estimation affinée
-          </span>
+      {similarTasks.length >= 3 && (
+        <div className="rounded-2xl border border-atlas-amber/25 bg-gradient-to-br from-atlas-amber/[0.10] to-transparent p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="w-4 h-4 text-atlas-amber-deep" />
+            <span className="text-2xs uppercase tracking-wider font-medium text-atlas-amber-deep">
+              Estimation · tâches similaires
+            </span>
+          </div>
+          <p className="text-sm text-atlas-fg-1">
+            Sur {similarTasks.length} tâches partageant {task.tags.length > 1 ? 'ces tags' : 'ce tag'}, la
+            durée moyenne observée est de{' '}
+            <strong className="text-atlas-amber-deep">{fmtDuration(avgSimilarMinutes)}</strong>.
+            {task.estimatedMinutes
+              ? ` Votre estimation actuelle : ${fmtDuration(task.estimatedMinutes)}.`
+              : ''}
+          </p>
         </div>
-        <p className="text-sm text-atlas-fg-1">
-          Sur la base de vos 22 dernières tâches "design", PROPH3T estime cette tâche à{' '}
-          <strong className="text-atlas-amber-deep">1h05</strong> (±15%). Surcharge journée détectée :
-          envisager de la déplacer à demain matin.
-        </p>
-      </div>
+      )}
 
       {task.dueDate && (
         <div className="text-2xs text-atlas-fg-3">

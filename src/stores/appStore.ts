@@ -1535,7 +1535,20 @@ const initialState = (set: SetFn, get: GetFn): State => ({
           tasksInProgress: inProg,
           tasksOverdue: overdue,
           tasksCritical: critical,
-          velocityDelta: Math.round(Math.random() * 30 - 5),
+          // Real weekly velocity: tasks completed in the last 7 days minus
+          // the 7 days before that (by completionDate). Deterministic.
+          velocityDelta: (() => {
+            const wk = 7 * 86400000;
+            const doneIn = (lo: number, hi: number) =>
+              pTasks.filter(
+                (t) =>
+                  t.status === 'done' &&
+                  t.completionDate &&
+                  now - new Date(t.completionDate).getTime() > lo &&
+                  now - new Date(t.completionDate).getTime() <= hi
+              ).length;
+            return doneIn(0, wk) - doneIn(wk, 2 * wk);
+          })(),
           endDate: p.endDate,
           members: p.membersIds.length,
           summary,
@@ -1618,7 +1631,14 @@ const initialState = (set: SetFn, get: GetFn): State => ({
         id: g.id,
         title: g.title,
         pct: Math.round((g.currentValue / Math.max(1, g.targetValue)) * 100),
-        delta: Math.round(Math.random() * 12 - 2),
+        // Real weekly movement: contributing tasks completed in the last 7 days.
+        delta: tasks.filter(
+          (t) =>
+            t.goalId === g.id &&
+            t.status === 'done' &&
+            t.completionDate &&
+            now - new Date(t.completionDate).getTime() <= 7 * 86400000
+        ).length,
         health: g.health,
         ownerInitials: owner.initials,
         ownerColor: owner.color,

@@ -34,6 +34,12 @@ export function GoalsView() {
 
   const workspaceGoals = goals.filter((g) => g.level === 'workspace');
   const personalGoals = goals.filter((g) => g.level === 'personal');
+  const avgProgress = goals.length
+    ? Math.round(
+        goals.reduce((s, g) => s + (g.currentValue / Math.max(1, g.targetValue)) * 100, 0) / goals.length
+      )
+    : 0;
+  const achievedCount = goals.filter((g) => g.status === 'achieved').length;
 
   const onSuggest = async () => {
     const cfg = useApp.getState().settings.proph3t;
@@ -115,16 +121,16 @@ export function GoalsView() {
           icon={AlertTriangle}
         />
         <Glance
-          label="Probabilité ARR"
-          value="74%"
-          subtitle="d'atteindre 900M FCFA"
+          label="Avancement moyen"
+          value={`${avgProgress}%`}
+          subtitle="sur tous les objectifs"
           color="atlas-amber"
           icon={TrendingUp}
         />
         <Glance
-          label="Goals achevés"
-          value="12"
-          subtitle="ce trimestre"
+          label="Goals atteints"
+          value={String(achievedCount)}
+          total={goals.length}
           color="signal-violet"
           icon={Trophy}
         />
