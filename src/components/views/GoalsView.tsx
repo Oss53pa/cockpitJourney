@@ -79,7 +79,7 @@ export function GoalsView() {
             Goals & OKRs
           </div>
           <h1 className="font-display text-3xl font-medium tracking-tight">
-            Cap stratégique 2026 — Atlas Studio
+            Cap stratégique 2026 — CockpitJourney
           </h1>
           <p className="text-sm text-atlas-fg-3 mt-1">
             {goals.length} objectifs actifs · {goals.filter((g) => g.health === 'green').length} on-track ·{' '}
