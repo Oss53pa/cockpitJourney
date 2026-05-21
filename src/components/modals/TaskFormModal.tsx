@@ -57,6 +57,7 @@ type Section = 'basics' | 'people' | 'planning' | 'organize' | 'subtasks' | 'lin
 
 export function TaskFormModal({ mode, initial, onClose }: Props) {
   const projects = useApp((s) => s.projects);
+  const folders = useApp((s) => s.folders);
   const sections = useApp((s) => s.sections);
   const users = useApp((s) => s.users);
   const goals = useApp((s) => s.goals);
@@ -71,8 +72,29 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
   // Basics
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
-  const [projectId, setProjectId] = useState(initial?.projectId ?? projects[0]?.id ?? '');
+  // Folder → Project → Section hierarchy. The folder narrows the project
+  // list so a task is always filed under the right category, even with many
+  // projects spread across several folders.
+  const defaultProjectId = initial?.projectId ?? projects[0]?.id ?? '';
+  const defaultProject = projects.find((p) => p.id === defaultProjectId);
+  const [projectId, setProjectId] = useState(defaultProjectId);
+  const [folderId, setFolderId] = useState(
+    defaultProject ? (defaultProject.folderId ?? '') : (folders[0]?.id ?? '')
+  );
+  // Projects in the selected folder (ungrouped projects map to '').
+  const folderProjects = projects.filter((p) => (p.folderId ?? '') === folderId);
+  // Surface ungrouped projects (e.g. after a folder was deleted) so they
+  // stay reachable via a synthetic "Sans dossier" bucket.
+  const hasUngroupedProjects = projects.some((p) => !p.folderId);
   const projectSections = sections.filter((s) => s.projectId === projectId);
+
+  // Switching folder re-points the project to the first one it contains
+  // (or clears it if the folder is empty).
+  const handleFolderChange = (nextFolderId: string) => {
+    setFolderId(nextFolderId);
+    const firstInFolder = projects.find((p) => (p.folderId ?? '') === nextFolderId);
+    setProjectId(firstInFolder?.id ?? '');
+  };
   const [sectionId, setSectionId] = useState(initial?.sectionId ?? projectSections[0]?.id ?? '');
   const [status, setStatus] = useState<TaskStatus>((initial?.status as TaskStatus) ?? 'todo');
   const [priority, setPriority] = useState<Priority>((initial?.priority as Priority) ?? 2);
@@ -144,7 +166,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
   };
 
   const handleSubmit = () => {
-    if (!title.trim()) return;
+    if (!title.trim() || !projectId) return;
     const tags = tagsRaw
       .split(',')
       .map((t) => t.trim())
@@ -223,7 +245,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!title.trim()}
+            disabled={!title.trim() || !projectId}
             className="btn-primary text-sm px-3.5 py-1.5"
           >
             {mode === 'create' ? 'Créer la tâche' : 'Enregistrer'}
@@ -289,13 +311,32 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <FieldLabel>Projet</FieldLabel>
-                  <NativeSelect value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
+                  <FieldLabel>Dossier</FieldLabel>
+                  <NativeSelect value={folderId} onChange={(e) => handleFolderChange(e.target.value)}>
+                    {folders.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
                       </option>
                     ))}
+                    {hasUngroupedProjects && <option value="">Sans dossier</option>}
+                  </NativeSelect>
+                </div>
+                <div>
+                  <FieldLabel>Projet</FieldLabel>
+                  <NativeSelect
+                    value={projectId}
+                    onChange={(e) => setProjectId(e.target.value)}
+                    disabled={folderProjects.length === 0}
+                  >
+                    {folderProjects.length === 0 ? (
+                      <option value="">Aucun projet dans ce dossier</option>
+                    ) : (
+                      folderProjects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))
+                    )}
                   </NativeSelect>
                 </div>
                 <div>
@@ -330,8 +371,8 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
                     <option value={4}>Critique</option>
                   </NativeSelect>
                 </div>
-                <div className="col-span-2">
-                  <FieldLabel hint="le CDC en propose 9 par défaut">Type de tâche</FieldLabel>
+                <div>
+                  <FieldLabel hint="9 types par défaut">Type de tâche</FieldLabel>
                   <NativeSelect value={taskType} onChange={(e) => setTaskType(e.target.value)}>
                     {TASK_TYPES.map((t) => (
                       <option key={t.value} value={t.value}>
