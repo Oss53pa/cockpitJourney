@@ -380,6 +380,7 @@ function DetailsTab({ task }: { task: Task }) {
   const users = useApp((s) => s.users);
   const goals = useApp((s) => s.goals);
   const allTasks = useApp((s) => s.tasks);
+  const setApproval = useApp((s) => s.setTaskApproval);
   const updateTask = useApp((s) => s.updateTask);
   const moveTask = useApp((s) => s.moveTask);
   const changePriority = useApp((s) => s.changeTaskPriority);
@@ -651,6 +652,54 @@ function DetailsTab({ task }: { task: Task }) {
             <button className="btn-ghost text-2xs px-2 py-1">
               <ArrowUpRight className="w-3 h-3" /> Ouvrir
             </button>
+          </div>
+        </div>
+      )}
+
+      {task.requiresApproval && (
+        <div>
+          <SectionTitle icon={CheckCircle2}>Approbation</SectionTitle>
+          <div className="panel p-3">
+            {(() => {
+              const cfg: Record<NonNullable<Task['approvalStatus']>, { label: string; cls: string }> = {
+                pending: { label: 'En attente', cls: 'bg-atlas-amber/15 text-atlas-amber-deep' },
+                approved: { label: 'Approuvée', cls: 'bg-signal-green/15 text-signal-green' },
+                rejected: { label: 'Rejetée', cls: 'bg-signal-red/15 text-signal-red' },
+                changes_requested: {
+                  label: 'Modifications demandées',
+                  cls: 'bg-signal-yellow/15 text-signal-yellow',
+                },
+              };
+              const cur = cfg[task.approvalStatus || 'pending'];
+              return (
+                <>
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <span className="text-2xs text-atlas-fg-3">Statut</span>
+                    <span className={cn('chip text-2xs', cur.cls)}>{cur.label}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      onClick={() => setApproval(task.id, 'approved')}
+                      className="btn-ghost text-2xs py-1.5 text-signal-green hover:bg-signal-green/10"
+                    >
+                      Approuver
+                    </button>
+                    <button
+                      onClick={() => setApproval(task.id, 'changes_requested')}
+                      className="btn-ghost text-2xs py-1.5 text-signal-yellow hover:bg-signal-yellow/10"
+                    >
+                      Modifs
+                    </button>
+                    <button
+                      onClick={() => setApproval(task.id, 'rejected')}
+                      className="btn-ghost text-2xs py-1.5 text-signal-red hover:bg-signal-red/10"
+                    >
+                      Rejeter
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

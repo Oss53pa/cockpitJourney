@@ -132,6 +132,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
 
   // Links
   const [goalId, setGoalId] = useState(initial?.goalId ?? '');
+  const [requiresApproval, setRequiresApproval] = useState<boolean>(initial?.requiresApproval ?? false);
 
   useEffect(() => {
     if (!projectSections.find((s) => s.id === sectionId)) {
@@ -225,6 +226,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
       actualMinutes: typeof actualMinutes === 'number' ? actualMinutes : undefined,
       tags,
       goalId: goalId || undefined,
+      requiresApproval: requiresApproval || undefined,
       customFields: Object.keys(customFields).length ? customFields : undefined,
     };
 
@@ -662,7 +664,18 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
                   ))}
                 </NativeSelect>
               </div>
-              <div className="border-t border-atlas-line pt-4">
+              <div className="border-t border-atlas-line pt-4 space-y-3">
+                <div className="flex items-center justify-between panel p-3">
+                  <div>
+                    <div className="text-sm text-atlas-fg-1 inline-flex items-center gap-2">
+                      <Workflow className="w-3.5 h-3.5 text-atlas-amber-deep" /> Tâche d'approbation
+                    </div>
+                    <div className="text-2xs text-atlas-fg-3 mt-0.5">
+                      Devra être Approuvée / Rejetée depuis le détail de la tâche avant clôture.
+                    </div>
+                  </div>
+                  <Switch checked={requiresApproval} onChange={setRequiresApproval} />
+                </div>
                 <div className="surface p-3 flex items-start gap-3">
                   <Paperclip className="w-4 h-4 text-atlas-fg-3 mt-0.5" />
                   <div className="text-2xs text-atlas-fg-2">

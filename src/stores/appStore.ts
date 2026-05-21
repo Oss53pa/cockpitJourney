@@ -337,6 +337,7 @@ interface State {
   updateTask: (id: string, patch: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   toggleTaskDone: (id: string) => void;
+  setTaskApproval: (id: string, status: NonNullable<Task['approvalStatus']>) => void;
   moveTask: (id: string, sectionId: string) => void;
   changeTaskPriority: (id: string, priority: Priority) => void;
 
@@ -891,6 +892,8 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       attachmentCount: 0,
       source: input.source ?? 'manual',
       goalId: input.goalId,
+      requiresApproval: input.requiresApproval,
+      approvalStatus: input.requiresApproval ? (input.approvalStatus ?? 'pending') : undefined,
       createdAt: new Date().toISOString(),
     };
     set((s: any) => ({ tasks: [t, ...s.tasks] }));
@@ -968,6 +971,29 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     get().pushToast({
       kind: isDone ? 'info' : 'success',
       title: isDone ? 'Tâche rouverte' : 'Tâche terminée',
+      body: t.title,
+    });
+  },
+  setTaskApproval: (id, status) => {
+    const t = get().tasks.find((x) => x.id === id);
+    if (!t) return;
+    get().updateTask(id, { approvalStatus: status });
+    const labels: Record<NonNullable<Task['approvalStatus']>, string> = {
+      pending: 'remise en attente',
+      approved: 'approuvée',
+      rejected: 'rejetée',
+      changes_requested: 'modifications demandées',
+    };
+    get().logActivity({
+      taskId: id,
+      projectId: t.projectId,
+      actorId: get().currentProfileId || 'u_pame',
+      verb: 'a marqué l’approbation :',
+      target: labels[status],
+    });
+    get().pushToast({
+      kind: status === 'approved' ? 'success' : status === 'rejected' ? 'error' : 'info',
+      title: `Approbation ${labels[status]}`,
       body: t.title,
     });
   },
