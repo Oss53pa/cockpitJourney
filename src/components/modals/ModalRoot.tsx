@@ -57,6 +57,8 @@ export function ModalRoot() {
       return <GoalFormModal initial={modal.payload} onClose={close} />;
     case 'automation-create':
       return <AutomationFormModal onClose={close} />;
+    case 'automation-edit':
+      return <AutomationFormModal initial={modal.payload} onClose={close} />;
     case 'settings':
       return <SettingsModal onClose={close} />;
     case 'invite-team':

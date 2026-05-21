@@ -387,6 +387,9 @@ interface State {
   toggleAutomation: (id: string) => void;
   deleteAutomation: (id: string) => void;
   createAutomation: (a: Omit<AutomationRule, 'id' | 'runs' | 'success'>) => void;
+  updateAutomation: (id: string, patch: Partial<AutomationRule>) => void;
+  /** Evaluate the trigger against current tasks (no side effects); returns match count and logs a run. */
+  dryRunAutomation: (id: string) => number;
 
   // forms
   createForm: (f: Omit<IntakeForm, 'id' | 'submissions' | 'createdAt' | 'publicUrl'>) => IntakeForm;
@@ -464,6 +467,7 @@ export type ModalKind =
   | 'goal-edit'
   | 'goal-bump'
   | 'automation-create'
+  | 'automation-edit'
   | 'workspace-switch'
   | 'settings'
   | 'invite-team'
@@ -1343,6 +1347,33 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     set((s) => ({ automations: [newA, ...s.automations] }));
     dbPersist.put('automations', newA);
     get().pushToast({ kind: 'success', title: 'Automation créée', body: a.name });
+  },
+  updateAutomation: (id, patch) => {
+    set((s) => ({ automations: s.automations.map((a) => (a.id === id ? { ...a, ...patch } : a)) }));
+    const a = get().automations.find((x) => x.id === id);
+    if (a) dbPersist.put('automations', a);
+    get().pushToast({ kind: 'success', title: 'Automation mise à jour', body: a?.name });
+  },
+  dryRunAutomation: (id) => {
+    const a = get().automations.find((x) => x.id === id);
+    if (!a) return 0;
+    const now = Date.now();
+    const tasks = get().tasks;
+    // Count tasks the trigger would currently match — no side effects.
+    const matches =
+      a.triggerKey === 'due_overdue'
+        ? tasks.filter((t) => t.dueDate && new Date(t.dueDate).getTime() < now && t.status !== 'done').length
+        : a.triggerKey === 'status_changed'
+          ? tasks.filter((t) => t.status !== 'done').length
+          : a.triggerKey === 'recurrence'
+            ? tasks.filter((t) => t.customFields?.['Récurrence']).length
+            : tasks.length; // task_created
+    set((s) => ({
+      automations: s.automations.map((x) => (x.id === id ? { ...x, runs: x.runs + 1 } : x)),
+    }));
+    const updated = get().automations.find((x) => x.id === id);
+    if (updated) dbPersist.put('automations', updated);
+    return matches;
   },
 
   // === Forms ===

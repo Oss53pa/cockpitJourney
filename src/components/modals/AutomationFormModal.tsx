@@ -20,13 +20,19 @@ const actionsCatalog = [
   { kind: 'report', label: 'Générer un rapport' },
 ] as const;
 
-export function AutomationFormModal({ onClose }: { onClose: () => void }) {
+export function AutomationFormModal({ initial, onClose }: { initial?: AutomationRule; onClose: () => void }) {
   const create = useApp((s) => s.createAutomation);
-  const [name, setName] = useState('');
-  const [desc, setDesc] = useState('');
-  const [triggerKey, setTriggerKey] = useState<AutomationRule['triggerKey']>('status_changed');
-  const [conditions, setConditions] = useState<number>(1);
-  const [selected, setSelected] = useState<Record<string, boolean>>({ push: true });
+  const update = useApp((s) => s.updateAutomation);
+  const isEdit = !!initial;
+  const [name, setName] = useState(initial?.name ?? '');
+  const [desc, setDesc] = useState(initial?.desc ?? '');
+  const [triggerKey, setTriggerKey] = useState<AutomationRule['triggerKey']>(
+    initial?.triggerKey ?? 'status_changed'
+  );
+  const [conditions, setConditions] = useState<number>(initial?.conditions ?? 1);
+  const [selected, setSelected] = useState<Record<string, boolean>>(
+    initial ? Object.fromEntries(initial.actions.map((a) => [a.kind, true])) : { push: true }
+  );
 
   const submit = () => {
     if (!name.trim()) return;
@@ -34,7 +40,11 @@ export function AutomationFormModal({ onClose }: { onClose: () => void }) {
       .filter((a) => selected[a.kind])
       .map((a) => ({ kind: a.kind, label: a.label }));
     if (!actions.length) return;
-    create({ name: name.trim(), desc: desc.trim(), enabled: true, triggerKey, conditions, actions });
+    if (isEdit && initial) {
+      update(initial.id, { name: name.trim(), desc: desc.trim(), triggerKey, conditions, actions });
+    } else {
+      create({ name: name.trim(), desc: desc.trim(), enabled: true, triggerKey, conditions, actions });
+    }
     onClose();
   };
 
@@ -42,7 +52,7 @@ export function AutomationFormModal({ onClose }: { onClose: () => void }) {
     <Modal
       open
       onClose={onClose}
-      title="Nouvelle automation"
+      title={isEdit ? 'Modifier l’automation' : 'Nouvelle automation'}
       description="Trigger → Conditions → Actions"
       size="lg"
       footer={
@@ -51,7 +61,7 @@ export function AutomationFormModal({ onClose }: { onClose: () => void }) {
             Annuler
           </button>
           <button onClick={submit} disabled={!name.trim()} className="btn-primary text-sm px-3.5 py-1.5">
-            Activer la règle
+            {isEdit ? 'Enregistrer' : 'Activer la règle'}
           </button>
         </>
       }

@@ -47,6 +47,7 @@ export function AutomationsView() {
   const automations = useApp((s) => s.automations);
   const toggle = useApp((s) => s.toggleAutomation);
   const remove = useApp((s) => s.deleteAutomation);
+  const dryRun = useApp((s) => s.dryRunAutomation);
   const openModal = useApp((s) => s.openModal);
   const pushToast = useApp((s) => s.pushToast);
 
@@ -200,7 +201,7 @@ export function AutomationsView() {
                           icon={Edit3}
                           onClick={() => {
                             close();
-                            pushToast({ kind: 'info', title: 'Édition à venir' });
+                            openModal('automation-edit', a);
                           }}
                         >
                           Modifier
@@ -209,10 +210,11 @@ export function AutomationsView() {
                           icon={Play}
                           onClick={() => {
                             close();
+                            const matches = dryRun(a.id);
                             pushToast({
                               kind: 'success',
-                              title: 'Test à blanc lancé',
-                              body: '0 effet, log capturé',
+                              title: 'Test à blanc',
+                              body: `${matches} tâche(s) correspondent à ce déclencheur — aucune action exécutée.`,
                             });
                           }}
                         >
