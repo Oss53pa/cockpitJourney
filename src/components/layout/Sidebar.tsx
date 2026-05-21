@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   type DragEndEvent,
@@ -20,6 +20,8 @@ import {
   FileBarChart,
   ClipboardList,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Plus,
   Sparkles,
   Settings,
@@ -180,11 +182,39 @@ export function Sidebar({
   };
   const pushToast = useApp((s) => s.pushToast);
 
-  // Folder expand/collapse state is keyed by folder id and lazy-initialized:
-  // an unknown key → expanded by default (better than hardcoding ids that
-  // don't exist in this user's namespace).
-  const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
+  // Folder expand/collapse state is keyed by folder id (unknown key →
+  // expanded by default) and persisted to localStorage so the layout the
+  // user arranged survives a reload — important once they have many folders.
+  const [openFolders, setOpenFolders] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem('cj.sidebar.openFolders');
+      return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+    } catch {
+      return {};
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('cj.sidebar.openFolders', JSON.stringify(openFolders));
+    } catch {
+      /* private mode / quota — collapse state just won't persist */
+    }
+  }, [openFolders]);
   const isFolderOpen = (id: string) => openFolders[id] !== false;
+
+  // Collapse-all / expand-all: a single affordance that flips every folder
+  // at once. If any folder is currently open we collapse them all, otherwise
+  // we expand them all — so the button is always "do the opposite of now".
+  const anyFolderOpen = useMemo(
+    () => folders.some((f) => openFolders[f.id] !== false),
+    [folders, openFolders]
+  );
+  const toggleAllFolders = () =>
+    setOpenFolders(() => {
+      const next: Record<string, boolean> = {};
+      for (const f of folders) next[f.id] = !anyFolderOpen;
+      return next;
+    });
 
   const todayCount = tasks.filter(
     (t) =>
@@ -285,44 +315,60 @@ export function Sidebar({
         })}
       </nav>
 
-      <div className="mt-6 px-3 flex-1 overflow-y-auto">
-        <div className="flex items-center justify-between px-3 mb-2">
+      <div className="mt-6 px-3 flex-1 min-h-0 overflow-y-auto">
+        <div className="flex items-center justify-between px-3 py-1.5 mb-1 sticky top-0 z-20 bg-atlas-ink/90 backdrop-blur-md">
           <span className="text-2xs uppercase tracking-[0.18em] font-medium text-atlas-fg-3">Projets</span>
-          <Menu
-            align="right"
-            width={200}
-            trigger={
+          <div className="flex items-center gap-0.5">
+            {folders.length > 0 && (
               <button
-                title="Nouveau projet ou dossier"
+                onClick={toggleAllFolders}
+                title={anyFolderOpen ? 'Tout replier' : 'Tout déplier'}
+                aria-label={anyFolderOpen ? 'Replier tous les dossiers' : 'Déplier tous les dossiers'}
                 className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-black/[0.06] text-atlas-fg-3 hover:text-atlas-fg-1"
               >
-                <Plus className="w-3.5 h-3.5" />
+                {anyFolderOpen ? (
+                  <ChevronsDownUp className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronsUpDown className="w-3.5 h-3.5" />
+                )}
               </button>
-            }
-          >
-            {(close) => (
-              <>
-                <MenuItem
-                  icon={ClipboardList}
-                  onClick={() => {
-                    close();
-                    openModal('project-create');
-                  }}
-                >
-                  Nouveau projet
-                </MenuItem>
-                <MenuItem
-                  icon={FolderPlus}
-                  onClick={() => {
-                    close();
-                    openModal('folder-create');
-                  }}
-                >
-                  Nouveau dossier
-                </MenuItem>
-              </>
             )}
-          </Menu>
+            <Menu
+              align="right"
+              width={200}
+              trigger={
+                <button
+                  title="Nouveau projet ou dossier"
+                  className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-black/[0.06] text-atlas-fg-3 hover:text-atlas-fg-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              }
+            >
+              {(close) => (
+                <>
+                  <MenuItem
+                    icon={ClipboardList}
+                    onClick={() => {
+                      close();
+                      openModal('project-create');
+                    }}
+                  >
+                    Nouveau projet
+                  </MenuItem>
+                  <MenuItem
+                    icon={FolderPlus}
+                    onClick={() => {
+                      close();
+                      openModal('folder-create');
+                    }}
+                  >
+                    Nouveau dossier
+                  </MenuItem>
+                </>
+              )}
+            </Menu>
+          </div>
         </div>
 
         <DndContext
