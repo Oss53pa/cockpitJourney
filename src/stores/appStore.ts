@@ -27,6 +27,7 @@ import type {
   PropheticInsight,
   Priority,
   TaskStatus,
+  TaskTemplate,
 } from '../types';
 
 // Module-level guards: React StrictMode runs effects twice in dev, which
@@ -316,6 +317,8 @@ interface State {
       apiKey: string;
       model: string;
     };
+    /** Personal reusable task templates (persisted as a settings key — no extra table). */
+    taskTemplates?: TaskTemplate[];
   };
 
   // === actions ===
@@ -337,6 +340,7 @@ interface State {
   updateTask: (id: string, patch: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   toggleTaskDone: (id: string) => void;
+  setTaskApproval: (id: string, status: NonNullable<Task['approvalStatus']>) => void;
   moveTask: (id: string, sectionId: string) => void;
   changeTaskPriority: (id: string, priority: Priority) => void;
 
@@ -387,6 +391,9 @@ interface State {
   toggleAutomation: (id: string) => void;
   deleteAutomation: (id: string) => void;
   createAutomation: (a: Omit<AutomationRule, 'id' | 'runs' | 'success'>) => void;
+  updateAutomation: (id: string, patch: Partial<AutomationRule>) => void;
+  /** Evaluate the trigger against current tasks (no side effects); returns match count and logs a run. */
+  dryRunAutomation: (id: string) => number;
 
   // forms
   createForm: (f: Omit<IntakeForm, 'id' | 'submissions' | 'createdAt' | 'publicUrl'>) => IntakeForm;
@@ -442,6 +449,8 @@ interface State {
 
   // settings
   updateSettings: (patch: Partial<State['settings']>) => void;
+  saveTaskTemplate: (tpl: Omit<TaskTemplate, 'id'>) => void;
+  deleteTaskTemplate: (id: string) => void;
   /**
    * Edit the current user's profile (name / color / avatarUrl). Recomputes
    * initials when `name` changes, syncs the in-memory User row, persists
@@ -464,6 +473,7 @@ export type ModalKind =
   | 'goal-edit'
   | 'goal-bump'
   | 'automation-create'
+  | 'automation-edit'
   | 'workspace-switch'
   | 'settings'
   | 'invite-team'
@@ -887,6 +897,9 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       attachmentCount: 0,
       source: input.source ?? 'manual',
       goalId: input.goalId,
+      requiresApproval: input.requiresApproval,
+      approvalStatus: input.requiresApproval ? (input.approvalStatus ?? 'pending') : undefined,
+      alsoInProjectIds: input.alsoInProjectIds,
       createdAt: new Date().toISOString(),
     };
     set((s: any) => ({ tasks: [t, ...s.tasks] }));
@@ -964,6 +977,29 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     get().pushToast({
       kind: isDone ? 'info' : 'success',
       title: isDone ? 'Tâche rouverte' : 'Tâche terminée',
+      body: t.title,
+    });
+  },
+  setTaskApproval: (id, status) => {
+    const t = get().tasks.find((x) => x.id === id);
+    if (!t) return;
+    get().updateTask(id, { approvalStatus: status });
+    const labels: Record<NonNullable<Task['approvalStatus']>, string> = {
+      pending: 'remise en attente',
+      approved: 'approuvée',
+      rejected: 'rejetée',
+      changes_requested: 'modifications demandées',
+    };
+    get().logActivity({
+      taskId: id,
+      projectId: t.projectId,
+      actorId: get().currentProfileId || 'u_pame',
+      verb: 'a marqué l’approbation :',
+      target: labels[status],
+    });
+    get().pushToast({
+      kind: status === 'approved' ? 'success' : status === 'rejected' ? 'error' : 'info',
+      title: `Approbation ${labels[status]}`,
       body: t.title,
     });
   },
@@ -1344,19 +1380,44 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     dbPersist.put('automations', newA);
     get().pushToast({ kind: 'success', title: 'Automation créée', body: a.name });
   },
+  updateAutomation: (id, patch) => {
+    set((s) => ({ automations: s.automations.map((a) => (a.id === id ? { ...a, ...patch } : a)) }));
+    const a = get().automations.find((x) => x.id === id);
+    if (a) dbPersist.put('automations', a);
+    get().pushToast({ kind: 'success', title: 'Automation mise à jour', body: a?.name });
+  },
+  dryRunAutomation: (id) => {
+    const a = get().automations.find((x) => x.id === id);
+    if (!a) return 0;
+    const now = Date.now();
+    const tasks = get().tasks;
+    // Count tasks the trigger would currently match — no side effects.
+    const matches =
+      a.triggerKey === 'due_overdue'
+        ? tasks.filter((t) => t.dueDate && new Date(t.dueDate).getTime() < now && t.status !== 'done').length
+        : a.triggerKey === 'status_changed'
+          ? tasks.filter((t) => t.status !== 'done').length
+          : a.triggerKey === 'recurrence'
+            ? tasks.filter((t) => t.customFields?.['Récurrence']).length
+            : tasks.length; // task_created
+    set((s) => ({
+      automations: s.automations.map((x) => (x.id === id ? { ...x, runs: x.runs + 1 } : x)),
+    }));
+    const updated = get().automations.find((x) => x.id === id);
+    if (updated) dbPersist.put('automations', updated);
+    return matches;
+  },
 
   // === Forms ===
   createForm: (f) => {
-    const slug = (f.name || 'form')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 24);
+    const id = uid('f');
+    const origin =
+      typeof window !== 'undefined' ? window.location.origin : 'https://cockpit-journey.atlas-studio.org';
     const form: IntakeForm = {
-      id: uid('f'),
+      id,
       submissions: 0,
       createdAt: new Date().toISOString(),
-      publicUrl: `https://cockpitjourney.app/f/${slug}-${Math.random().toString(36).slice(2, 5)}`,
+      publicUrl: `${origin}/f/${id}`,
       ...f,
     };
     set((s) => ({ forms: [form, ...s.forms] }));
@@ -1535,7 +1596,20 @@ const initialState = (set: SetFn, get: GetFn): State => ({
           tasksInProgress: inProg,
           tasksOverdue: overdue,
           tasksCritical: critical,
-          velocityDelta: Math.round(Math.random() * 30 - 5),
+          // Real weekly velocity: tasks completed in the last 7 days minus
+          // the 7 days before that (by completionDate). Deterministic.
+          velocityDelta: (() => {
+            const wk = 7 * 86400000;
+            const doneIn = (lo: number, hi: number) =>
+              pTasks.filter(
+                (t) =>
+                  t.status === 'done' &&
+                  t.completionDate &&
+                  now - new Date(t.completionDate).getTime() > lo &&
+                  now - new Date(t.completionDate).getTime() <= hi
+              ).length;
+            return doneIn(0, wk) - doneIn(wk, 2 * wk);
+          })(),
           endDate: p.endDate,
           members: p.membersIds.length,
           summary,
@@ -1618,7 +1692,14 @@ const initialState = (set: SetFn, get: GetFn): State => ({
         id: g.id,
         title: g.title,
         pct: Math.round((g.currentValue / Math.max(1, g.targetValue)) * 100),
-        delta: Math.round(Math.random() * 12 - 2),
+        // Real weekly movement: contributing tasks completed in the last 7 days.
+        delta: tasks.filter(
+          (t) =>
+            t.goalId === g.id &&
+            t.status === 'done' &&
+            t.completionDate &&
+            now - new Date(t.completionDate).getTime() <= 7 * 86400000
+        ).length,
         health: g.health,
         ownerInitials: owner.initials,
         ownerColor: owner.color,
@@ -2042,6 +2123,18 @@ Reste sous 400 mots, ton factuel et engagé.`,
     // Write each setting key to its own row (so partial updates don't require full snapshot)
     Object.entries(patch).forEach(([k, v]) => dbPersist.setSetting(k, v));
     get().pushToast({ kind: 'success', title: 'Préférences enregistrées', duration: 2000 });
+  },
+  saveTaskTemplate: (tpl) => {
+    const t: TaskTemplate = { id: uid('tpl'), ...tpl };
+    const next = [t, ...(get().settings.taskTemplates ?? [])];
+    set((s) => ({ settings: { ...s.settings, taskTemplates: next } }));
+    dbPersist.setSetting('taskTemplates', next);
+    get().pushToast({ kind: 'success', title: 'Template enregistré', body: t.name });
+  },
+  deleteTaskTemplate: (id) => {
+    const next = (get().settings.taskTemplates ?? []).filter((x) => x.id !== id);
+    set((s) => ({ settings: { ...s.settings, taskTemplates: next } }));
+    dbPersist.setSetting('taskTemplates', next);
   },
 
   updateProfile: async (patch) => {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -11,7 +11,6 @@ import {
   Settings2,
   Maximize2,
   MoreHorizontal,
-  Filter,
   Calendar,
   Zap,
   Activity,
@@ -106,12 +105,6 @@ export function DashboardView() {
               </>
             )}
           </Menu>
-          <button
-            onClick={() => pushToast({ kind: 'info', title: 'Filtres avancés bientôt' })}
-            className="btn-secondary text-sm px-3 py-1.5"
-          >
-            <Filter className="w-3.5 h-3.5" /> Filtres
-          </button>
           <button
             onClick={() => pushToast({ kind: 'info', title: 'Configuration du dashboard' })}
             className="btn-secondary text-sm px-3 py-1.5"
@@ -266,7 +259,6 @@ export function DashboardView() {
               sub={t.sub}
               icon={t.icon}
               onRemove={() => removeWidget(w.id)}
-              onMaximize={() => pushToast({ kind: 'info', title: 'Plein écran à venir' })}
             >
               {w.kind === 'velocity' && <Bars />}
               {w.kind === 'donut' && <DonutLegend />}
@@ -337,7 +329,6 @@ function Widget({
   icon: Icon,
   children,
   onRemove,
-  onMaximize,
 }: {
   className?: string;
   title: string;
@@ -345,10 +336,16 @@ function Widget({
   icon: any;
   children: React.ReactNode;
   onRemove: () => void;
-  onMaximize: () => void;
 }) {
+  const ref = useRef<HTMLElement>(null);
+  const onMaximize = () => {
+    const el = ref.current;
+    if (!el) return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void el.requestFullscreen?.();
+  };
   return (
-    <section className={cn('panel p-5', className)}>
+    <section ref={ref} className={cn('panel p-5', className)}>
       <header className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-white border border-atlas-line flex items-center justify-center text-atlas-amber-deep">

@@ -96,8 +96,25 @@ export interface Task {
   source?: 'manual' | 'voice' | 'whatsapp' | 'email' | 'form' | 'recurring';
   /** Goal this task contributes to (Cap stratégique → tâches). */
   goalId?: string;
+  /** Approval workflow: the task must be explicitly approved before it counts as done. */
+  requiresApproval?: boolean;
+  approvalStatus?: 'pending' | 'approved' | 'rejected' | 'changes_requested';
+  /** Secondary projects this task is also shared into. Primary stays `projectId`. */
+  alsoInProjectIds?: string[];
   /** ISO timestamp — set at creation; used by the activity trajectory charts. */
   createdAt?: string;
+}
+
+/** Reusable task template (personal library, stored in settings). */
+export interface TaskTemplate {
+  id: string;
+  name: string;
+  title: string;
+  description?: string;
+  priority: Priority;
+  tags: string[];
+  estimatedMinutes?: number;
+  taskType?: string;
 }
 
 export interface Goal {

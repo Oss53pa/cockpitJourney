@@ -10,13 +10,11 @@ import {
   Trash2,
   X,
   Tag as TagIcon,
-  Repeat,
   Target,
   Paperclip,
   Users,
   Eye,
   ListChecks,
-  Type,
   Hash,
   Workflow,
   Calendar,
@@ -66,6 +64,8 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
   const updateTask = useApp((s) => s.updateTask);
   const addSubtaskAction = useApp((s) => s.addSubtask);
   const pushToast = useApp((s) => s.pushToast);
+  const templates = useApp((s) => s.settings.taskTemplates);
+  const saveTemplate = useApp((s) => s.saveTaskTemplate);
 
   const [tab, setTab] = useState<Section>('basics');
 
@@ -134,9 +134,20 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
 
   // Links
   const [goalId, setGoalId] = useState(initial?.goalId ?? '');
-  const [multiProject, setMultiProject] = useState<boolean>(false);
-  const [requiresApproval, setRequiresApproval] = useState<boolean>(false);
+  const [requiresApproval, setRequiresApproval] = useState<boolean>(initial?.requiresApproval ?? false);
+  const [alsoInProjectIds, setAlsoInProjectIds] = useState<string[]>(initial?.alsoInProjectIds ?? []);
   const [makeTemplate, setMakeTemplate] = useState<boolean>(false);
+
+  const applyTemplate = (id: string) => {
+    const tpl = (templates ?? []).find((t) => t.id === id);
+    if (!tpl) return;
+    setTitle(tpl.title);
+    setDescription(tpl.description ?? '');
+    setPriority(tpl.priority);
+    setTagsRaw(tpl.tags.join(', '));
+    setEstimateMinutes(tpl.estimatedMinutes ?? '');
+    setTaskType(tpl.taskType ?? 'standard');
+  };
 
   useEffect(() => {
     if (!projectSections.find((s) => s.id === sectionId)) {
@@ -150,12 +161,47 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
     setWatchers((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]));
 
   const tasks = useApp((s) => s.tasks);
+  const fmtDur = (m: number) =>
+    m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m} min`;
+  // Past tasks sharing a tag with the ones being typed (actual time preferred).
+  const estimateTags = tagsRaw
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const similarTasks = tasks.filter(
+    (t) =>
+      (t.actualMinutes || t.estimatedMinutes) &&
+      estimateTags.length > 0 &&
+      t.tags.some((tg) => estimateTags.includes(tg))
+  );
+  const similarAvg = similarTasks.length
+    ? Math.round(
+        similarTasks.reduce((s, t) => s + (t.actualMinutes || t.estimatedMinutes || 0), 0) /
+          similarTasks.length
+      )
+    : 0;
+
+  // Heuristic estimate from history + priority from due-date proximity. No LLM.
   const aiSuggest = () => {
     if (!title.trim()) return;
-    setEstimateMinutes(60);
-    setPriority(3);
+    if (similarTasks.length >= 2) {
+      setEstimateMinutes(similarAvg);
+    } else if (estimateMinutes === '') {
+      setEstimateMinutes(60);
+    }
+    if (dueDate) {
+      const days = (new Date(dueDate).getTime() - Date.now()) / 86400000;
+      setPriority(days <= 1 ? 4 : days <= 3 ? 3 : 2);
+    }
     setSprint(sprint || getCurrentSprint(tasks));
-    pushToast({ kind: 'success', title: 'PROPH3T a suggéré priorité et estimation', duration: 2000 });
+    pushToast({
+      kind: 'success',
+      title:
+        similarTasks.length >= 2
+          ? `Estimé d'après ${similarTasks.length} tâches similaires`
+          : 'Estimation par défaut appliquée',
+      duration: 2200,
+    });
   };
 
   const removeSubtask = (i: number) => setSubtasks((s) => s.filter((_, idx) => idx !== i));
@@ -179,8 +225,6 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
     if (taskType !== 'standard')
       customFields['Type'] = TASK_TYPES.find((t) => t.value === taskType)?.label || taskType;
     if (recurrence) customFields['Récurrence'] = recurrence;
-    if (requiresApproval) customFields['Approbation'] = 'Requise';
-    if (multiProject) customFields['Multi-projets'] = true;
 
     const payload = {
       title: title.trim(),
@@ -197,6 +241,8 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
       actualMinutes: typeof actualMinutes === 'number' ? actualMinutes : undefined,
       tags,
       goalId: goalId || undefined,
+      requiresApproval: requiresApproval || undefined,
+      alsoInProjectIds: alsoInProjectIds.length ? alsoInProjectIds : undefined,
       customFields: Object.keys(customFields).length ? customFields : undefined,
     };
 
@@ -204,8 +250,17 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
       const created = createTask(payload);
       // Add subtasks
       subtasks.forEach((s) => addSubtaskAction(created.id, s.title));
-      if (makeTemplate)
-        pushToast({ kind: 'info', title: 'Template enregistré', body: 'Disponible dans la bibliothèque' });
+      if (makeTemplate) {
+        saveTemplate({
+          name: title.trim(),
+          title: title.trim(),
+          description: description.trim() || undefined,
+          priority,
+          tags,
+          estimatedMinutes: typeof estimateMinutes === 'number' ? estimateMinutes : undefined,
+          taskType,
+        });
+      }
     } else if (mode === 'edit' && initial?.id) {
       updateTask(initial.id, payload);
     }
@@ -226,12 +281,12 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
       open
       onClose={onClose}
       title={mode === 'create' ? 'Nouvelle tâche' : 'Modifier la tâche'}
-      description="Tous les champs CDC · PROPH3T peut suggérer durée et priorité"
+      description="Tous les champs · suggestion auto de durée et priorité d'après vos tâches"
       size="xl"
       footer={
         <>
           <button onClick={aiSuggest} className="btn-ghost text-sm px-3 py-1.5 mr-auto">
-            <Sparkles className="w-3.5 h-3.5 text-atlas-amber" /> Suggérer (PROPH3T)
+            <Sparkles className="w-3.5 h-3.5 text-atlas-amber" /> Suggérer durée & priorité
           </button>
           <button onClick={onClose} className="btn-ghost text-sm px-3 py-1.5">
             Annuler
@@ -284,6 +339,22 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
         <div className="space-y-4 min-w-0">
           {tab === 'basics' && (
             <>
+              {mode === 'create' && templates && templates.length > 0 && (
+                <div>
+                  <FieldLabel hint="préremplit les champs">Partir d'un template</FieldLabel>
+                  <NativeSelect
+                    defaultValue=""
+                    onChange={(e) => e.target.value && applyTemplate(e.target.value)}
+                  >
+                    <option value="">— Aucun (vierge)</option>
+                    {templates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </div>
+              )}
               <div>
                 <FieldLabel hint="actionnable, sans la date ni le projet">Titre</FieldLabel>
                 <TextInput
@@ -488,14 +559,15 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
                   ))}
                 </NativeSelect>
               </div>
-              <div className="surface p-3 flex items-center gap-3">
-                <Clock className="w-4 h-4 text-atlas-amber-deep shrink-0" />
-                <div className="flex-1 text-2xs text-atlas-fg-2">
-                  <strong>PROPH3T :</strong> sur la base de vos 22 dernières tâches similaires, l'estimation
-                  moyenne est <strong>1h05 (±15%)</strong>. Surcharge journée détectée si vous ajoutez
-                  aujourd'hui.
+              {similarTasks.length >= 2 && (
+                <div className="surface p-3 flex items-center gap-3">
+                  <Clock className="w-4 h-4 text-atlas-amber-deep shrink-0" />
+                  <div className="flex-1 text-2xs text-atlas-fg-2">
+                    Sur {similarTasks.length} tâches partageant vos tags, la durée moyenne observée est de{' '}
+                    <strong>{fmtDur(similarAvg)}</strong>.
+                  </div>
                 </div>
-              </div>
+              )}
             </>
           )}
 
@@ -642,33 +714,59 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
                       <Workflow className="w-3.5 h-3.5 text-atlas-amber-deep" /> Tâche d'approbation
                     </div>
                     <div className="text-2xs text-atlas-fg-3 mt-0.5">
-                      L'assigné devra explicitement Approuver / Rejeter / Demander modifications.
+                      Devra être Approuvée / Rejetée depuis le détail de la tâche avant clôture.
                     </div>
                   </div>
                   <Switch checked={requiresApproval} onChange={setRequiresApproval} />
                 </div>
-                <div className="flex items-center justify-between panel p-3">
-                  <div>
-                    <div className="text-sm text-atlas-fg-1 inline-flex items-center gap-2">
-                      <Repeat className="w-3.5 h-3.5 text-atlas-amber-deep" /> Tâche multi-projets
-                    </div>
-                    <div className="text-2xs text-atlas-fg-3 mt-0.5">
-                      Apparaîtra dans plusieurs projets simultanément (CDC §6.4).
-                    </div>
+                <div className="panel p-3">
+                  <div className="text-sm text-atlas-fg-1 inline-flex items-center gap-2 mb-2">
+                    <Hash className="w-3.5 h-3.5 text-atlas-amber-deep" /> Partager dans d'autres projets
                   </div>
-                  <Switch checked={multiProject} onChange={setMultiProject} />
-                </div>
-                <div className="flex items-center justify-between panel p-3">
-                  <div>
-                    <div className="text-sm text-atlas-fg-1 inline-flex items-center gap-2">
-                      <Type className="w-3.5 h-3.5 text-atlas-amber-deep" /> Enregistrer comme template
+                  {projects.filter((p) => p.id !== projectId).length === 0 ? (
+                    <div className="text-2xs text-atlas-fg-3">Aucun autre projet.</div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto">
+                      {projects
+                        .filter((p) => p.id !== projectId)
+                        .map((p) => (
+                          <label
+                            key={p.id}
+                            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-atlas-line bg-white cursor-pointer hover:border-atlas-line-2 text-2xs text-atlas-fg-2"
+                          >
+                            <input
+                              type="checkbox"
+                              className="accent-atlas-amber"
+                              checked={alsoInProjectIds.includes(p.id)}
+                              onChange={(e) =>
+                                setAlsoInProjectIds((ids) =>
+                                  e.target.checked ? [...ids, p.id] : ids.filter((x) => x !== p.id)
+                                )
+                              }
+                            />
+                            <span className="truncate">{p.name}</span>
+                          </label>
+                        ))}
                     </div>
-                    <div className="text-2xs text-atlas-fg-3 mt-0.5">
-                      Réutilisable depuis la bibliothèque de templates personnels.
-                    </div>
+                  )}
+                  <div className="text-2xs text-atlas-fg-3 mt-2">
+                    La tâche apparaîtra dans la section « Partagées » de ces projets.
                   </div>
-                  <Switch checked={makeTemplate} onChange={setMakeTemplate} />
                 </div>
+                {mode === 'create' && (
+                  <div className="flex items-center justify-between panel p-3">
+                    <div>
+                      <div className="text-sm text-atlas-fg-1 inline-flex items-center gap-2">
+                        <ListChecks className="w-3.5 h-3.5 text-atlas-amber-deep" /> Enregistrer comme
+                        template
+                      </div>
+                      <div className="text-2xs text-atlas-fg-3 mt-0.5">
+                        Réutilisable via « Partir d'un template » à la création d'une tâche.
+                      </div>
+                    </div>
+                    <Switch checked={makeTemplate} onChange={setMakeTemplate} />
+                  </div>
+                )}
                 <div className="surface p-3 flex items-start gap-3">
                   <Paperclip className="w-4 h-4 text-atlas-fg-3 mt-0.5" />
                   <div className="text-2xs text-atlas-fg-2">

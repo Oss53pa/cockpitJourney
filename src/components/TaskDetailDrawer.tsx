@@ -41,7 +41,7 @@ import { useApp, useCurrentUser, type Attachment } from '../stores/appStore';
 import { Avatar, AvatarGroup } from './ui/Avatar';
 import { PriorityBadge } from './ui/PriorityBadge';
 import { StatusBadge, ProgressBar } from './ui/StatusBadge';
-import { Menu, MenuItem, MenuLabel, MenuSeparator } from './ui/Menu';
+import { Menu, MenuItem, MenuLabel } from './ui/Menu';
 import { cn, formatLongDate, formatTime, relativeTime } from '../lib/utils';
 
 interface Props {
@@ -379,6 +379,8 @@ function DetailsTab({ task }: { task: Task }) {
   const sections = useApp((s) => s.sections);
   const users = useApp((s) => s.users);
   const goals = useApp((s) => s.goals);
+  const allTasks = useApp((s) => s.tasks);
+  const setApproval = useApp((s) => s.setTaskApproval);
   const updateTask = useApp((s) => s.updateTask);
   const moveTask = useApp((s) => s.moveTask);
   const changePriority = useApp((s) => s.changeTaskPriority);
@@ -386,6 +388,23 @@ function DetailsTab({ task }: { task: Task }) {
   const project = projects.find((p) => p.id === task.projectId);
   const goal = task.goalId ? goals.find((g) => g.id === task.goalId) : undefined;
   const projectSections = sections.filter((s) => s.projectId === task.projectId);
+
+  // Real estimate from past tasks sharing a tag (actual time preferred,
+  // else estimate). Only surfaced when there's enough signal.
+  const similarTasks = allTasks.filter(
+    (t) =>
+      t.id !== task.id &&
+      (t.actualMinutes || t.estimatedMinutes) &&
+      t.tags.some((tag) => task.tags.includes(tag))
+  );
+  const avgSimilarMinutes = similarTasks.length
+    ? Math.round(
+        similarTasks.reduce((s, t) => s + (t.actualMinutes || t.estimatedMinutes || 0), 0) /
+          similarTasks.length
+      )
+    : 0;
+  const fmtDuration = (m: number) =>
+    m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m} min`;
 
   return (
     <div className="px-6 py-5 space-y-6">
@@ -637,6 +656,54 @@ function DetailsTab({ task }: { task: Task }) {
         </div>
       )}
 
+      {task.requiresApproval && (
+        <div>
+          <SectionTitle icon={CheckCircle2}>Approbation</SectionTitle>
+          <div className="panel p-3">
+            {(() => {
+              const cfg: Record<NonNullable<Task['approvalStatus']>, { label: string; cls: string }> = {
+                pending: { label: 'En attente', cls: 'bg-atlas-amber/15 text-atlas-amber-deep' },
+                approved: { label: 'Approuvée', cls: 'bg-signal-green/15 text-signal-green' },
+                rejected: { label: 'Rejetée', cls: 'bg-signal-red/15 text-signal-red' },
+                changes_requested: {
+                  label: 'Modifications demandées',
+                  cls: 'bg-signal-yellow/15 text-signal-yellow',
+                },
+              };
+              const cur = cfg[task.approvalStatus || 'pending'];
+              return (
+                <>
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <span className="text-2xs text-atlas-fg-3">Statut</span>
+                    <span className={cn('chip text-2xs', cur.cls)}>{cur.label}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      onClick={() => setApproval(task.id, 'approved')}
+                      className="btn-ghost text-2xs py-1.5 text-signal-green hover:bg-signal-green/10"
+                    >
+                      Approuver
+                    </button>
+                    <button
+                      onClick={() => setApproval(task.id, 'changes_requested')}
+                      className="btn-ghost text-2xs py-1.5 text-signal-yellow hover:bg-signal-yellow/10"
+                    >
+                      Modifs
+                    </button>
+                    <button
+                      onClick={() => setApproval(task.id, 'rejected')}
+                      className="btn-ghost text-2xs py-1.5 text-signal-red hover:bg-signal-red/10"
+                    >
+                      Rejeter
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
       {goal && (
         <div>
           <SectionTitle icon={Target}>Goal</SectionTitle>
@@ -669,20 +736,24 @@ function DetailsTab({ task }: { task: Task }) {
         </div>
       )}
 
-      {/* PROPH3T panel */}
-      <div className="rounded-2xl border border-atlas-amber/25 bg-gradient-to-br from-atlas-amber/[0.10] to-transparent p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Sparkles className="w-4 h-4 text-atlas-amber-deep" />
-          <span className="text-2xs uppercase tracking-wider font-medium text-atlas-amber-deep">
-            PROPH3T · Estimation affinée
-          </span>
+      {similarTasks.length >= 3 && (
+        <div className="rounded-2xl border border-atlas-amber/25 bg-gradient-to-br from-atlas-amber/[0.10] to-transparent p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="w-4 h-4 text-atlas-amber-deep" />
+            <span className="text-2xs uppercase tracking-wider font-medium text-atlas-amber-deep">
+              Estimation · tâches similaires
+            </span>
+          </div>
+          <p className="text-sm text-atlas-fg-1">
+            Sur {similarTasks.length} tâches partageant {task.tags.length > 1 ? 'ces tags' : 'ce tag'}, la
+            durée moyenne observée est de{' '}
+            <strong className="text-atlas-amber-deep">{fmtDuration(avgSimilarMinutes)}</strong>.
+            {task.estimatedMinutes
+              ? ` Votre estimation actuelle : ${fmtDuration(task.estimatedMinutes)}.`
+              : ''}
+          </p>
         </div>
-        <p className="text-sm text-atlas-fg-1">
-          Sur la base de vos 22 dernières tâches "design", PROPH3T estime cette tâche à{' '}
-          <strong className="text-atlas-amber-deep">1h05</strong> (±15%). Surcharge journée détectée :
-          envisager de la déplacer à demain matin.
-        </p>
-      </div>
+      )}
 
       {task.dueDate && (
         <div className="text-2xs text-atlas-fg-3">
@@ -1195,7 +1266,6 @@ function LinksTab({ task, deps }: { task: Task; deps: ReturnType<typeof useApp.g
   const tasks = useApp((s) => s.tasks);
   const removeDep = useApp((s) => s.removeDependency);
   const addDep = useApp((s) => s.addDependency);
-  const pushToast = useApp((s) => s.pushToast);
 
   const blockedBy = deps.filter((d) => d.relation === 'blocked_by');
   const blocks = deps.filter((d) => d.relation === 'blocks');
@@ -1238,16 +1308,6 @@ function LinksTab({ task, deps }: { task: Task; deps: ReturnType<typeof useApp.g
                   )}
                 </Menu>
               ))}
-              <MenuSeparator />
-              <MenuItem
-                icon={LinkIcon}
-                onClick={() => {
-                  close();
-                  pushToast({ kind: 'info', title: 'Coller un lien externe à venir' });
-                }}
-              >
-                Lien externe…
-              </MenuItem>
             </>
           )}
         </Menu>

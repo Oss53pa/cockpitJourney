@@ -42,6 +42,32 @@ const kindLabels: Record<ReportKind, string> = {
   quarterly: 'Trimestriel',
   annual: 'Annuel',
 };
+
+/** Plain-text summary of a report — used for clipboard + e-mail body. */
+function reportToPlainText(report: Report): string {
+  const lines: string[] = [report.title, `Période : ${report.period}`];
+  if (report.narrative) {
+    lines.push('', report.narrative);
+  }
+  const pts = report.attentionPoints || [];
+  if (pts.length) {
+    lines.push('', "Points d'attention :");
+    pts.forEach((p) => lines.push(`- [${p.severity}] ${p.title} — ${p.detail}`));
+  }
+  return lines.join('\n');
+}
+
+/** Open the user's mail client with the report pre-filled. */
+function emailReport(report: Report) {
+  const body = encodeURIComponent(reportToPlainText(report));
+  const subject = encodeURIComponent(report.title);
+  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+}
+
+/** Copy the report summary to the clipboard; returns the promise. */
+function copyReportSummary(report: Report): Promise<void> {
+  return navigator.clipboard?.writeText(reportToPlainText(report)) ?? Promise.reject();
+}
 const kindColors: Record<ReportKind, string> = {
   weekly: 'border-atlas-amber/30 bg-atlas-amber/10 text-atlas-amber-deep',
   monthly: 'border-signal-blue/30 bg-signal-blue/10 text-signal-blue',
@@ -540,7 +566,7 @@ function ReportRow({
                   icon={Mail}
                   onClick={() => {
                     close();
-                    pushToast({ kind: 'success', title: 'Rapport envoyé par e-mail' });
+                    emailReport(report);
                   }}
                 >
                   Envoyer par e-mail
@@ -549,10 +575,12 @@ function ReportRow({
                   icon={Copy}
                   onClick={() => {
                     close();
-                    pushToast({ kind: 'success', title: 'Lien copié' });
+                    copyReportSummary(report)
+                      .then(() => pushToast({ kind: 'success', title: 'Résumé copié' }))
+                      .catch(() => pushToast({ kind: 'error', title: 'Copie impossible' }));
                   }}
                 >
-                  Copier le lien
+                  Copier le résumé
                 </MenuItem>
                 <MenuSeparator />
                 <MenuItem
@@ -647,7 +675,7 @@ function ReportCard({
                 icon={Mail}
                 onClick={() => {
                   close();
-                  pushToast({ kind: 'success', title: 'Rapport envoyé par e-mail' });
+                  emailReport(report);
                 }}
               >
                 Envoyer par e-mail
@@ -656,10 +684,12 @@ function ReportCard({
                 icon={Copy}
                 onClick={() => {
                   close();
-                  pushToast({ kind: 'success', title: 'Lien copié' });
+                  copyReportSummary(report)
+                    .then(() => pushToast({ kind: 'success', title: 'Résumé copié' }))
+                    .catch(() => pushToast({ kind: 'error', title: 'Copie impossible' }));
                 }}
               >
-                Copier le lien
+                Copier le résumé
               </MenuItem>
               <MenuSeparator />
               <MenuItem
@@ -738,7 +768,6 @@ function ReportViewerModal({
   const author = useApp((s) => s.users.find((u) => u.id === report?.authorId) || s.users[0]);
   const tasks = useApp((s) => s.tasks);
   const generateNarrative = useApp((s) => s.generateReportNarrative);
-  const pushToast = useApp((s) => s.pushToast);
   const [tab, setTab] = useState<'overview' | 'projects' | 'attention' | 'workload' | 'goals' | 'retards'>(
     'overview'
   );
@@ -786,11 +815,8 @@ function ReportViewerModal({
           <button onClick={onExport} className="btn-secondary text-sm px-3 py-1.5">
             <Download className="w-3.5 h-3.5" /> Exporter…
           </button>
-          <button
-            onClick={() => pushToast({ kind: 'success', title: "Rapport envoyé à l'équipe" })}
-            className="btn-primary text-sm px-3.5 py-1.5"
-          >
-            <Send className="w-3.5 h-3.5" /> Envoyer
+          <button onClick={() => emailReport(report)} className="btn-primary text-sm px-3.5 py-1.5">
+            <Send className="w-3.5 h-3.5" /> Envoyer par e-mail
           </button>
         </>
       }

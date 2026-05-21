@@ -17,7 +17,6 @@ import {
   Users,
   RefreshCw,
   BookOpen,
-  Plus,
   ListChecks,
   Clock4,
   Flame,
@@ -505,12 +504,6 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
                   <RefreshCw className={cn('w-3.5 h-3.5', regeneratingPlan && 'animate-spin')} />
                   {regeneratingPlan ? 'Génération…' : fromPlan ? 'Régénérer' : 'Plan PROPH3T'}
                 </button>
-                <button
-                  onClick={() => pushToast({ kind: 'info', title: 'Bloc personnalisé à venir' })}
-                  className="btn-secondary text-sm px-3 py-1.5"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Bloc
-                </button>
               </div>
             </div>
             <div className="relative pl-3">
@@ -524,8 +517,7 @@ export function TodayView({ onOpenTask, onNavigate }: Props) {
                     if (linkedTask) onOpenTask(linkedTask);
                     else if (b.kind === 'focus' || b.kind === 'task') startFocus('pomodoro-long');
                     else if (b.kind === 'brief') openModal('proph3t-brief');
-                    else if (b.kind === 'review')
-                      pushToast({ kind: 'info', title: 'Revue de journée à venir' });
+                    else if (b.kind === 'review') openModal('proph3t-brief');
                     else pushToast({ kind: 'info', title: b.label });
                   };
                   return (

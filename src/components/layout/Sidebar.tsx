@@ -181,7 +181,7 @@ export function Sidebar({
       return;
     }
   };
-  const pushToast = useApp((s) => s.pushToast);
+  const signOut = useApp((s) => s.signOut);
 
   // Folder expand/collapse state is keyed by folder id (unknown key →
   // expanded by default) and persisted to localStorage so the layout the
@@ -675,7 +675,7 @@ export function Sidebar({
                 icon={LogOut}
                 onClick={() => {
                   close();
-                  pushToast({ kind: 'info', title: 'Déconnexion à venir' });
+                  void signOut();
                 }}
               >
                 Se déconnecter
