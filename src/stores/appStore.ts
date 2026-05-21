@@ -883,6 +883,15 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     };
     set((s: any) => ({ tasks: [t, ...s.tasks] }));
     dbPersist.put('tasks', t);
+    // Keep the owning project's taskCount in sync so counts shown in the
+    // command palette and the task drawer reflect reality.
+    set((s) => ({
+      projects: s.projects.map((p) =>
+        p.id === t.projectId ? { ...p, taskCount: (p.taskCount ?? 0) + 1 } : p
+      ),
+    }));
+    const projAfterCreate = get().projects.find((p) => p.id === t.projectId);
+    if (projAfterCreate) dbPersist.put('projects', projAfterCreate);
     get().logActivity({
       taskId: t.id,
       projectId: t.projectId,
@@ -903,6 +912,13 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     set((s: any) => ({ tasks: s.tasks.filter((x: any) => x.id !== id) }));
     dbPersist.delete('tasks', id);
     if (t) {
+      set((s) => ({
+        projects: s.projects.map((p) =>
+          p.id === t.projectId ? { ...p, taskCount: Math.max(0, (p.taskCount ?? 0) - 1) } : p
+        ),
+      }));
+      const projAfterDelete = get().projects.find((p) => p.id === t.projectId);
+      if (projAfterDelete) dbPersist.put('projects', projAfterDelete);
       get().logActivity({
         projectId: t.projectId,
         actorId: get().currentProfileId || 'u_pame',
@@ -1058,6 +1074,25 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     };
     set((s) => ({ projects: [...s.projects, project] }));
     dbPersist.put('projects', project);
+    // Mirror the membership onto the parent folder's projectIds so the
+    // project shows up under its folder in the sidebar immediately and
+    // the mirror stays consistent with moveProjectToFolder / deleteProject.
+    if (project.folderId) {
+      set((s) => ({
+        folders: s.folders.map((f) =>
+          f.id === project.folderId
+            ? {
+                ...f,
+                projectIds: (f.projectIds ?? []).includes(project.id)
+                  ? (f.projectIds ?? [])
+                  : [...(f.projectIds ?? []), project.id],
+              }
+            : f
+        ),
+      }));
+      const parentFolder = get().folders.find((f) => f.id === project.folderId);
+      if (parentFolder) dbPersist.put('folders', parentFolder);
+    }
     // seed sections
     const baseSections: Section[] = [
       { id: uid('s'), projectId: project.id, name: 'À faire', color: '#5A6055', position: 0 },
@@ -1071,9 +1106,31 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     return project;
   },
   updateProject: (id, patch) => {
+    const prevFolderId = get().projects.find((p) => p.id === id)?.folderId;
     set((s) => ({ projects: s.projects.map((p) => (p.id === id ? { ...p, ...patch } : p)) }));
     const updated = get().projects.find((p) => p.id === id);
     if (updated) dbPersist.put('projects', updated);
+    // When the edit modal reassigns the project to another folder, keep
+    // both folders' projectIds mirrors consistent with the new folderId.
+    if ('folderId' in patch && patch.folderId !== prevFolderId) {
+      set((s) => ({
+        folders: s.folders.map((f) => {
+          if (f.id === prevFolderId) {
+            return { ...f, projectIds: (f.projectIds ?? []).filter((pid) => pid !== id) };
+          }
+          if (f.id === patch.folderId) {
+            const ids = f.projectIds ?? [];
+            return ids.includes(id) ? f : { ...f, projectIds: [...ids, id] };
+          }
+          return f;
+        }),
+      }));
+      for (const fid of [prevFolderId, patch.folderId]) {
+        if (!fid) continue;
+        const f = get().folders.find((x) => x.id === fid);
+        if (f) dbPersist.put('folders', f);
+      }
+    }
   },
   deleteProject: (id) => {
     const taskIds = get()

@@ -368,12 +368,12 @@ export function Sidebar({
                       {sphereFolders.map((folder) => {
                         const FolderIcon = folderIcons[folder.icon] || Building2;
                         const isOpen = isFolderOpen(folder.id);
-                        // Older / freshly-seeded folders may not carry a `projectIds`
-                        // array — fall back to `folderId` on the project itself so the
-                        // sidebar never crashes on `undefined.includes(...)`.
-                        const folderProjects = projects.filter((p) =>
-                          folder.projectIds ? folder.projectIds.includes(p.id) : p.folderId === folder.id
-                        );
+                        // `project.folderId` is the authoritative membership signal —
+                        // it's set by the seed, createProject, the edit modal, and
+                        // drag-and-drop. Reading it directly means a project always
+                        // shows under its folder even if a folder's `projectIds`
+                        // mirror drifted out of sync.
+                        const folderProjects = projects.filter((p) => p.folderId === folder.id);
                         return (
                           <SortableFolderRow key={folder.id} folderId={folder.id}>
                             {({ dragHandle }) => (
