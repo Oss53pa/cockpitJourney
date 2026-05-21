@@ -41,7 +41,7 @@ import { useApp, useCurrentUser, type Attachment } from '../stores/appStore';
 import { Avatar, AvatarGroup } from './ui/Avatar';
 import { PriorityBadge } from './ui/PriorityBadge';
 import { StatusBadge, ProgressBar } from './ui/StatusBadge';
-import { Menu, MenuItem, MenuLabel, MenuSeparator } from './ui/Menu';
+import { Menu, MenuItem, MenuLabel } from './ui/Menu';
 import { cn, formatLongDate, formatTime, relativeTime } from '../lib/utils';
 
 interface Props {
@@ -1217,7 +1217,6 @@ function LinksTab({ task, deps }: { task: Task; deps: ReturnType<typeof useApp.g
   const tasks = useApp((s) => s.tasks);
   const removeDep = useApp((s) => s.removeDependency);
   const addDep = useApp((s) => s.addDependency);
-  const pushToast = useApp((s) => s.pushToast);
 
   const blockedBy = deps.filter((d) => d.relation === 'blocked_by');
   const blocks = deps.filter((d) => d.relation === 'blocks');
@@ -1260,16 +1259,6 @@ function LinksTab({ task, deps }: { task: Task; deps: ReturnType<typeof useApp.g
                   )}
                 </Menu>
               ))}
-              <MenuSeparator />
-              <MenuItem
-                icon={LinkIcon}
-                onClick={() => {
-                  close();
-                  pushToast({ kind: 'info', title: 'Coller un lien externe à venir' });
-                }}
-              >
-                Lien externe…
-              </MenuItem>
             </>
           )}
         </Menu>

@@ -11,7 +11,6 @@ import {
   Plus,
   Filter,
   ArrowUpDown,
-  Settings2,
   Sparkles,
   Star,
   CheckCircle2,
@@ -110,7 +109,6 @@ export function ProjectView({ project, onOpenTask }: Props) {
   const openModal = useApp((s) => s.openModal);
   const updateProject = useApp((s) => s.updateProject);
   const deleteProject = useApp((s) => s.deleteProject);
-  const pushToast = useApp((s) => s.pushToast);
 
   const sections = useMemo(
     () => allSections.filter((s) => s.projectId === project.id).sort((a, b) => a.position - b.position),
@@ -388,12 +386,6 @@ export function ProjectView({ project, onOpenTask }: Props) {
                   </>
                 )}
               </Menu>
-              <button
-                onClick={() => pushToast({ kind: 'info', title: 'Personnalisation des vues à venir' })}
-                className="btn-ghost text-xs px-2.5 py-1.5"
-              >
-                <Settings2 className="w-3.5 h-3.5" /> Vue
-              </button>
             </div>
           </div>
         )}
