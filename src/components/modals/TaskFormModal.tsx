@@ -64,6 +64,8 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
   const updateTask = useApp((s) => s.updateTask);
   const addSubtaskAction = useApp((s) => s.addSubtask);
   const pushToast = useApp((s) => s.pushToast);
+  const templates = useApp((s) => s.settings.taskTemplates);
+  const saveTemplate = useApp((s) => s.saveTaskTemplate);
 
   const [tab, setTab] = useState<Section>('basics');
 
@@ -133,6 +135,18 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
   // Links
   const [goalId, setGoalId] = useState(initial?.goalId ?? '');
   const [requiresApproval, setRequiresApproval] = useState<boolean>(initial?.requiresApproval ?? false);
+  const [makeTemplate, setMakeTemplate] = useState<boolean>(false);
+
+  const applyTemplate = (id: string) => {
+    const tpl = (templates ?? []).find((t) => t.id === id);
+    if (!tpl) return;
+    setTitle(tpl.title);
+    setDescription(tpl.description ?? '');
+    setPriority(tpl.priority);
+    setTagsRaw(tpl.tags.join(', '));
+    setEstimateMinutes(tpl.estimatedMinutes ?? '');
+    setTaskType(tpl.taskType ?? 'standard');
+  };
 
   useEffect(() => {
     if (!projectSections.find((s) => s.id === sectionId)) {
@@ -234,6 +248,17 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
       const created = createTask(payload);
       // Add subtasks
       subtasks.forEach((s) => addSubtaskAction(created.id, s.title));
+      if (makeTemplate) {
+        saveTemplate({
+          name: title.trim(),
+          title: title.trim(),
+          description: description.trim() || undefined,
+          priority,
+          tags,
+          estimatedMinutes: typeof estimateMinutes === 'number' ? estimateMinutes : undefined,
+          taskType,
+        });
+      }
     } else if (mode === 'edit' && initial?.id) {
       updateTask(initial.id, payload);
     }
@@ -312,6 +337,22 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
         <div className="space-y-4 min-w-0">
           {tab === 'basics' && (
             <>
+              {mode === 'create' && templates && templates.length > 0 && (
+                <div>
+                  <FieldLabel hint="préremplit les champs">Partir d'un template</FieldLabel>
+                  <NativeSelect
+                    defaultValue=""
+                    onChange={(e) => e.target.value && applyTemplate(e.target.value)}
+                  >
+                    <option value="">— Aucun (vierge)</option>
+                    {templates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </div>
+              )}
               <div>
                 <FieldLabel hint="actionnable, sans la date ni le projet">Titre</FieldLabel>
                 <TextInput
@@ -676,6 +717,20 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
                   </div>
                   <Switch checked={requiresApproval} onChange={setRequiresApproval} />
                 </div>
+                {mode === 'create' && (
+                  <div className="flex items-center justify-between panel p-3">
+                    <div>
+                      <div className="text-sm text-atlas-fg-1 inline-flex items-center gap-2">
+                        <ListChecks className="w-3.5 h-3.5 text-atlas-amber-deep" /> Enregistrer comme
+                        template
+                      </div>
+                      <div className="text-2xs text-atlas-fg-3 mt-0.5">
+                        Réutilisable via « Partir d'un template » à la création d'une tâche.
+                      </div>
+                    </div>
+                    <Switch checked={makeTemplate} onChange={setMakeTemplate} />
+                  </div>
+                )}
                 <div className="surface p-3 flex items-start gap-3">
                   <Paperclip className="w-4 h-4 text-atlas-fg-3 mt-0.5" />
                   <div className="text-2xs text-atlas-fg-2">

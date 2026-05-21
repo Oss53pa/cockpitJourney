@@ -27,6 +27,7 @@ import type {
   PropheticInsight,
   Priority,
   TaskStatus,
+  TaskTemplate,
 } from '../types';
 
 // Module-level guards: React StrictMode runs effects twice in dev, which
@@ -316,6 +317,8 @@ interface State {
       apiKey: string;
       model: string;
     };
+    /** Personal reusable task templates (persisted as a settings key — no extra table). */
+    taskTemplates?: TaskTemplate[];
   };
 
   // === actions ===
@@ -446,6 +449,8 @@ interface State {
 
   // settings
   updateSettings: (patch: Partial<State['settings']>) => void;
+  saveTaskTemplate: (tpl: Omit<TaskTemplate, 'id'>) => void;
+  deleteTaskTemplate: (id: string) => void;
   /**
    * Edit the current user's profile (name / color / avatarUrl). Recomputes
    * initials when `name` changes, syncs the in-memory User row, persists
@@ -2119,6 +2124,18 @@ Reste sous 400 mots, ton factuel et engagé.`,
     // Write each setting key to its own row (so partial updates don't require full snapshot)
     Object.entries(patch).forEach(([k, v]) => dbPersist.setSetting(k, v));
     get().pushToast({ kind: 'success', title: 'Préférences enregistrées', duration: 2000 });
+  },
+  saveTaskTemplate: (tpl) => {
+    const t: TaskTemplate = { id: uid('tpl'), ...tpl };
+    const next = [t, ...(get().settings.taskTemplates ?? [])];
+    set((s) => ({ settings: { ...s.settings, taskTemplates: next } }));
+    dbPersist.setSetting('taskTemplates', next);
+    get().pushToast({ kind: 'success', title: 'Template enregistré', body: t.name });
+  },
+  deleteTaskTemplate: (id) => {
+    const next = (get().settings.taskTemplates ?? []).filter((x) => x.id !== id);
+    set((s) => ({ settings: { ...s.settings, taskTemplates: next } }));
+    dbPersist.setSetting('taskTemplates', next);
   },
 
   updateProfile: async (patch) => {

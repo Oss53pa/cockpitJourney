@@ -103,6 +103,18 @@ export interface Task {
   createdAt?: string;
 }
 
+/** Reusable task template (personal library, stored in settings). */
+export interface TaskTemplate {
+  id: string;
+  name: string;
+  title: string;
+  description?: string;
+  priority: Priority;
+  tags: string[];
+  estimatedMinutes?: number;
+  taskType?: string;
+}
+
 export interface Goal {
   id: string;
   title: string;
