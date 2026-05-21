@@ -1409,16 +1409,14 @@ const initialState = (set: SetFn, get: GetFn): State => ({
 
   // === Forms ===
   createForm: (f) => {
-    const slug = (f.name || 'form')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 24);
+    const id = uid('f');
+    const origin =
+      typeof window !== 'undefined' ? window.location.origin : 'https://cockpit-journey.atlas-studio.org';
     const form: IntakeForm = {
-      id: uid('f'),
+      id,
       submissions: 0,
       createdAt: new Date().toISOString(),
-      publicUrl: `https://cockpitjourney.app/f/${slug}-${Math.random().toString(36).slice(2, 5)}`,
+      publicUrl: `${origin}/f/${id}`,
       ...f,
     };
     set((s) => ({ forms: [form, ...s.forms] }));

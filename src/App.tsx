@@ -26,6 +26,7 @@ const MentionsPage = lazy(() =>
   import('./components/legal/MentionsPage').then((m) => ({ default: m.MentionsPage }))
 );
 const AcceptInvite = lazy(() => import('./pages/auth/AcceptInvite'));
+const PublicFormPage = lazy(() => import('./pages/public/PublicFormPage'));
 import { ModalRoot } from './components/modals/ModalRoot';
 import { OnboardingModal } from './components/modals/OnboardingModal';
 import { InstallPromptBanner } from './components/pwa/InstallPromptBanner';
@@ -452,6 +453,16 @@ function App() {
           element={
             <Suspense fallback={<div />}>
               <MentionsPage />
+            </Suspense>
+          }
+        />
+
+        {/* Public intake form — no auth required */}
+        <Route
+          path="/f/:id"
+          element={
+            <Suspense fallback={<div />}>
+              <PublicFormPage />
             </Suspense>
           }
         />
