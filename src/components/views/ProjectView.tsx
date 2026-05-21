@@ -1495,16 +1495,20 @@ function ProjectBriefTab({ project, tasks }: { project: Project; tasks: Task[] }
         </p>
         <div className="mt-3 flex items-center gap-2">
           <button
-            onClick={() => pushToast({ kind: 'info', title: 'PROPH3T régénère le brief…' })}
+            onClick={() => {
+              const text = `Brief ${project.name} — ${tasks.length} tâche(s) · ${critical} critique(s) · ${overdue} en retard.`;
+              if (navigator.share) {
+                navigator.share({ title: `Brief ${project.name}`, text }).catch(() => {});
+              } else {
+                navigator.clipboard
+                  ?.writeText(text)
+                  .then(() => pushToast({ kind: 'success', title: 'Brief copié' }))
+                  .catch(() => pushToast({ kind: 'error', title: 'Copie impossible' }));
+              }
+            }}
             className="btn-secondary text-xs px-2.5 py-1.5"
           >
-            <Sparkles className="w-3 h-3" /> Régénérer
-          </button>
-          <button
-            onClick={() => pushToast({ kind: 'success', title: 'Brief envoyé par WhatsApp' })}
-            className="btn-secondary text-xs px-2.5 py-1.5"
-          >
-            Partager
+            <Sparkles className="w-3 h-3" /> Partager le brief
           </button>
         </div>
       </div>

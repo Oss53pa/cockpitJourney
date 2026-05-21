@@ -10,13 +10,11 @@ import {
   Trash2,
   X,
   Tag as TagIcon,
-  Repeat,
   Target,
   Paperclip,
   Users,
   Eye,
   ListChecks,
-  Type,
   Hash,
   Workflow,
   Calendar,
@@ -134,9 +132,6 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
 
   // Links
   const [goalId, setGoalId] = useState(initial?.goalId ?? '');
-  const [multiProject, setMultiProject] = useState<boolean>(false);
-  const [requiresApproval, setRequiresApproval] = useState<boolean>(false);
-  const [makeTemplate, setMakeTemplate] = useState<boolean>(false);
 
   useEffect(() => {
     if (!projectSections.find((s) => s.id === sectionId)) {
@@ -214,8 +209,6 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
     if (taskType !== 'standard')
       customFields['Type'] = TASK_TYPES.find((t) => t.value === taskType)?.label || taskType;
     if (recurrence) customFields['Récurrence'] = recurrence;
-    if (requiresApproval) customFields['Approbation'] = 'Requise';
-    if (multiProject) customFields['Multi-projets'] = true;
 
     const payload = {
       title: title.trim(),
@@ -239,8 +232,6 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
       const created = createTask(payload);
       // Add subtasks
       subtasks.forEach((s) => addSubtaskAction(created.id, s.title));
-      if (makeTemplate)
-        pushToast({ kind: 'info', title: 'Template enregistré', body: 'Disponible dans la bibliothèque' });
     } else if (mode === 'edit' && initial?.id) {
       updateTask(initial.id, payload);
     }
@@ -671,40 +662,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
                   ))}
                 </NativeSelect>
               </div>
-              <div className="border-t border-atlas-line pt-4 space-y-3">
-                <div className="flex items-center justify-between panel p-3">
-                  <div>
-                    <div className="text-sm text-atlas-fg-1 inline-flex items-center gap-2">
-                      <Workflow className="w-3.5 h-3.5 text-atlas-amber-deep" /> Tâche d'approbation
-                    </div>
-                    <div className="text-2xs text-atlas-fg-3 mt-0.5">
-                      L'assigné devra explicitement Approuver / Rejeter / Demander modifications.
-                    </div>
-                  </div>
-                  <Switch checked={requiresApproval} onChange={setRequiresApproval} />
-                </div>
-                <div className="flex items-center justify-between panel p-3">
-                  <div>
-                    <div className="text-sm text-atlas-fg-1 inline-flex items-center gap-2">
-                      <Repeat className="w-3.5 h-3.5 text-atlas-amber-deep" /> Tâche multi-projets
-                    </div>
-                    <div className="text-2xs text-atlas-fg-3 mt-0.5">
-                      Apparaîtra dans plusieurs projets simultanément (CDC §6.4).
-                    </div>
-                  </div>
-                  <Switch checked={multiProject} onChange={setMultiProject} />
-                </div>
-                <div className="flex items-center justify-between panel p-3">
-                  <div>
-                    <div className="text-sm text-atlas-fg-1 inline-flex items-center gap-2">
-                      <Type className="w-3.5 h-3.5 text-atlas-amber-deep" /> Enregistrer comme template
-                    </div>
-                    <div className="text-2xs text-atlas-fg-3 mt-0.5">
-                      Réutilisable depuis la bibliothèque de templates personnels.
-                    </div>
-                  </div>
-                  <Switch checked={makeTemplate} onChange={setMakeTemplate} />
-                </div>
+              <div className="border-t border-atlas-line pt-4">
                 <div className="surface p-3 flex items-start gap-3">
                   <Paperclip className="w-4 h-4 text-atlas-fg-3 mt-0.5" />
                   <div className="text-2xs text-atlas-fg-2">
