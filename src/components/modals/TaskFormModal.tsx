@@ -150,12 +150,47 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
     setWatchers((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]));
 
   const tasks = useApp((s) => s.tasks);
+  const fmtDur = (m: number) =>
+    m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m} min`;
+  // Past tasks sharing a tag with the ones being typed (actual time preferred).
+  const estimateTags = tagsRaw
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const similarTasks = tasks.filter(
+    (t) =>
+      (t.actualMinutes || t.estimatedMinutes) &&
+      estimateTags.length > 0 &&
+      t.tags.some((tg) => estimateTags.includes(tg))
+  );
+  const similarAvg = similarTasks.length
+    ? Math.round(
+        similarTasks.reduce((s, t) => s + (t.actualMinutes || t.estimatedMinutes || 0), 0) /
+          similarTasks.length
+      )
+    : 0;
+
+  // Heuristic estimate from history + priority from due-date proximity. No LLM.
   const aiSuggest = () => {
     if (!title.trim()) return;
-    setEstimateMinutes(60);
-    setPriority(3);
+    if (similarTasks.length >= 2) {
+      setEstimateMinutes(similarAvg);
+    } else if (estimateMinutes === '') {
+      setEstimateMinutes(60);
+    }
+    if (dueDate) {
+      const days = (new Date(dueDate).getTime() - Date.now()) / 86400000;
+      setPriority(days <= 1 ? 4 : days <= 3 ? 3 : 2);
+    }
     setSprint(sprint || getCurrentSprint(tasks));
-    pushToast({ kind: 'success', title: 'PROPH3T a suggéré priorité et estimation', duration: 2000 });
+    pushToast({
+      kind: 'success',
+      title:
+        similarTasks.length >= 2
+          ? `Estimé d'après ${similarTasks.length} tâches similaires`
+          : 'Estimation par défaut appliquée',
+      duration: 2200,
+    });
   };
 
   const removeSubtask = (i: number) => setSubtasks((s) => s.filter((_, idx) => idx !== i));
@@ -226,12 +261,12 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
       open
       onClose={onClose}
       title={mode === 'create' ? 'Nouvelle tâche' : 'Modifier la tâche'}
-      description="Tous les champs CDC · PROPH3T peut suggérer durée et priorité"
+      description="Tous les champs · suggestion auto de durée et priorité d'après vos tâches"
       size="xl"
       footer={
         <>
           <button onClick={aiSuggest} className="btn-ghost text-sm px-3 py-1.5 mr-auto">
-            <Sparkles className="w-3.5 h-3.5 text-atlas-amber" /> Suggérer (PROPH3T)
+            <Sparkles className="w-3.5 h-3.5 text-atlas-amber" /> Suggérer durée & priorité
           </button>
           <button onClick={onClose} className="btn-ghost text-sm px-3 py-1.5">
             Annuler
@@ -488,14 +523,15 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
                   ))}
                 </NativeSelect>
               </div>
-              <div className="surface p-3 flex items-center gap-3">
-                <Clock className="w-4 h-4 text-atlas-amber-deep shrink-0" />
-                <div className="flex-1 text-2xs text-atlas-fg-2">
-                  <strong>PROPH3T :</strong> sur la base de vos 22 dernières tâches similaires, l'estimation
-                  moyenne est <strong>1h05 (±15%)</strong>. Surcharge journée détectée si vous ajoutez
-                  aujourd'hui.
+              {similarTasks.length >= 2 && (
+                <div className="surface p-3 flex items-center gap-3">
+                  <Clock className="w-4 h-4 text-atlas-amber-deep shrink-0" />
+                  <div className="flex-1 text-2xs text-atlas-fg-2">
+                    Sur {similarTasks.length} tâches partageant vos tags, la durée moyenne observée est de{' '}
+                    <strong>{fmtDur(similarAvg)}</strong>.
+                  </div>
                 </div>
-              </div>
+              )}
             </>
           )}
 

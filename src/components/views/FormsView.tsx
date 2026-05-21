@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   ClipboardList,
   Plus,
-  Sparkles,
   Copy,
   Eye,
   Edit3,
@@ -21,7 +20,6 @@ import {
   ListChecks,
   CheckSquare,
   Paperclip,
-  QrCode,
   Power,
 } from 'lucide-react';
 import { useApp, type IntakeForm, type FormField, type FormFieldType } from '../../stores/appStore';
@@ -50,7 +48,6 @@ export function FormsView() {
   const toggleEnabled = useApp((s) => s.toggleFormEnabled);
   const deleteForm = useApp((s) => s.deleteForm);
   const simulate = useApp((s) => s.simulateFormSubmission);
-  const pushToast = useApp((s) => s.pushToast);
   const [openBuilderFor, setOpenBuilderFor] = useState<string | null>(null);
   const [previewFor, setPreviewFor] = useState<string | null>(null);
 
@@ -69,14 +66,6 @@ export function FormsView() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() =>
-              pushToast({ kind: 'info', title: 'Modèles bientôt', body: '8 templates pré-configurés' })
-            }
-            className="btn-secondary text-sm px-3 py-1.5"
-          >
-            <Sparkles className="w-3.5 h-3.5" /> Modèles
-          </button>
           <button onClick={() => openModal('form-create')} className="btn-primary text-sm px-3 py-1.5">
             <Plus className="w-3.5 h-3.5" /> Nouveau form
           </button>
@@ -280,13 +269,6 @@ function FormCard({
           title="Copier"
         >
           <Copy className="w-3 h-3" />
-        </button>
-        <button
-          onClick={() => pushToast({ kind: 'info', title: 'QR code généré', body: '512×512 PNG' })}
-          className="btn-ghost !p-1.5 text-atlas-fg-3 hover:text-atlas-fg-1"
-          title="QR code"
-        >
-          <QrCode className="w-3 h-3" />
         </button>
         <a
           href={form.publicUrl}
