@@ -135,6 +135,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
   // Links
   const [goalId, setGoalId] = useState(initial?.goalId ?? '');
   const [requiresApproval, setRequiresApproval] = useState<boolean>(initial?.requiresApproval ?? false);
+  const [alsoInProjectIds, setAlsoInProjectIds] = useState<string[]>(initial?.alsoInProjectIds ?? []);
   const [makeTemplate, setMakeTemplate] = useState<boolean>(false);
 
   const applyTemplate = (id: string) => {
@@ -241,6 +242,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
       tags,
       goalId: goalId || undefined,
       requiresApproval: requiresApproval || undefined,
+      alsoInProjectIds: alsoInProjectIds.length ? alsoInProjectIds : undefined,
       customFields: Object.keys(customFields).length ? customFields : undefined,
     };
 
@@ -716,6 +718,40 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
                     </div>
                   </div>
                   <Switch checked={requiresApproval} onChange={setRequiresApproval} />
+                </div>
+                <div className="panel p-3">
+                  <div className="text-sm text-atlas-fg-1 inline-flex items-center gap-2 mb-2">
+                    <Hash className="w-3.5 h-3.5 text-atlas-amber-deep" /> Partager dans d'autres projets
+                  </div>
+                  {projects.filter((p) => p.id !== projectId).length === 0 ? (
+                    <div className="text-2xs text-atlas-fg-3">Aucun autre projet.</div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto">
+                      {projects
+                        .filter((p) => p.id !== projectId)
+                        .map((p) => (
+                          <label
+                            key={p.id}
+                            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-atlas-line bg-white cursor-pointer hover:border-atlas-line-2 text-2xs text-atlas-fg-2"
+                          >
+                            <input
+                              type="checkbox"
+                              className="accent-atlas-amber"
+                              checked={alsoInProjectIds.includes(p.id)}
+                              onChange={(e) =>
+                                setAlsoInProjectIds((ids) =>
+                                  e.target.checked ? [...ids, p.id] : ids.filter((x) => x !== p.id)
+                                )
+                              }
+                            />
+                            <span className="truncate">{p.name}</span>
+                          </label>
+                        ))}
+                    </div>
+                  )}
+                  <div className="text-2xs text-atlas-fg-3 mt-2">
+                    La tâche apparaîtra dans la section « Partagées » de ces projets.
+                  </div>
                 </div>
                 {mode === 'create' && (
                   <div className="flex items-center justify-between panel p-3">

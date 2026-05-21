@@ -105,6 +105,7 @@ export function ProjectView({ project, onOpenTask }: Props) {
 
   const allTasks = useApp((s) => s.tasks);
   const allSections = useApp((s) => s.sections);
+  const allProjects = useApp((s) => s.projects);
   const users = useApp((s) => s.users);
   const openModal = useApp((s) => s.openModal);
   const updateProject = useApp((s) => s.updateProject);
@@ -133,6 +134,14 @@ export function ProjectView({ project, onOpenTask }: Props) {
     });
     return list;
   }, [allTasks, project.id, filterPriority, filterAssignee, sort]);
+
+  // Tasks shared into this project from another project (multi-projets).
+  // Kept separate from the board so drag-and-drop never reassigns their
+  // primary section.
+  const sharedTasks = useMemo(
+    () => allTasks.filter((t) => t.alsoInProjectIds?.includes(project.id)),
+    [allTasks, project.id]
+  );
 
   const Icon = projectIcons[project.icon] || Compass;
 
@@ -396,6 +405,47 @@ export function ProjectView({ project, onOpenTask }: Props) {
             crash inside (e.g. Gantt date math on a malformed task) doesn't
             collapse the whole project view — the user can still switch to
             another view and keep working. */}
+        {tab === 'tasks' && sharedTasks.length > 0 && (
+          <div className="mb-4 panel p-4">
+            <div className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium mb-2">
+              Partagées d'autres projets ({sharedTasks.length})
+            </div>
+            <div className="space-y-1">
+              {sharedTasks.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => onOpenTask(t)}
+                  className="w-full text-left flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-black/[0.03]"
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full shrink-0"
+                    style={{
+                      background:
+                        t.status === 'done'
+                          ? '#4D9A6A'
+                          : t.status === 'in_progress'
+                            ? '#B69248'
+                            : t.status === 'blocked'
+                              ? '#B85B4D'
+                              : '#9CA3AF',
+                    }}
+                  />
+                  <span
+                    className={cn(
+                      'text-sm truncate',
+                      t.status === 'done' ? 'text-atlas-fg-3 line-through' : 'text-atlas-fg-1'
+                    )}
+                  >
+                    {t.title}
+                  </span>
+                  <span className="ml-auto text-2xs text-atlas-fg-3 shrink-0">
+                    {allProjects.find((p) => p.id === t.projectId)?.name ?? ''}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {tab === 'tasks' && taskView === 'kanban' && (
           <SectionErrorBoundary section="Le Kanban" scope="project:kanban">
             <KanbanBoard sections={sections} tasks={tasks} onOpenTask={onOpenTask} projectId={project.id} />

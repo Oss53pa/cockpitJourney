@@ -99,6 +99,8 @@ export interface Task {
   /** Approval workflow: the task must be explicitly approved before it counts as done. */
   requiresApproval?: boolean;
   approvalStatus?: 'pending' | 'approved' | 'rejected' | 'changes_requested';
+  /** Secondary projects this task is also shared into. Primary stays `projectId`. */
+  alsoInProjectIds?: string[];
   /** ISO timestamp — set at creation; used by the activity trajectory charts. */
   createdAt?: string;
 }

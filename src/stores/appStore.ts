@@ -899,6 +899,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       goalId: input.goalId,
       requiresApproval: input.requiresApproval,
       approvalStatus: input.requiresApproval ? (input.approvalStatus ?? 'pending') : undefined,
+      alsoInProjectIds: input.alsoInProjectIds,
       createdAt: new Date().toISOString(),
     };
     set((s: any) => ({ tasks: [t, ...s.tasks] }));
