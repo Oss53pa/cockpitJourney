@@ -489,6 +489,7 @@ function Bars() {
 
 function DonutLegend() {
   const tasks = useApp((s) => s.tasks);
+  const hasTasks = tasks.length > 0;
   const total = tasks.length || 1;
   const data = [
     {
@@ -548,23 +549,35 @@ function DonutLegend() {
         ))}
         <div className="pt-3 border-t border-atlas-line mt-3">
           <div className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">Score santé</div>
-          {(() => {
-            const done = data.find((d) => d.label === 'Terminé')?.value || 0;
-            const score = Math.min(
-              100,
-              Math.round(done * 1.2 + (100 - (data.find((d) => d.label === 'À faire')?.value || 0)) * 0.3)
-            );
-            const color =
-              score >= 70 ? 'text-signal-green' : score >= 40 ? 'text-signal-yellow' : 'text-signal-red';
-            const dotColor =
-              score >= 70 ? 'bg-signal-green' : score >= 40 ? 'bg-signal-yellow' : 'bg-signal-red';
-            return (
-              <div className={cn('font-display text-2xl font-medium mt-1 flex items-center gap-1.5', color)}>
-                <span className={cn('w-2.5 h-2.5 rounded-full animate-pulse-soft', dotColor)} />
-                {score} / 100
-              </div>
-            );
-          })()}
+          {!hasTasks ? (
+            // No tasks at all → a "30/100" score would be meaningless
+            // (the old formula derived it from (100 − 0%-à-faire) × 0.3).
+            // Show an explicit empty state instead.
+            <div className="font-display text-2xl font-medium mt-1 flex items-center gap-1.5 text-atlas-fg-3">
+              <span className="w-2.5 h-2.5 rounded-full bg-atlas-fg-3/40" />—
+              <span className="text-sm font-light text-atlas-fg-3 ml-1">aucune donnée</span>
+            </div>
+          ) : (
+            (() => {
+              const done = data.find((d) => d.label === 'Terminé')?.value || 0;
+              const score = Math.min(
+                100,
+                Math.round(done * 1.2 + (100 - (data.find((d) => d.label === 'À faire')?.value || 0)) * 0.3)
+              );
+              const color =
+                score >= 70 ? 'text-signal-green' : score >= 40 ? 'text-signal-yellow' : 'text-signal-red';
+              const dotColor =
+                score >= 70 ? 'bg-signal-green' : score >= 40 ? 'bg-signal-yellow' : 'bg-signal-red';
+              return (
+                <div
+                  className={cn('font-display text-2xl font-medium mt-1 flex items-center gap-1.5', color)}
+                >
+                  <span className={cn('w-2.5 h-2.5 rounded-full animate-pulse-soft', dotColor)} />
+                  {score} / 100
+                </div>
+              );
+            })()
+          )}
         </div>
       </div>
     </div>
