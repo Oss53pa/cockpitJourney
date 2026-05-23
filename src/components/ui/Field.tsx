@@ -81,12 +81,12 @@ export function Switch({
         onClick={() => onChange(!checked)}
         className={cn(
           'relative inline-flex w-9 h-5 rounded-full border transition-colors',
-          checked ? 'bg-atlas-amber border-atlas-amber' : 'bg-white border-atlas-line'
+          checked ? 'bg-atlas-amber border-atlas-amber' : 'bg-black/[0.18] border-black/[0.12]'
         )}
       >
         <span
           className={cn(
-            'absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform',
+            'absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-md ring-1 ring-black/[0.06] transition-transform',
             checked && 'translate-x-4'
           )}
         />
