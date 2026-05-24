@@ -15,6 +15,9 @@ import {
   clearSnapshotCache,
 } from '../lib/snapshotCache';
 import { setMonitoringUser, captureException } from '../lib/monitoring';
+// Type-only — the runtime code (vendored Proph3t core client) is lazy-imported
+// inside the action so it stays code-split, like the local agent in ./proph3t.
+import type { AskResult, Sensitivity } from '../lib/proph3tCore';
 import type {
   User,
   Project,
@@ -427,6 +430,18 @@ interface State {
   // insights
   dismissInsight: (id: string) => void;
   regenerateBrief: () => void;
+
+  /**
+   * MODE B (Proph3t core hébergé) — délègue un tour complet à l'orchestrateur
+   * Atlas Studio via `proph3t-ask`. À utiliser pour « pose une question /
+   * analyse ce document ». `sensitivity` gouverne les providers autorisés côté
+   * core ("confidential" ⇒ Ollama/Claude uniquement, jamais un tier gratuit).
+   * Défaut "internal" (données de gestion CockpitJourney).
+   *
+   * Résout sur `null` si le core n'est pas configuré (toast d'info affiché).
+   * Ne retombe JAMAIS sur l'agent local free-tier — aucune fuite confidentielle.
+   */
+  askProph3tCore: (params: { message: string; sensitivity?: Sensitivity }) => Promise<AskResult | null>;
 
   /**
    * Ask PROPH3T to generate the day's time-blocking plan from the user's
@@ -1972,12 +1987,77 @@ Reste sous 400 mots, ton factuel et engagé.`,
       set((s: any) => ({ insights: [newInsight, ...s.insights] }));
       dbPersist.put('insights', newInsight);
       get().pushToast({ kind: 'success', title: 'Daily Brief généré', body: cfg.model });
+
+      // MODE A (Proph3t core) — trace la génération IA dans l'audit chaîné
+      // SHA-256 du cœur Atlas Studio. Best-effort, fire-and-forget : n'altère
+      // ni le flux ni la latence si le core est injoignable.
+      void import('../lib/proph3tCore').then(({ logProph3tAudit }) =>
+        logProph3tAudit({
+          action: 'ai_daily_brief',
+          subjectType: 'user',
+          subjectId: get().currentProfileId ?? undefined,
+          content: {
+            provider: cfg.provider,
+            model: cfg.model,
+            tasks_count: dueToday.length,
+            generated_at: new Date().toISOString(),
+          },
+        })
+      );
     } catch (err: any) {
       get().pushToast({
         kind: 'error',
         title: 'Échec génération',
         body: err?.message || 'Vérifiez votre clé API',
       });
+    }
+  },
+
+  askProph3tCore: async ({ message, sensitivity }) => {
+    const trimmed = message.trim();
+    if (!trimmed) return null;
+    let mod: typeof import('../lib/proph3tCore');
+    try {
+      mod = await import('../lib/proph3tCore');
+    } catch {
+      return null;
+    }
+    if (!mod.PROPH3T_CORE_CONFIGURED) {
+      get().pushToast({
+        kind: 'info',
+        title: 'Proph3t core non configuré',
+        body: 'Définissez VITE_ATLAS_SUPABASE_URL / VITE_ATLAS_SUPABASE_ANON_KEY (.env.local).',
+      });
+      return null;
+    }
+    const level: Sensitivity = sensitivity ?? mod.DEFAULT_SENSITIVITY;
+    get().pushToast({
+      kind: 'info',
+      title: 'PROPH3T (cœur Atlas Studio) réfléchit…',
+      body: level === 'confidential' ? 'Confidentiel — Ollama/Claude uniquement' : undefined,
+      duration: 1500,
+    });
+    try {
+      const result = await mod.askProph3t({ message: trimmed, sensitivity: level });
+      get().pushToast({
+        kind: 'success',
+        title: 'Réponse PROPH3T',
+        body: `Confiance ${Math.round((result.confidence ?? 0) * 100)}%`,
+      });
+      return result;
+    } catch (err: any) {
+      // GARDE-FOU : on NE retombe PAS sur l'agent local free-tier. Si le core
+      // refuse une demande confidentielle (pas de clé Ollama/Claude), on
+      // remonte l'erreur telle quelle — aucune fuite vers un tier à rétention.
+      get().pushToast({
+        kind: 'error',
+        title: 'PROPH3T (cœur) indisponible',
+        body:
+          level === 'confidential'
+            ? 'Refus propre : aucun provider sans-rétention dispo. Donnée non envoyée.'
+            : err?.message || 'Réessayez plus tard',
+      });
+      return null;
     }
   },
 
