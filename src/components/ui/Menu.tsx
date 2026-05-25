@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../../lib/utils';
 
 interface MenuProps {
@@ -6,11 +7,14 @@ interface MenuProps {
   align?: 'left' | 'right';
   /**
    * Where the dropdown should open relative to the trigger:
-   *   - `down` (default) — opens below, useful in headers / toolbars
-   *   - `up`             — opens above, useful in sidebar footers and
-   *                        any trigger that sits near the bottom of a
-   *                        scroll container with `overflow: hidden`
-   *   - `auto`           — measure free space and pick the side that fits
+   *   - `down` (default) — opens below
+   *   - `up`             — opens above
+   *   - `auto`           — pick the side with room
+   *
+   * The dropdown is rendered in a PORTAL on document.body with
+   * `position: fixed`, positioned from the trigger's bounding rect and
+   * clamped to the viewport. This guarantees it is NEVER clipped by an
+   * ancestor `overflow: hidden`/`auto` (drawers, scroll panels, cards…).
    */
   direction?: 'down' | 'up' | 'auto';
   children: (close: () => void) => ReactNode;
@@ -19,47 +23,77 @@ interface MenuProps {
 
 export function Menu({ trigger, align = 'right', direction = 'down', children, width = 220 }: MenuProps) {
   const [open, setOpen] = useState(false);
-  const [resolvedDir, setResolvedDir] = useState<'up' | 'down'>(direction === 'auto' ? 'down' : direction);
-  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
+  // Close on click outside (the menu lives in a portal, so check both).
   useEffect(() => {
+    if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (wrapRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     };
-    if (open) document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [open]);
 
-  // For `direction: 'auto'`, decide on open: if the trigger is in the
-  // lower half of the viewport, flip upward so the dropdown stays on
-  // screen and isn't clipped by any ancestor `overflow: hidden`.
-  useEffect(() => {
-    if (!open || direction !== 'auto') return;
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setResolvedDir(rect.top > window.innerHeight / 2 ? 'up' : 'down');
-  }, [open, direction]);
-
-  const dir = direction === 'auto' ? resolvedDir : direction;
+  // Position the portal from the trigger rect, clamped to the viewport.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = triggerRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const m = 8;
+      const menuH = menuRef.current?.offsetHeight ?? 0;
+      const openUp =
+        direction === 'up' ||
+        (direction === 'auto' && r.bottom + menuH + m > window.innerHeight && r.top - menuH - m > 0);
+      let top = openUp ? r.top - menuH - m : r.bottom + m;
+      let left = align === 'right' ? r.right - width : r.left;
+      left = Math.max(m, Math.min(left, window.innerWidth - width - m));
+      top = Math.max(m, Math.min(top, window.innerHeight - menuH - m));
+      setPos({ left, top });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open, direction, align, width]);
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative" ref={wrapRef}>
       <div ref={triggerRef} onClick={() => setOpen((v) => !v)}>
         {trigger}
       </div>
-      {open && (
-        <div
-          className={cn(
-            'absolute z-50 panel p-1.5 animate-fade-in-scale shadow-soft-pop',
-            dir === 'up' ? 'bottom-full mb-2 origin-bottom-right' : 'top-full mt-2 origin-top-right',
-            align === 'right' ? 'right-0' : 'left-0'
-          )}
-          style={{ width }}
-        >
-          {children(() => setOpen(false))}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="fixed z-[100] panel p-1.5 animate-fade-in-scale shadow-soft-pop"
+            style={{
+              left: pos?.left ?? -9999,
+              top: pos?.top ?? -9999,
+              width,
+              visibility: pos ? 'visible' : 'hidden',
+            }}
+          >
+            {children(() => setOpen(false))}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -73,6 +107,7 @@ export function MenuItem({
   children: ReactNode;
   onClick?: () => void;
   danger?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   icon?: any;
 }) {
   return (
