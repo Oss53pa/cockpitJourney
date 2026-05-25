@@ -1,9 +1,21 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Modal } from '../ui/Modal';
 import { useApp, useCurrentUser } from '../../stores/appStore';
 import { FieldLabel, NativeSelect, Switch, TextInput } from '../ui/Field';
 import { Avatar } from '../ui/Avatar';
-import { RotateCcw, Sparkles, ExternalLink, KeyRound, LogOut, Pencil, Check, X } from 'lucide-react';
+import {
+  RotateCcw,
+  Sparkles,
+  ExternalLink,
+  KeyRound,
+  LogOut,
+  Pencil,
+  Check,
+  X,
+  Plug,
+  ChevronRight,
+} from 'lucide-react';
 import { PROVIDERS, type ProphProvider } from '../../lib/proph3t';
 import { BillingSection } from './BillingSection';
 import { SectionErrorBoundary } from '../SectionErrorBoundary';
@@ -16,6 +28,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const signOut = useApp((s) => s.signOut);
   const authEmail = useApp((s) => s.authEmail);
   const updateProfile = useApp((s) => s.updateProfile);
+  const navigate = useNavigate();
 
   const [editingProfile, setEditingProfile] = useState(false);
   const [draftName, setDraftName] = useState(me.name);
@@ -303,6 +316,31 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </div>
             </div>
           </div>
+        </section>
+
+        <section>
+          <h3 className="text-2xs uppercase tracking-wider font-medium text-atlas-fg-3 mb-3 inline-flex items-center gap-2">
+            <Plug className="w-3 h-3 text-atlas-sage-deep" /> Intégrations
+          </h3>
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              navigate('/settings/integrations');
+            }}
+            className="panel p-4 w-full flex items-center gap-3 text-left hover:border-atlas-sage-deep/40 transition"
+          >
+            <div className="w-9 h-9 rounded-xl bg-atlas-sage/12 grid place-items-center shrink-0">
+              <KeyRound className="w-4 h-4 text-atlas-sage-deep" />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-medium text-atlas-fg-1">Personal Access Tokens</div>
+              <div className="text-2xs text-atlas-fg-3">
+                Connectez Claude Cowork, Claude Code ou tout client MCP à votre cockpit.
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-atlas-fg-3 shrink-0" />
+          </button>
         </section>
 
         <section>
