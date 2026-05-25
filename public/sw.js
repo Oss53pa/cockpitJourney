@@ -28,7 +28,7 @@
  *     to the new bundle on the next request.
  */
 
-const CACHE_VERSION = 'cj-v4-2026-05-21';
+const CACHE_VERSION = 'cj-v5-2026-05-25';
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
