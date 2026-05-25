@@ -79,6 +79,8 @@ export interface Task {
   parentTaskId?: string;
   title: string;
   description?: string;
+  /** Point de vigilance / risque / blocage — mis en avant sur la tâche. */
+  attentionPoint?: string;
   status: TaskStatus;
   priority: Priority;
   dueDate?: string;

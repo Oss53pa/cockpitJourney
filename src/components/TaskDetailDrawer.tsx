@@ -417,6 +417,15 @@ function DetailsTab({ task }: { task: Task }) {
         </div>
       )}
 
+      {task.attentionPoint && (
+        <div className="rounded-xl border border-signal-yellow/40 bg-signal-yellow/[0.08] p-4">
+          <div className="text-2xs uppercase tracking-[0.18em] font-medium text-signal-yellow mb-1.5 inline-flex items-center gap-1.5">
+            ⚠ Point d'attention
+          </div>
+          <p className="text-sm text-atlas-fg-1 leading-relaxed whitespace-pre-line">{task.attentionPoint}</p>
+        </div>
+      )}
+
       <div>
         <SectionTitle icon={ListChecks}>Propriétés</SectionTitle>
         <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">

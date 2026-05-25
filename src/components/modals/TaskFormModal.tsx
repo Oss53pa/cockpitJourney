@@ -72,6 +72,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
   // Basics
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
+  const [attentionPoint, setAttentionPoint] = useState(initial?.attentionPoint ?? '');
   // Folder → Project → Section hierarchy. The folder narrows the project
   // list so a task is always filed under the right category, even with many
   // projects spread across several folders.
@@ -229,6 +230,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
     const payload = {
       title: title.trim(),
       description: description.trim() || undefined,
+      attentionPoint: attentionPoint.trim() || undefined,
       projectId,
       sectionId,
       status,
@@ -371,6 +373,17 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Contexte, lien, attentes, critères de succès…"
+                />
+              </div>
+              <div>
+                <FieldLabel hint="risque, blocage, vigilance — mis en avant sur la tâche">
+                  Point d'attention
+                </FieldLabel>
+                <Textarea
+                  rows={2}
+                  value={attentionPoint}
+                  onChange={(e) => setAttentionPoint(e.target.value)}
+                  placeholder="Ex. dépendance externe, deadline serrée, budget à surveiller…"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
