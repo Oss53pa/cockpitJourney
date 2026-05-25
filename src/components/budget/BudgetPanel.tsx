@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   ListTree,
   Paperclip,
+  Sparkles,
 } from 'lucide-react';
 import { useApp } from '../../stores/appStore';
 import { cn, formatFCFA, formatDate } from '../../lib/utils';
@@ -21,7 +22,10 @@ import { Menu, MenuItem, MenuSeparator } from '../ui/Menu';
 import { BudgetLineModal } from './BudgetLineModal';
 import { ExpenseModal } from './ExpenseModal';
 import { AttachmentsBlock } from './AttachmentsBlock';
+import { SCurveChart } from './SCurveChart';
+import { Proph3tBudgetPanel } from './Proph3tBudgetPanel';
 import { buildBudgetTree, computeBudgetTotals, flattenTree, type BudgetTreeNode } from './rollups';
+import { buildSCurve, type SCurve } from './forecast';
 import type { BudgetLine, Expense, ExpenseStatus } from '../../types';
 
 const statusCfg: Record<ExpenseStatus, { label: string; cls: string }> = {
@@ -88,7 +92,7 @@ function downloadBudgetCsv(flatLines: { line: BudgetLine; depth: number }[], exp
   URL.revokeObjectURL(url);
 }
 
-type SubTab = 'overview' | 'lines';
+type SubTab = 'overview' | 'lines' | 'proph3t';
 
 interface ModalState {
   kind: 'line-create' | 'line-edit' | 'sub-create' | 'expense-create' | 'expense-edit';
@@ -102,11 +106,13 @@ interface ModalState {
 const subTabs: { key: SubTab; label: string; icon: typeof Wallet }[] = [
   { key: 'overview', label: "Vue d'ensemble", icon: LayoutDashboard },
   { key: 'lines', label: 'Lignes & dépenses', icon: ListTree },
+  { key: 'proph3t', label: 'PROPH3T', icon: Sparkles },
 ];
 
 export function BudgetPanel({ projectId }: { projectId: string }) {
   const allLines = useApp((s) => s.budgetLines);
   const allExpenses = useApp((s) => s.expenses);
+  const project = useApp((s) => s.projects.find((p) => p.id === projectId));
 
   const lines = useMemo(() => allLines.filter((l) => l.projectId === projectId), [allLines, projectId]);
   const expenses = useMemo(
@@ -117,6 +123,10 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
   const tree = useMemo(() => buildBudgetTree(lines, expenses), [lines, expenses]);
   const totals = useMemo(() => computeBudgetTotals(lines, expenses), [lines, expenses]);
   const flatLines = useMemo(() => flattenTree(tree), [tree]);
+  const curve = useMemo(
+    () => buildSCurve(lines, expenses, { startDate: project?.startDate, endDate: project?.endDate }),
+    [lines, expenses, project?.startDate, project?.endDate]
+  );
 
   const [tab, setTab] = useState<SubTab>('overview');
   const [modal, setModal] = useState<ModalState | null>(null);
@@ -150,7 +160,15 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
         </button>
       </div>
 
-      {tab === 'overview' && <OverviewTab tree={tree} totals={totals} />}
+      {tab === 'overview' && <OverviewTab tree={tree} totals={totals} curve={curve} />}
+      {tab === 'proph3t' && (
+        <Proph3tBudgetPanel
+          lines={lines}
+          expenses={expenses}
+          startDate={project?.startDate}
+          endDate={project?.endDate}
+        />
+      )}
       {tab === 'lines' && (
         <LinesTab
           projectId={projectId}
@@ -194,9 +212,11 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
 function OverviewTab({
   tree,
   totals,
+  curve,
 }: {
   tree: BudgetTreeNode[];
   totals: ReturnType<typeof computeBudgetTotals>;
+  curve: SCurve;
 }) {
   const { totalAllocated, totalSpent, totalRemaining, pct, byStatus } = totals;
 
@@ -250,6 +270,9 @@ function OverviewTab({
           <StatusCell label="Payée" value={byStatus.paid} cls="text-signal-green" />
         </div>
       </div>
+
+      {/* Courbe en S — réalisé cumulé vs trajectoire idéale */}
+      <SCurveChart curve={curve} />
 
       {/* Top-level lines with rolled-up spend */}
       <div className="panel p-4">
