@@ -664,6 +664,12 @@ export async function exportToDocx(payload: ExportPayload): Promise<void> {
     creator: COPY.brand,
     title: report.title,
     description: report.period,
+    // Brand body font everywhere (Word substitutes if Dosis isn't installed).
+    styles: {
+      default: {
+        document: { run: { font: 'Dosis' } },
+      },
+    },
     features: { updateFields: true }, // tells Word to update TOC on open
     numbering: {
       config: [

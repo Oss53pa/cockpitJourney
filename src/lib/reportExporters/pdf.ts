@@ -22,7 +22,6 @@ import {
   priorityLabel,
   taskStatusLabel,
   type ExportPayload,
-  type SectionKey,
 } from './types';
 import {
   C,
@@ -33,6 +32,7 @@ import {
   buildToc,
   buildDocRef,
   loadWordmarkDataUrl,
+  loadDosisFonts,
   rgb,
   stripMarkdown,
   formatPeriodRange,
@@ -99,6 +99,22 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
     keywords: `CockpitJourney, rapport, ${report.kind}, ${report.period}, ${docRef}`,
     creator: COPY.poweredBy,
   });
+
+  // Embed the brand body font (Dosis). FONT is used everywhere instead of the
+  // built-in Helvetica; falls back to 'helvetica' if the TTFs can't be fetched.
+  let FONT = 'helvetica';
+  const dosis = await loadDosisFonts();
+  if (dosis) {
+    doc.addFileToVFS('Dosis-Regular.ttf', dosis.regular);
+    doc.addFont('Dosis-Regular.ttf', 'Dosis', 'normal');
+    doc.addFileToVFS('Dosis-Bold.ttf', dosis.bold);
+    doc.addFont('Dosis-Bold.ttf', 'Dosis', 'bold');
+    // Dosis ships no italic face → map italic to the regular so callers that
+    // ask for italic don't throw (jsPDF requires the style to be registered).
+    doc.addFont('Dosis-Regular.ttf', 'Dosis', 'italic');
+    FONT = 'Dosis';
+  }
+
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
 
@@ -116,7 +132,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
 
   const drawSubheading = (cur: Cursor, text: string) => {
     ensureSpace(cur, 28);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(FONT, 'bold');
     doc.setTextColor(...rgb(C.fg1));
     doc.setFontSize(TYPE.h3);
     doc.text(text, PAGE.marginLeft, cur.y);
@@ -130,7 +146,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
   ) => {
     if (!text) return;
     const size = opts.size ?? TYPE.body;
-    doc.setFont('helvetica', opts.italic ? 'italic' : 'normal');
+    doc.setFont(FONT, opts.italic ? 'italic' : 'normal');
     doc.setTextColor(...rgb(opts.color ?? C.fg2));
     doc.setFontSize(size);
     const lines = doc.splitTextToSize(text, W - PAGE.marginLeft - PAGE.marginRight);
@@ -163,13 +179,13 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
   doc.line(W * 0.36 + PAGE.marginLeft, 240, W * 0.36 + PAGE.marginLeft + 40, 240);
 
   // Eyebrow
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT, 'bold');
   doc.setTextColor(...rgb(C.brand));
   doc.setFontSize(TYPE.eyebrow);
   doc.text(kindEyebrow(report.kind), W * 0.36 + PAGE.marginLeft, 270, { charSpace: 1.5 });
 
   // Big title — auto-shrink if it doesn't fit on 2 lines at full size.
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT, 'bold');
   doc.setTextColor(...rgb(C.fg1));
   // Cream side starts at 36% of W; leave a comfortable inner margin.
   const titleX = W * 0.36 + PAGE.marginLeft;
@@ -194,12 +210,12 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
   });
 
   // Period range (DD/MM/YYYY → DD/MM/YYYY) — the canonical date span
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT, 'bold');
   doc.setTextColor(...rgb(C.brand));
   doc.setFontSize(TYPE.h3);
   doc.text(formatPeriodRange(report), W * 0.36 + PAGE.marginLeft, titleY + 18);
   // Long-form below for human readability
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(FONT, 'normal');
   doc.setTextColor(...rgb(C.fg3));
   doc.setFontSize(TYPE.body);
   doc.text(report.period, W * 0.36 + PAGE.marginLeft, titleY + 36);
@@ -210,7 +226,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
   doc.setLineWidth(0.5);
   doc.line(W * 0.36 + PAGE.marginLeft, bottomY - 18, W - PAGE.marginRight, bottomY - 18);
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT, 'bold');
   doc.setTextColor(...rgb(C.fg3));
   doc.setFontSize(TYPE.micro);
   doc.text(COPY.preparedBy.toUpperCase(), W * 0.36 + PAGE.marginLeft, bottomY, { charSpace: 1 });
@@ -218,20 +234,20 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
     charSpace: 1,
   });
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(FONT, 'normal');
   doc.setTextColor(...rgb(C.fg1));
   doc.setFontSize(TYPE.body);
   doc.text(COPY.brand, W * 0.36 + PAGE.marginLeft, bottomY + 16);
   doc.text(formatDate(report.generatedAt), W * 0.36 + PAGE.marginLeft + 200, bottomY + 16);
 
   // Sage band — brand tag at top-left
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT, 'bold');
   doc.setTextColor(255);
   doc.setFontSize(TYPE.brandTag);
   doc.text(COPY.brandLong.toUpperCase(), PAGE.marginLeft, 64, { charSpace: 1.5 });
 
   // Classification stamp at bottom-left of sage band
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT, 'bold');
   doc.setTextColor(255);
   doc.setFontSize(TYPE.micro);
   doc.setDrawColor(255);
@@ -247,13 +263,18 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
   /* ─────────────────────── 2. SOMMAIRE ─────────────────────── */
   const cur: Cursor = { y: PAGE.marginTop, section: COPY.toc };
   const toc = buildToc(options.sections);
+  // TOC entry slots (y position per section) — page numbers are back-patched
+  // after the whole document is laid out.
+  const tocSlots: { key: string; y: number }[] = [];
+  let tocPageNumber = 0;
 
   if (toc.length > 0) {
     doc.addPage();
     cur.y = PAGE.marginTop;
+    tocPageNumber = doc.getNumberOfPages();
 
     // Sommaire eyebrow + big title
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(FONT, 'bold');
     doc.setTextColor(...rgb(C.brand));
     doc.setFontSize(TYPE.eyebrow);
     doc.text('TABLE DES MATIÈRES', PAGE.marginLeft, cur.y, { charSpace: 1.5 });
@@ -270,120 +291,100 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
     doc.line(PAGE.marginLeft, cur.y, PAGE.marginLeft + 60, cur.y);
     cur.y += 30;
 
-    // Pre-estimate: cover=1, toc=2, then each section ≈ 2 pages incl. divider
-    let pageEstimate = 3;
     for (const item of toc) {
       ensureSpace(cur, 30);
 
-      // Section number in big sage
-      doc.setFont('helvetica', 'bold');
+      // Section number in sage
+      doc.setFont(FONT, 'bold');
       doc.setTextColor(...rgb(C.brand));
       doc.setFontSize(TYPE.h3);
       doc.text(item.number, PAGE.marginLeft, cur.y);
 
       // Label
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(FONT, 'normal');
       doc.setTextColor(...rgb(C.fg1));
       doc.setFontSize(TYPE.bodyBold);
       doc.text(item.label, PAGE.marginLeft + 44, cur.y);
 
-      // Dotted leader between label and page number
+      // Dotted leader up to a fixed slot near the right margin; the page
+      // number is written there later (back-patched once layout is known).
       const labelW = doc.getTextWidth(item.label);
       const labelEnd = PAGE.marginLeft + 44 + labelW + 8;
-      const pageNumStr = String(pageEstimate);
-      const pageNumW = doc.getTextWidth(pageNumStr);
-      const dotsEnd = W - PAGE.marginRight - pageNumW - 8;
-
+      const dotsEnd = W - PAGE.marginRight - 22;
       doc.setTextColor(...rgb(C.fg4));
-      const dotCount = Math.max(0, Math.floor((dotsEnd - labelEnd) / 4));
       let dotsX = labelEnd;
-      for (let i = 0; i < dotCount; i++) {
+      while (dotsX < dotsEnd) {
         doc.text('·', dotsX, cur.y);
         dotsX += 4;
       }
 
-      // Page number
-      doc.setFont('courier', 'bold');
-      doc.setTextColor(...rgb(C.fg2));
-      doc.text(pageNumStr, W - PAGE.marginRight, cur.y, { align: 'right' });
-
+      tocSlots.push({ key: item.key, y: cur.y });
       cur.y += 26;
-      pageEstimate += 2;
     }
 
     // Footer note on TOC page
     cur.y = H - 90;
-    doc.setFont('helvetica', 'italic');
+    doc.setFont(FONT, 'italic');
     doc.setTextColor(...rgb(C.fg4));
     doc.setFontSize(TYPE.micro);
     doc.text(`${COPY.poweredBy} · ${docRef}`, PAGE.marginLeft, cur.y);
   }
 
-  /* ─── Section divider page ─── */
-  const drawSectionDivider = (number: string, label: string, key: SectionKey) => {
-    doc.addPage();
+  /* ─── Compact inline section header ───
+   * No full-page divider (that wasted ~1 near-empty page per section and was
+   * the main source of whitespace). Sections flow continuously; the header is
+   * a tight eyebrow + title + accent rule drawn at the current cursor. A new
+   * page is started only when there isn't room for the header + a little body.
+   */
+  const drawSectionHeader = (number: string, label: string) => {
     cur.section = label;
+    ensureSpace(cur, 72);
 
-    // Top sage strip
-    doc.setFillColor(...rgb(C.brand));
-    doc.rect(0, 0, W, 6, 'F');
-
-    // Big chapter number, sage glow, top-right — sized to never collide
-    // with the section title (right-aligned, top-anchored at y=200).
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...rgb(C.brandGlow));
-    doc.setFontSize(140);
-    doc.text(number, W - PAGE.marginRight, 200, { align: 'right' });
-
-    // Eyebrow PARTIE 0X
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(FONT, 'bold');
     doc.setTextColor(...rgb(C.brand));
     doc.setFontSize(TYPE.eyebrow);
-    doc.text(`PARTIE ${number}`, PAGE.marginLeft, 220, { charSpace: 2 });
+    doc.text(`PARTIE ${number}`, PAGE.marginLeft, cur.y, { charSpace: 2 });
+    cur.y += 16;
 
-    // Section title — auto-shrink if too long, never overlap the chapter
-    // number on the right (reserve 160pt for the number + breathing).
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(FONT, 'bold');
     doc.setTextColor(...rgb(C.fg1));
-    let labelSize: number = TYPE.h1;
+    let labelSize: number = TYPE.h2;
     let lines: string[] = [];
-    const labelMaxW = W - PAGE.marginLeft - PAGE.marginRight - 160;
-    for (const size of [TYPE.h1, 18, 16, 14]) {
+    const labelMaxW = W - PAGE.marginLeft - PAGE.marginRight;
+    for (const size of [TYPE.h2, 15, 14]) {
       doc.setFontSize(size);
       lines = doc.splitTextToSize(label, labelMaxW) as string[];
-      if (lines.length <= 3) {
+      if (lines.length <= 2) {
         labelSize = size;
         break;
       }
+      labelSize = size;
     }
     doc.setFontSize(labelSize);
-    let yy = 250;
-    const lineH = Math.round(labelSize * 1.25);
+    const lineH = Math.round(labelSize * 1.2);
     lines.forEach((line: string) => {
-      doc.text(line, PAGE.marginLeft, yy);
-      yy += lineH;
+      doc.text(line, PAGE.marginLeft, cur.y);
+      cur.y += lineH;
     });
 
-    // Sage thin line under title
     doc.setDrawColor(...rgb(C.brand));
-    doc.setLineWidth(2);
-    doc.line(PAGE.marginLeft, yy + 8, PAGE.marginLeft + 60, yy + 8);
-
-    // Period range below the section title
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...rgb(C.brand));
-    doc.setFontSize(TYPE.body);
-    doc.text(formatPeriodRange(report), PAGE.marginLeft, yy + 32);
-
-    // Body content starts on the NEXT page
-    newBodyPage(cur);
-    void key;
+    doc.setLineWidth(1.5);
+    doc.line(PAGE.marginLeft, cur.y + 2, PAGE.marginLeft + 40, cur.y + 2);
+    cur.y += GAP.section + 4;
   };
 
   /* ─────────────────────── 3. CONTENT SECTIONS ─────────────────────── */
 
+  // Start content on a fresh page after the cover + sommaire, then let the
+  // sections flow continuously — no full-page dividers, so no empty pages.
+  newBodyPage(cur);
+  const sectionStartPage = new Map<string, number>();
+  let firstSection = true;
   for (const item of toc) {
-    drawSectionDivider(item.number, item.label, item.key);
+    if (!firstSection) cur.y += GAP.section;
+    firstSection = false;
+    drawSectionHeader(item.number, item.label);
+    sectionStartPage.set(item.key, doc.getNumberOfPages());
 
     switch (item.key) {
       case 'narrative': {
@@ -437,12 +438,12 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
             ensureSpace(cur, 24);
             doc.setFillColor(...rgb(C.brandGlow));
             doc.circle(PAGE.marginLeft + 6, cur.y - 4, 8, 'F');
-            doc.setFont('helvetica', 'bold');
+            doc.setFont(FONT, 'bold');
             doc.setTextColor(...rgb(C.brand));
             doc.setFontSize(TYPE.small);
             doc.text(String(i + 1), PAGE.marginLeft + 6, cur.y - 1.5, { align: 'center' });
 
-            doc.setFont('helvetica', 'normal');
+            doc.setFont(FONT, 'normal');
             doc.setTextColor(...rgb(C.fg1));
             doc.setFontSize(TYPE.body);
             const lines = doc.splitTextToSize(h, W - PAGE.marginLeft - PAGE.marginRight - 22);
@@ -463,7 +464,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
         for (const p of projects) {
           /* ── Project header row (name + health pill) ── */
           ensureSpace(cur, 24);
-          doc.setFont('helvetica', 'bold');
+          doc.setFont(FONT, 'bold');
           doc.setTextColor(...rgb(C.fg1));
           doc.setFontSize(TYPE.h3);
           // Truncate the name if needed so it doesn't crash into the pill.
@@ -479,7 +480,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
           doc.roundedRect(pillX, cur.y - 11, pillW, 16, 4, 4, 'F');
           doc.setTextColor(255);
           doc.setFontSize(TYPE.eyebrow);
-          doc.setFont('helvetica', 'bold');
+          doc.setFont(FONT, 'bold');
           doc.text(p.health.toUpperCase(), pillX + pillW / 2, cur.y, {
             align: 'center',
             charSpace: 1,
@@ -488,7 +489,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
 
           /* ── Summary (italic muted) ── */
           if (p.summary) {
-            doc.setFont('helvetica', 'italic');
+            doc.setFont(FONT, 'italic');
             doc.setTextColor(...rgb(C.fg3));
             doc.setFontSize(TYPE.body);
             const sumLines = doc.splitTextToSize(
@@ -555,11 +556,11 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
             doc.setFillColor(...rgb('#FCEAE6'));
             doc.roundedRect(PAGE.marginLeft, cur.y, W - PAGE.marginLeft - PAGE.marginRight, noteH, 3, 3, 'F');
             // "RISQUE" tag in red, then the note in red regular.
-            doc.setFont('helvetica', 'bold');
+            doc.setFont(FONT, 'bold');
             doc.setTextColor(...rgb(C.red));
             doc.setFontSize(TYPE.eyebrow);
             doc.text('RISQUE', PAGE.marginLeft + 8, cur.y + 12, { charSpace: 1.5 });
-            doc.setFont('helvetica', 'normal');
+            doc.setFont(FONT, 'normal');
             doc.setFontSize(TYPE.small);
             const noteY = cur.y + 12;
             noteLines.forEach((line, idx) => {
@@ -726,12 +727,12 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
             ensureSpace(cur, 24);
             doc.setFillColor(...rgb(C.brand));
             doc.circle(PAGE.marginLeft + 6, cur.y - 4, 8, 'F');
-            doc.setFont('helvetica', 'bold');
+            doc.setFont(FONT, 'bold');
             doc.setTextColor(255);
             doc.setFontSize(TYPE.small);
             doc.text(String(i + 1), PAGE.marginLeft + 6, cur.y - 1.5, { align: 'center' });
 
-            doc.setFont('helvetica', 'normal');
+            doc.setFont(FONT, 'normal');
             doc.setTextColor(...rgb(C.fg1));
             doc.setFontSize(TYPE.body);
             const lines = doc.splitTextToSize(s, W - PAGE.marginLeft - PAGE.marginRight - 22);
@@ -748,6 +749,19 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
     }
   }
 
+  // Back-patch the sommaire page numbers now that the real layout is known
+  // (sections flow continuously, so the start page is only known after layout).
+  if (tocSlots.length > 0 && tocPageNumber > 0) {
+    doc.setPage(tocPageNumber);
+    doc.setFont('courier', 'bold');
+    doc.setTextColor(...rgb(C.fg2));
+    doc.setFontSize(TYPE.bodyBold);
+    for (const slot of tocSlots) {
+      const pn = sectionStartPage.get(slot.key);
+      if (pn) doc.text(String(pn), W - PAGE.marginRight, slot.y, { align: 'right' });
+    }
+  }
+
   /* ─────────────────────── 4. CLOSING PAGE ─────────────────────── */
   doc.addPage();
   doc.setFillColor(...rgb(C.brand));
@@ -756,7 +770,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
   doc.rect(0, 0, W * 0.64, H, 'F');
 
   // "Merci." big
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT, 'bold');
   doc.setTextColor(...rgb(C.fg1));
   doc.setFontSize(TYPE.coverBig);
   doc.text(COPY.thanks, PAGE.marginLeft, H / 2 - 20);
@@ -767,7 +781,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
   doc.line(PAGE.marginLeft, H / 2 + 8, PAGE.marginLeft + 50, H / 2 + 8);
 
   // Subline
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(FONT, 'normal');
   doc.setTextColor(...rgb(C.fg2));
   doc.setFontSize(TYPE.h3);
   const subLines = doc.splitTextToSize(COPY.thanksSub, W * 0.55);
@@ -779,12 +793,12 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
 
   // Contact block
   sy += 20;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT, 'bold');
   doc.setTextColor(...rgb(C.brand));
   doc.setFontSize(TYPE.eyebrow);
   doc.text('CONTACT', PAGE.marginLeft, sy, { charSpace: 1.5 });
   sy += 14;
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(FONT, 'normal');
   doc.setTextColor(...rgb(C.fg1));
   doc.setFontSize(TYPE.body);
   doc.text(COPY.contact, PAGE.marginLeft, sy);
@@ -793,7 +807,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
   doc.text(COPY.studioWebsite, PAGE.marginLeft, sy);
 
   // Legal disclaimer at bottom of cream side
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(FONT, 'normal');
   doc.setTextColor(...rgb(C.fg4));
   doc.setFontSize(TYPE.micro);
   const legalLines = doc.splitTextToSize(COPY.legal, W * 0.55);
@@ -817,7 +831,7 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
       /* silent */
     }
   }
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT, 'bold');
   doc.setTextColor(255);
   doc.setFontSize(TYPE.brandTag);
   doc.text(COPY.brand.toUpperCase(), W * 0.64 + PAGE.marginLeft - 12, 64, { charSpace: 1.5 });
@@ -833,24 +847,24 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
     doc.setDrawColor(...rgb(C.line));
     doc.setLineWidth(0.4);
     doc.line(PAGE.marginLeft, 60, W - PAGE.marginRight, 60);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(FONT, 'bold');
     doc.setTextColor(...rgb(C.brand));
     doc.setFontSize(TYPE.micro);
     doc.text(COPY.brand.toUpperCase(), PAGE.marginLeft, 50, { charSpace: 1 });
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(FONT, 'normal');
     doc.setTextColor(...rgb(C.fg3));
     doc.text(formatPeriodRange(report), W - PAGE.marginRight, 50, { align: 'right' });
 
     // Running footer
     doc.setDrawColor(...rgb(C.line));
     doc.line(PAGE.marginLeft, H - 50, W - PAGE.marginRight, H - 50);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(FONT, 'normal');
     doc.setTextColor(...rgb(C.fg3));
     doc.setFontSize(TYPE.micro);
     doc.text(COPY.classification, PAGE.marginLeft, H - 36, { charSpace: 2 });
     doc.setFont('courier', 'normal');
     doc.text(docRef, W / 2, H - 36, { align: 'center' });
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(FONT, 'bold');
     doc.setTextColor(...rgb(C.fg1));
     doc.text(`${p} / ${total}`, W - PAGE.marginRight, H - 36, { align: 'right' });
   }

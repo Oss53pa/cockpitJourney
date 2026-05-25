@@ -170,6 +170,44 @@ export function loadWordmarkDataUrl(): Promise<string> {
 }
 
 /**
+ * Load the brand body font **Dosis** (Regular + Bold) as base64 strings so
+ * jsPDF can embed it (addFileToVFS / addFont). The app's body/display font is
+ * Dosis; embedding it makes the PDF match the product instead of falling back
+ * to Helvetica. Cached after first load; returns null on failure so the
+ * exporter can gracefully degrade to the built-in font.
+ */
+let dosisCache: Promise<{ regular: string; bold: string } | null> | null = null;
+
+async function fetchAsBase64(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const buf = await res.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const CHUNK = 0x8000; // avoid call-stack overflow on large fonts
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
+  }
+  return btoa(binary);
+}
+
+export function loadDosisFonts(): Promise<{ regular: string; bold: string } | null> {
+  if (dosisCache) return dosisCache;
+  dosisCache = (async () => {
+    try {
+      const [regular, bold] = await Promise.all([
+        fetchAsBase64('/fonts/Dosis-Regular.ttf'),
+        fetchAsBase64('/fonts/Dosis-Bold.ttf'),
+      ]);
+      return { regular, bold };
+    } catch {
+      return null; // graceful — PDF falls back to Helvetica
+    }
+  })();
+  return dosisCache;
+}
+
+/**
  * Format the report's period as "DD/MM/YYYY → DD/MM/YYYY" — the
  * universal "from-to" string used on covers, section dividers, the
  * Reports table, and exports. Falls back to the human-readable
