@@ -41,6 +41,15 @@ export function formatCurrency(n: number, currency = 'XOF'): string {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency, maximumFractionDigits: 0 }).format(n);
 }
 
+/**
+ * Format an amount as FCFA (XOF) with a space thousands separator and no
+ * decimals, e.g. `formatFCFA(1500000)` → "1 500 000 FCFA". Used across the
+ * Budget module where the explicit "FCFA" suffix is the product convention.
+ */
+export function formatFCFA(n: number): string {
+  return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(Math.round(n || 0))} FCFA`;
+}
+
 export function priorityLabel(p: 1 | 2 | 3 | 4): string {
   return ['—', 'Faible', 'Normale', 'Haute', 'Critique'][p];
 }

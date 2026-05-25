@@ -48,6 +48,7 @@ import { HealthDot } from '../ui/HealthDot';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../ui/Menu';
 import { cn, formatDate } from '../../lib/utils';
 import { SectionErrorBoundary } from '../SectionErrorBoundary';
+import { BudgetPanel } from '../budget/BudgetPanel';
 import {
   DndContext,
   type DragEndEvent,
@@ -69,11 +70,12 @@ const projectIcons: Record<string, LucideIcon> = {
   BookOpen,
 };
 
-type MainTab = 'tasks' | 'notes' | 'files' | 'brief' | 'dashboard' | 'goals' | 'activity';
+type MainTab = 'tasks' | 'budget' | 'notes' | 'files' | 'brief' | 'dashboard' | 'goals' | 'activity';
 type TaskView = 'list' | 'kanban' | 'calendar' | 'gantt' | 'table';
 
 const mainTabs: { key: MainTab; label: string; icon: LucideIcon }[] = [
   { key: 'tasks', label: 'Tâches', icon: ListChecks },
+  { key: 'budget', label: 'Budget', icon: Wallet },
   { key: 'notes', label: 'Notes', icon: FileText },
   { key: 'files', label: 'Fichiers', icon: Paperclip },
   { key: 'brief', label: 'Brief', icon: Sparkles },
@@ -469,6 +471,11 @@ export function ProjectView({ project, onOpenTask }: Props) {
         {tab === 'tasks' && taskView === 'table' && (
           <SectionErrorBoundary section="Le tableau" scope="project:table">
             <TableBoard tasks={tasks} onOpenTask={onOpenTask} />
+          </SectionErrorBoundary>
+        )}
+        {tab === 'budget' && (
+          <SectionErrorBoundary section="Le budget" scope="project:budget">
+            <BudgetPanel projectId={project.id} />
           </SectionErrorBoundary>
         )}
         {tab === 'notes' && (

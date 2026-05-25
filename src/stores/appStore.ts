@@ -31,6 +31,10 @@ import type {
   Priority,
   TaskStatus,
   TaskTemplate,
+  BudgetLine,
+  Expense,
+  BudgetNote,
+  ExpenseStatus,
 } from '../types';
 
 // Module-level guards: React StrictMode runs effects twice in dev, which
@@ -272,6 +276,8 @@ interface State {
   activity: ActivityEvent[];
   notes: TaskNote[];
   subtasks: Subtask[];
+  budgetLines: BudgetLine[];
+  expenses: Expense[];
 
   // hydration flag — true once Supabase snapshot has been loaded (or
   // optimistically hydrated from the localStorage cache pending the real
@@ -425,6 +431,27 @@ interface State {
   toggleSubtask: (id: string) => void;
   removeSubtask: (id: string) => void;
   reorderSubtasks: (taskId: string, ids: string[]) => void;
+
+  // budget (per-project) — lines + expenses + notes. Allocated / spent /
+  // remaining / % are NEVER stored; they're derived from these arrays.
+  createBudgetLine: (projectId: string, input: { name: string; allocatedAmount: number }) => BudgetLine;
+  updateBudgetLine: (id: string, patch: Partial<BudgetLine>) => void;
+  deleteBudgetLine: (id: string) => void;
+  createExpense: (
+    projectId: string,
+    lineId: string | null,
+    input: {
+      label: string;
+      amount: number;
+      status?: ExpenseStatus;
+      expenseDate?: string;
+      vendor?: string | null;
+    }
+  ) => Expense;
+  updateExpense: (id: string, patch: Partial<Expense>) => void;
+  deleteExpense: (id: string) => void;
+  addBudgetNote: (target: { kind: 'line' | 'expense'; id: string }, text: string) => void;
+
   resetSeed: () => void;
 
   // insights
@@ -564,6 +591,8 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
       activity: offline.activity,
       subtasks: offline.subtasks,
       notes: offline.notes,
+      budgetLines: offline.budgetLines,
+      expenses: offline.expenses,
       settings: { ...get().settings, ...(offline.settings as Partial<State['settings']>) },
       currentProfileId: offline.selfProfileId,
       authStatus: 'signed_in',
@@ -643,6 +672,8 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
         activity: snap.activity,
         subtasks: snap.subtasks,
         notes: snap.notes,
+        budgetLines: snap.budgetLines,
+        expenses: snap.expenses,
         settings: { ...get().settings, ...(snap.settings as Partial<State['settings']>) },
         currentProfileId: profileId,
         ready: true,
@@ -694,6 +725,8 @@ const initialState = (set: SetFn, get: GetFn): State => ({
   activity: [],
   subtasks: [],
   notes: [],
+  budgetLines: [],
+  expenses: [],
 
   ready: false,
   authStatus: 'loading',
@@ -777,6 +810,8 @@ const initialState = (set: SetFn, get: GetFn): State => ({
           activity: cached.activity,
           subtasks: cached.subtasks,
           notes: cached.notes,
+          budgetLines: cached.budgetLines ?? [],
+          expenses: cached.expenses ?? [],
           settings: { ...get().settings, ...(cached.settings as Partial<State['settings']>) },
           ready: true,
           revalidating: true,
@@ -834,6 +869,8 @@ const initialState = (set: SetFn, get: GetFn): State => ({
             activity: [],
             subtasks: [],
             notes: [],
+            budgetLines: [],
+            expenses: [],
           });
           return;
         }
@@ -2295,6 +2332,125 @@ Reste sous 400 mots, ton factuel et engagé.`,
     dbPersist.bulkPut('subtasks', updated);
   },
 
+  createBudgetLine: (projectId, { name, allocatedAmount }) => {
+    const now = new Date().toISOString();
+    const maxOrder = get()
+      .budgetLines.filter((l) => l.projectId === projectId)
+      .reduce((m, l) => Math.max(m, l.sortOrder), -1);
+    const line: BudgetLine = {
+      id: uid('bl'),
+      projectId,
+      ownerId: get().currentProfileId ?? null,
+      name: name.trim(),
+      allocatedAmount: Number.isFinite(allocatedAmount) ? allocatedAmount : 0,
+      currency: 'XOF',
+      sortOrder: maxOrder + 1,
+      notes: [],
+      attachments: [],
+      createdAt: now,
+      updatedAt: now,
+      createdVia: 'manual',
+    };
+    set((s) => ({ budgetLines: [...s.budgetLines, line] }));
+    dbPersist.put('budgetLines', line);
+    get().pushToast({ kind: 'success', title: 'Ligne budgétaire créée', body: line.name });
+    return line;
+  },
+  updateBudgetLine: (id, patch) => {
+    set((s) => ({
+      budgetLines: s.budgetLines.map((l) =>
+        l.id === id ? { ...l, ...patch, updatedAt: new Date().toISOString() } : l
+      ),
+    }));
+    const updated = get().budgetLines.find((l) => l.id === id);
+    if (updated) dbPersist.put('budgetLines', updated);
+  },
+  deleteBudgetLine: (id) => {
+    const line = get().budgetLines.find((l) => l.id === id);
+    // Detach (don't delete) this line's expenses — they become "non
+    // ventilées" but keep their amount in the project total. Mirrors the
+    // DB FK (cj_expenses.line_id ON DELETE SET NULL).
+    const orphaned = get().expenses.filter((e) => e.lineId === id);
+    set((s) => ({
+      budgetLines: s.budgetLines.filter((l) => l.id !== id),
+      expenses: s.expenses.map((e) =>
+        e.lineId === id ? { ...e, lineId: null, updatedAt: new Date().toISOString() } : e
+      ),
+    }));
+    dbPersist.delete('budgetLines', id);
+    for (const e of orphaned) {
+      const updated = get().expenses.find((x) => x.id === e.id);
+      if (updated) dbPersist.put('expenses', updated);
+    }
+    get().pushToast({ kind: 'info', title: 'Ligne supprimée', body: line?.name });
+  },
+  createExpense: (projectId, lineId, { label, amount, status, expenseDate, vendor }) => {
+    const now = new Date().toISOString();
+    const expense: Expense = {
+      id: uid('ex'),
+      projectId,
+      lineId: lineId ?? null,
+      taskId: null,
+      label: label.trim(),
+      amount: Number.isFinite(amount) ? amount : 0,
+      currency: 'XOF',
+      status: status ?? 'paid',
+      expenseDate: expenseDate ?? now.slice(0, 10),
+      vendor: vendor?.trim() || null,
+      notes: [],
+      attachments: [],
+      createdAt: now,
+      updatedAt: now,
+      createdVia: 'manual',
+    };
+    set((s) => ({ expenses: [...s.expenses, expense] }));
+    dbPersist.put('expenses', expense);
+    get().pushToast({ kind: 'success', title: 'Dépense enregistrée', body: expense.label });
+    return expense;
+  },
+  updateExpense: (id, patch) => {
+    set((s) => ({
+      expenses: s.expenses.map((e) =>
+        e.id === id ? { ...e, ...patch, updatedAt: new Date().toISOString() } : e
+      ),
+    }));
+    const updated = get().expenses.find((e) => e.id === id);
+    if (updated) dbPersist.put('expenses', updated);
+  },
+  deleteExpense: (id) => {
+    const e = get().expenses.find((x) => x.id === id);
+    set((s) => ({ expenses: s.expenses.filter((x) => x.id !== id) }));
+    dbPersist.delete('expenses', id);
+    get().pushToast({ kind: 'info', title: 'Dépense supprimée', body: e?.label });
+  },
+  addBudgetNote: ({ kind, id }, text) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const note: BudgetNote = {
+      id: uid('bn'),
+      text: trimmed,
+      authorId: get().currentProfileId ?? null,
+      at: new Date().toISOString(),
+    };
+    if (kind === 'line') {
+      set((s) => ({
+        budgetLines: s.budgetLines.map((l) =>
+          l.id === id ? { ...l, notes: [...l.notes, note], updatedAt: new Date().toISOString() } : l
+        ),
+      }));
+      const updated = get().budgetLines.find((l) => l.id === id);
+      if (updated) dbPersist.put('budgetLines', updated);
+    } else {
+      set((s) => ({
+        expenses: s.expenses.map((e) =>
+          e.id === id ? { ...e, notes: [...e.notes, note], updatedAt: new Date().toISOString() } : e
+        ),
+      }));
+      const updated = get().expenses.find((e) => e.id === id);
+      if (updated) dbPersist.put('expenses', updated);
+    }
+  },
+
   signOut: async () => {
     await supabase.auth.signOut();
     // onAuthStateChange will reset the in-memory state
@@ -2355,6 +2511,8 @@ if (typeof window !== 'undefined') {
       state.activity === prevEntityRefs.activity &&
       state.subtasks === prevEntityRefs.subtasks &&
       state.notes === prevEntityRefs.notes &&
+      state.budgetLines === prevEntityRefs.budgetLines &&
+      state.expenses === prevEntityRefs.expenses &&
       state.settings === prevEntityRefs.settings &&
       state.currentProfileId === prevEntityRefs.currentProfileId
     ) {
@@ -2378,6 +2536,8 @@ if (typeof window !== 'undefined') {
       activity: state.activity,
       subtasks: state.subtasks,
       notes: state.notes,
+      budgetLines: state.budgetLines,
+      expenses: state.expenses,
       settings: state.settings,
       currentProfileId: state.currentProfileId,
     };
@@ -2406,6 +2566,8 @@ if (typeof window !== 'undefined') {
           activity: s.activity,
           subtasks: s.subtasks,
           notes: s.notes,
+          budgetLines: s.budgetLines,
+          expenses: s.expenses,
           settings: s.settings as unknown as Record<string, unknown>,
         },
         s.currentProfileId ?? ''
@@ -2442,6 +2604,8 @@ if (typeof window !== 'undefined') {
         activity: s.activity,
         subtasks: s.subtasks,
         notes: s.notes,
+        budgetLines: s.budgetLines,
+        expenses: s.expenses,
         settings: s.settings as unknown as Record<string, unknown>,
       },
       s.currentProfileId ?? ''

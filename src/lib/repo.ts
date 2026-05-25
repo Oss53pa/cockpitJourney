@@ -21,6 +21,8 @@ import type {
   Comment,
   Notification,
   PropheticInsight,
+  BudgetLine,
+  Expense,
 } from '../types';
 import type {
   AutomationRule,
@@ -52,7 +54,9 @@ export type AppTable =
   | 'attachments'
   | 'dependencies'
   | 'activity'
-  | 'notes';
+  | 'notes'
+  | 'budgetLines'
+  | 'expenses';
 
 const sqlTableFor: Record<AppTable, string> = {
   users: 'cj_profiles',
@@ -72,6 +76,8 @@ const sqlTableFor: Record<AppTable, string> = {
   dependencies: 'cj_dependencies',
   activity: 'cj_activity',
   notes: 'cj_notes',
+  budgetLines: 'cj_budget_lines',
+  expenses: 'cj_expenses',
 };
 
 /**
@@ -148,6 +154,27 @@ function indexedColsFor(table: AppTable, entity: Record<string, unknown>): Index
         project_id: entity.projectId ?? null,
         actor_id: entity.actorId ?? null,
       };
+    case 'budgetLines':
+      return {
+        project_id: entity.projectId,
+        owner_id: entity.ownerId ?? null,
+        name: entity.name,
+        allocated_amount: entity.allocatedAmount ?? 0,
+        currency: entity.currency ?? 'XOF',
+        sort_order: entity.sortOrder ?? 0,
+      };
+    case 'expenses':
+      return {
+        project_id: entity.projectId,
+        line_id: entity.lineId ?? null,
+        task_id: entity.taskId ?? null,
+        label: entity.label,
+        amount: entity.amount ?? 0,
+        currency: entity.currency ?? 'XOF',
+        status: entity.status ?? 'paid',
+        expense_date: entity.expenseDate ?? new Date().toISOString().slice(0, 10),
+        vendor: entity.vendor ?? null,
+      };
     default:
       return {};
   }
@@ -203,6 +230,8 @@ export interface Snapshot {
   activity: ActivityEvent[];
   notes: TaskNote[];
   subtasks: Subtask[];
+  budgetLines: BudgetLine[];
+  expenses: Expense[];
   settings: Record<string, unknown>;
 }
 
@@ -291,6 +320,8 @@ export async function loadSnapshot(): Promise<Snapshot> {
     activity,
     notes,
     subtasks,
+    budgetLines,
+    expenses,
     settings,
   ] = await Promise.all([
     fetchData<User>('cj_profiles'),
@@ -310,6 +341,8 @@ export async function loadSnapshot(): Promise<Snapshot> {
     fetchData<ActivityEvent>('cj_activity'),
     fetchData<TaskNote>('cj_notes'),
     fetchData<Subtask>('cj_subtasks'),
+    fetchData<BudgetLine>('cj_budget_lines'),
+    fetchData<Expense>('cj_expenses'),
     loadSettings(),
   ]);
 
@@ -331,6 +364,8 @@ export async function loadSnapshot(): Promise<Snapshot> {
     activity,
     notes,
     subtasks,
+    budgetLines,
+    expenses,
     settings,
   };
 }
@@ -354,6 +389,8 @@ function emptySnapshot(): Snapshot {
     activity: [],
     notes: [],
     subtasks: [],
+    budgetLines: [],
+    expenses: [],
     settings: {},
   };
 }
@@ -504,6 +541,11 @@ const TABLE_ORDER_REVERSE: AppTable[] = [
   'dependencies',
   'activity',
   'comments',
+  // Budget: expenses reference budgetLines (and tasks); budgetLines
+  // reference projects. Delete the leaf (expenses) before budgetLines,
+  // and both before tasks/projects below.
+  'expenses',
+  'budgetLines',
   'tasks',
   'sections',
   'goals',
