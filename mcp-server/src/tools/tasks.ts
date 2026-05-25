@@ -125,6 +125,10 @@ export const createTask: ToolDefinition<CreateTaskArgs> = {
       status: args.status ?? 'todo',
       due_date: args.due_date ?? null,
       description: args.description ?? '',
+      // Required arrays in the web-app Task type — set them so tasks created
+      // via MCP are well-formed (DashboardView etc. read .assignees/.tags).
+      assignees: [],
+      tags: [],
       created_at: now,
       updated_at: now,
       created_via: 'mcp',
