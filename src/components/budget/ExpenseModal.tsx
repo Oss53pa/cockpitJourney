@@ -3,6 +3,7 @@ import { useApp } from '../../stores/appStore';
 import { Modal } from '../ui/Modal';
 import { FieldLabel, TextInput, NativeSelect } from '../ui/Field';
 import { formatFCFA } from '../../lib/utils';
+import { AttachmentsBlock } from './AttachmentsBlock';
 import type { Expense, ExpenseStatus, BudgetLine } from '../../types';
 
 const statusOptions: { value: ExpenseStatus; label: string }[] = [
@@ -25,6 +26,9 @@ interface Props {
 export function ExpenseModal({ projectId, defaultLineId, lines, initial, onClose }: Props) {
   const createExpense = useApp((s) => s.createExpense);
   const updateExpense = useApp((s) => s.updateExpense);
+  // Live expense row (when editing) so the attachments list re-renders after
+  // an upload/delete instead of showing the stale `initial` snapshot.
+  const liveExpense = useApp((s) => (initial ? s.expenses.find((e) => e.id === initial.id) : undefined));
 
   const [label, setLabel] = useState(initial?.label ?? '');
   const [amount, setAmount] = useState<string>(initial ? String(initial.amount) : '');
@@ -139,6 +143,16 @@ export function ExpenseModal({ projectId, defaultLineId, lines, initial, onClose
             placeholder="Nom du prestataire / vendeur"
           />
         </div>
+        {/* Pièces jointes — only on an existing expense (needs an id). */}
+        {initial && (
+          <div className="pt-1 border-t border-atlas-line">
+            <AttachmentsBlock
+              projectId={projectId}
+              target={{ kind: 'expense', id: initial.id }}
+              attachments={liveExpense?.attachments ?? initial.attachments}
+            />
+          </div>
+        )}
       </div>
     </Modal>
   );

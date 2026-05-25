@@ -58,6 +58,9 @@ const ReportsView = lazy(() =>
 const ProjectsView = lazy(() =>
   import('./components/views/ProjectsView').then((m) => ({ default: m.ProjectsView }))
 );
+const BudgetOverview = lazy(() =>
+  import('./components/budget/BudgetOverview').then((m) => ({ default: m.BudgetOverview }))
+);
 
 /**
  * Single unified splash used while the app is booting (auth resolving
@@ -233,6 +236,8 @@ function CockpitShell() {
         return [{ label: 'Rapports', sub: 'PROPH3T génère' }];
       case 'projects':
         return [{ label: 'Projets', sub: 'Arborescence' }];
+      case 'budget':
+        return [{ label: 'Budget', sub: 'Vue portefeuille' }];
       case 'project': {
         const p = activeProjectId ? projects.find((x) => x.id === activeProjectId) : undefined;
         return [
@@ -322,6 +327,7 @@ function CockpitShell() {
                   {view === 'forms' && <FormsView />}
                   {view === 'reports' && <ReportsView />}
                   {view === 'projects' && <ProjectsView onNavigate={onNavigate} />}
+                  {view === 'budget' && <BudgetOverview onNavigate={onNavigate} />}
                   {view === 'project' && project && (
                     <ProjectView project={project} onOpenTask={setOpenTask} />
                   )}

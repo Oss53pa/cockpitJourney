@@ -232,6 +232,7 @@ export function Sidebar({
       badge: inboxCount ? String(inboxCount) : undefined,
     },
     { key: 'projects', label: 'Tous les projets', icon: FolderTree },
+    { key: 'budget', label: 'Budget', icon: Wallet },
     { key: 'goals', label: 'Goals & OKRs', icon: Target },
     { key: 'dashboards', label: 'Dashboards', icon: LayoutDashboard },
     { key: 'focus', label: 'Mode Focus', icon: Timer },

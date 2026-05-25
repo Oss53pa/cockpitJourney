@@ -34,6 +34,7 @@ import type {
   BudgetLine,
   Expense,
   BudgetNote,
+  BudgetAttachment,
   ExpenseStatus,
 } from '../types';
 
@@ -451,6 +452,8 @@ interface State {
   updateExpense: (id: string, patch: Partial<Expense>) => void;
   deleteExpense: (id: string) => void;
   addBudgetNote: (target: { kind: 'line' | 'expense'; id: string }, text: string) => void;
+  addBudgetAttachment: (target: { kind: 'line' | 'expense'; id: string }, att: BudgetAttachment) => void;
+  removeBudgetAttachment: (target: { kind: 'line' | 'expense'; id: string }, attachmentId: string) => void;
 
   resetSeed: () => void;
 
@@ -2444,6 +2447,50 @@ Reste sous 400 mots, ton factuel et engagé.`,
       set((s) => ({
         expenses: s.expenses.map((e) =>
           e.id === id ? { ...e, notes: [...e.notes, note], updatedAt: new Date().toISOString() } : e
+        ),
+      }));
+      const updated = get().expenses.find((e) => e.id === id);
+      if (updated) dbPersist.put('expenses', updated);
+    }
+  },
+  addBudgetAttachment: ({ kind, id }, att) => {
+    const now = new Date().toISOString();
+    if (kind === 'line') {
+      set((s) => ({
+        budgetLines: s.budgetLines.map((l) =>
+          l.id === id ? { ...l, attachments: [...l.attachments, att], updatedAt: now } : l
+        ),
+      }));
+      const updated = get().budgetLines.find((l) => l.id === id);
+      if (updated) dbPersist.put('budgetLines', updated);
+    } else {
+      set((s) => ({
+        expenses: s.expenses.map((e) =>
+          e.id === id ? { ...e, attachments: [...e.attachments, att], updatedAt: now } : e
+        ),
+      }));
+      const updated = get().expenses.find((e) => e.id === id);
+      if (updated) dbPersist.put('expenses', updated);
+    }
+  },
+  removeBudgetAttachment: ({ kind, id }, attachmentId) => {
+    const now = new Date().toISOString();
+    if (kind === 'line') {
+      set((s) => ({
+        budgetLines: s.budgetLines.map((l) =>
+          l.id === id
+            ? { ...l, attachments: l.attachments.filter((a) => a.id !== attachmentId), updatedAt: now }
+            : l
+        ),
+      }));
+      const updated = get().budgetLines.find((l) => l.id === id);
+      if (updated) dbPersist.put('budgetLines', updated);
+    } else {
+      set((s) => ({
+        expenses: s.expenses.map((e) =>
+          e.id === id
+            ? { ...e, attachments: e.attachments.filter((a) => a.id !== attachmentId), updatedAt: now }
+            : e
         ),
       }));
       const updated = get().expenses.find((e) => e.id === id);

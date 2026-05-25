@@ -227,6 +227,7 @@ export type ViewKey =
   | 'focus'
   | 'projects'
   | 'project'
+  | 'budget'
   | 'automations'
   | 'reports'
   | 'forms';
