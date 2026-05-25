@@ -74,6 +74,9 @@ export async function exportToPptx(payload: ExportPayload): Promise<void> {
   pres.subject = `Rapport ${report.kind} · ${formatPeriodRange(report)}`;
   pres.title = `${report.title} — ${report.period}`;
   pres.revision = docRef;
+  // Brand body font for all text (titles + body). PowerPoint substitutes if
+  // Dosis isn't installed on the viewer's machine.
+  pres.theme = { headFontFace: 'Dosis', bodyFontFace: 'Dosis' };
 
   // Define a master slide with the running header + footer
   pres.defineSlideMaster({

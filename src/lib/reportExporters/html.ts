@@ -106,7 +106,8 @@ export function renderReportHtml(payload: ExportPayload): string {
     <section class="cover">
       <div class="brand-bar"></div>
       <div class="cover-inner">
-        <div class="brand-tag">${esc(COPY.brandLong)}</div>
+        <div class="cover-wordmark">${esc(COPY.brand)}</div>
+        <div class="brand-tag">${esc(COPY.studio)}</div>
         <h1 class="cover-title">${esc(report.title)}</h1>
         <div class="cover-period">${esc(periodLabel)}</div>
         <p class="cover-period-fr">${esc(report.period)}</p>
@@ -339,6 +340,9 @@ export function renderReportHtml(payload: ExportPayload): string {
   <meta name="dcterms.created" content="${esc(new Date(report.generatedAt).toISOString())}">
   <meta name="robots" content="noindex, nofollow">
   <style>
+    /* Brand fonts: Dosis (corps) + Grand Hotel (nom de l'application),
+       comme dans CockpitJourney. Repli gracieux si hors-ligne. */
+    @import url('https://fonts.googleapis.com/css2?family=Grand+Hotel&family=Dosis:wght@300;400;500;600;700&display=swap');
     :root {
       --brand: ${C.brand};
       --brand-soft: ${C.brandSoft};
@@ -356,7 +360,7 @@ export function renderReportHtml(payload: ExportPayload): string {
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: 'Dosis', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       font-size: 14px;
       line-height: 1.55;
       color: var(--fg1);
@@ -391,6 +395,13 @@ export function renderReportHtml(payload: ExportPayload): string {
     }
     .cover-inner {
       padding: 56px 48px 48px;
+    }
+    .cover-wordmark {
+      font-family: 'Grand Hotel', 'Brush Script MT', 'Segoe Script', cursive;
+      font-size: 40px;
+      line-height: 1;
+      color: var(--brand);
+      margin-bottom: 2px;
     }
     .brand-tag {
       font-size: 11px;
