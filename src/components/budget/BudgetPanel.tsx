@@ -13,19 +13,16 @@ import {
   CornerDownRight,
   LayoutDashboard,
   ListTree,
-  MessageSquare,
   Paperclip,
-  Loader2,
 } from 'lucide-react';
 import { useApp } from '../../stores/appStore';
 import { cn, formatFCFA, formatDate } from '../../lib/utils';
 import { Menu, MenuItem, MenuSeparator } from '../ui/Menu';
-import { signedBudgetUrl } from '../../lib/budgetStorage';
 import { BudgetLineModal } from './BudgetLineModal';
 import { ExpenseModal } from './ExpenseModal';
 import { AttachmentsBlock } from './AttachmentsBlock';
 import { buildBudgetTree, computeBudgetTotals, flattenTree, type BudgetTreeNode } from './rollups';
-import type { BudgetLine, BudgetAttachment, BudgetNote, Expense, ExpenseStatus } from '../../types';
+import type { BudgetLine, Expense, ExpenseStatus } from '../../types';
 
 const statusCfg: Record<ExpenseStatus, { label: string; cls: string }> = {
   planned: { label: 'Prévu', cls: 'bg-black/[0.04] text-atlas-fg-2 border-atlas-line' },
@@ -90,7 +87,7 @@ function downloadBudgetCsv(flatLines: { line: BudgetLine; depth: number }[], exp
   URL.revokeObjectURL(url);
 }
 
-type SubTab = 'overview' | 'lines' | 'notes' | 'files';
+type SubTab = 'overview' | 'lines';
 
 interface ModalState {
   kind: 'line-create' | 'line-edit' | 'sub-create' | 'expense-create' | 'expense-edit';
@@ -104,8 +101,6 @@ interface ModalState {
 const subTabs: { key: SubTab; label: string; icon: typeof Wallet }[] = [
   { key: 'overview', label: "Vue d'ensemble", icon: LayoutDashboard },
   { key: 'lines', label: 'Lignes & dépenses', icon: ListTree },
-  { key: 'notes', label: 'Notes', icon: MessageSquare },
-  { key: 'files', label: 'Pièces jointes', icon: Paperclip },
 ];
 
 export function BudgetPanel({ projectId }: { projectId: string }) {
@@ -169,8 +164,6 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
           onEditExpense={(expense) => setModal({ kind: 'expense-edit', expense })}
         />
       )}
-      {tab === 'notes' && <NotesTab lines={lines} expenses={expenses} />}
-      {tab === 'files' && <FilesTab lines={lines} expenses={expenses} />}
 
       {/* Modals */}
       {(modal?.kind === 'line-create' || modal?.kind === 'line-edit' || modal?.kind === 'sub-create') && (
@@ -392,7 +385,9 @@ function LinesTab({
             />
           ))}
 
-          {unallocated.length > 0 && <UnallocatedRow expenses={unallocated} onEditExpense={onEditExpense} />}
+          {unallocated.length > 0 && (
+            <UnallocatedRow projectId={projectId} expenses={unallocated} onEditExpense={onEditExpense} />
+          )}
         </div>
       )}
     </div>
@@ -562,7 +557,7 @@ function BudgetLineRow({
                   Aucune dépense directe sur cette ligne.
                 </p>
               ) : (
-                <ExpenseTable expenses={directExpenses} onEditExpense={onEditExpense} />
+                <ExpenseTable projectId={projectId} expenses={directExpenses} onEditExpense={onEditExpense} />
               )}
             </div>
 
@@ -588,9 +583,11 @@ function BudgetLineRow({
 }
 
 function UnallocatedRow({
+  projectId,
   expenses,
   onEditExpense,
 }: {
+  projectId: string;
   expenses: Expense[];
   onEditExpense: (e: Expense) => void;
 }) {
@@ -614,7 +611,7 @@ function UnallocatedRow({
       </div>
       {open && (
         <div className="border-t border-black/[0.05] bg-black/[0.015] px-4 py-3">
-          <ExpenseTable expenses={expenses} onEditExpense={onEditExpense} />
+          <ExpenseTable projectId={projectId} expenses={expenses} onEditExpense={onEditExpense} />
         </div>
       )}
     </div>
@@ -622,86 +619,142 @@ function UnallocatedRow({
 }
 
 function ExpenseTable({
+  projectId,
   expenses,
   onEditExpense,
 }: {
+  projectId: string;
   expenses: Expense[];
   onEditExpense: (e: Expense) => void;
 }) {
-  const deleteExpense = useApp((s) => s.deleteExpense);
   const sorted = [...expenses].sort((a, b) => b.expenseDate.localeCompare(a.expenseDate));
   return (
-    <div className="rounded-lg overflow-hidden border border-atlas-line bg-white">
-      <div className="grid grid-cols-[90px_1fr_120px_90px_40px] px-3 py-2 text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium bg-black/[0.02]">
-        <span>Date</span>
-        <span>Libellé</span>
-        <span className="text-right">Montant</span>
-        <span className="text-center">Statut</span>
-        <span></span>
-      </div>
-      <div className="divide-y divide-atlas-line">
-        {sorted.map((e) => {
-          const sc = statusCfg[e.status];
-          return (
-            <div
-              key={e.id}
-              className="grid grid-cols-[90px_1fr_120px_90px_40px] items-center px-3 py-2 hover:bg-black/[0.02]"
-            >
-              <span className="text-2xs font-mono text-atlas-fg-3">{formatDate(e.expenseDate)}</span>
-              <div className="min-w-0">
-                <div className="text-sm text-atlas-fg-1 truncate">{e.label}</div>
-                {e.vendor && <div className="text-2xs text-atlas-fg-3 truncate">{e.vendor}</div>}
-              </div>
-              <span className="text-sm font-medium tabular-nums text-atlas-fg-1 text-right">
-                {formatFCFA(e.amount)}
+    <div className="rounded-lg overflow-hidden border border-atlas-line bg-white divide-y divide-atlas-line">
+      {sorted.map((e) => (
+        <ExpenseRow key={e.id} projectId={projectId} expense={e} onEditExpense={onEditExpense} />
+      ))}
+    </div>
+  );
+}
+
+/** A single expense — its row, expandable to reveal ITS OWN notes + pièces jointes. */
+function ExpenseRow({
+  projectId,
+  expense,
+  onEditExpense,
+}: {
+  projectId: string;
+  expense: Expense;
+  onEditExpense: (e: Expense) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const deleteExpense = useApp((s) => s.deleteExpense);
+  const addBudgetNote = useApp((s) => s.addBudgetNote);
+  // Live row so notes/attachments refresh after add/upload.
+  const live = useApp((s) => s.expenses.find((x) => x.id === expense.id)) ?? expense;
+  const sc = statusCfg[expense.status];
+  const nbNotes = live.notes?.length ?? 0;
+  const nbFiles = live.attachments?.length ?? 0;
+
+  const submitNote = () => {
+    if (!noteDraft.trim()) return;
+    addBudgetNote({ kind: 'expense', id: expense.id }, noteDraft);
+    setNoteDraft('');
+  };
+
+  return (
+    <div>
+      <div className="grid grid-cols-[20px_82px_1fr_120px_84px_36px] items-center gap-2 px-3 py-2 hover:bg-black/[0.02]">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="text-atlas-fg-3 hover:text-atlas-fg-1"
+          aria-label={open ? 'Replier' : 'Déplier'}
+        >
+          <ChevronRight className={cn('w-3.5 h-3.5 transition-transform', open && 'rotate-90')} />
+        </button>
+        <span className="text-2xs font-mono text-atlas-fg-3">{formatDate(expense.expenseDate)}</span>
+        <div className="min-w-0">
+          <div className="text-sm text-atlas-fg-1 truncate">{expense.label}</div>
+          <div className="flex items-center gap-2 text-2xs text-atlas-fg-3">
+            {expense.vendor && <span className="truncate">{expense.vendor}</span>}
+            {nbNotes > 0 && (
+              <span className="inline-flex items-center gap-0.5">
+                <StickyNote className="w-3 h-3" />
+                {nbNotes}
               </span>
-              <span className="flex justify-center">
-                <span
-                  className={cn(
-                    'inline-flex items-center border rounded-md font-medium uppercase tracking-wider text-[9px] px-1.5 py-0.5',
-                    sc.cls
-                  )}
-                >
-                  {sc.label}
-                </span>
+            )}
+            {nbFiles > 0 && (
+              <span className="inline-flex items-center gap-0.5">
+                <Paperclip className="w-3 h-3" />
+                {nbFiles}
               </span>
-              <Menu
-                trigger={
-                  <button className="btn-ghost !p-1 justify-self-end" aria-label="Actions dépense">
-                    <Edit3 className="w-3 h-3" />
-                  </button>
-                }
-                width={160}
+            )}
+          </div>
+        </div>
+        <span className="text-sm font-medium tabular-nums text-atlas-fg-1 text-right">
+          {formatFCFA(expense.amount)}
+        </span>
+        <span className="flex justify-center">
+          <span
+            className={cn(
+              'inline-flex items-center border rounded-md font-medium uppercase tracking-wider text-[9px] px-1.5 py-0.5',
+              sc.cls
+            )}
+          >
+            {sc.label}
+          </span>
+        </span>
+        <Menu
+          trigger={
+            <button className="btn-ghost !p-1 justify-self-end" aria-label="Actions dépense">
+              <Edit3 className="w-3 h-3" />
+            </button>
+          }
+          width={160}
+        >
+          {(close) => (
+            <>
+              <MenuItem
+                icon={Edit3}
+                onClick={() => {
+                  close();
+                  onEditExpense(expense);
+                }}
               >
-                {(close) => (
-                  <>
-                    <MenuItem
-                      icon={Edit3}
-                      onClick={() => {
-                        close();
-                        onEditExpense(e);
-                      }}
-                    >
-                      Modifier
-                    </MenuItem>
-                    <MenuSeparator />
-                    <MenuItem
-                      danger
-                      icon={Trash2}
-                      onClick={() => {
-                        close();
-                        deleteExpense(e.id);
-                      }}
-                    >
-                      Supprimer
-                    </MenuItem>
-                  </>
-                )}
-              </Menu>
-            </div>
-          );
-        })}
+                Modifier
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem
+                danger
+                icon={Trash2}
+                onClick={() => {
+                  close();
+                  deleteExpense(expense.id);
+                }}
+              >
+                Supprimer
+              </MenuItem>
+            </>
+          )}
+        </Menu>
       </div>
+
+      {open && (
+        <div className="bg-black/[0.02] border-t border-black/[0.05] px-4 py-3 space-y-4">
+          <NotesBlock
+            notes={live.notes ?? []}
+            draft={noteDraft}
+            setDraft={setNoteDraft}
+            onSubmit={submitNote}
+          />
+          <AttachmentsBlock
+            projectId={projectId}
+            target={{ kind: 'expense', id: expense.id }}
+            attachments={live.attachments ?? []}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -771,136 +824,7 @@ function Cell({ label, value, tone }: { label: string; value: string; tone?: 'ov
   );
 }
 
-/* ─────────── 3. Notes / Communication (aggregated timeline) ─────────── */
-
-interface AggregatedNote {
-  note: BudgetNote;
-  source: string;
-}
-
-function NotesTab({ lines, expenses }: { lines: BudgetLine[]; expenses: Expense[] }) {
-  const users = useApp((s) => s.users);
-  const items = useMemo<AggregatedNote[]>(() => {
-    const out: AggregatedNote[] = [];
-    for (const l of lines) {
-      for (const n of l.notes) out.push({ note: n, source: `Ligne · ${l.name}` });
-    }
-    for (const e of expenses) {
-      for (const n of e.notes) out.push({ note: n, source: `Dépense · ${e.label}` });
-    }
-    return out.sort((a, b) => b.note.at.localeCompare(a.note.at));
-  }, [lines, expenses]);
-
-  const authorName = (id: string | null) => users.find((u) => u.id === id)?.name ?? 'Inconnu';
-
-  if (items.length === 0) {
-    return (
-      <div className="panel p-10 text-center">
-        <MessageSquare className="w-8 h-8 mx-auto mb-2 text-atlas-fg-3 opacity-40" />
-        <p className="text-sm text-atlas-fg-3">Aucune note budgétaire pour ce projet.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {items.map(({ note, source }) => (
-        <div key={note.id} className="panel p-4">
-          <div className="flex items-center justify-between gap-3 mb-1.5">
-            <span className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium truncate">
-              {source}
-            </span>
-            <span className="text-2xs font-mono text-atlas-fg-3 shrink-0">
-              {new Date(note.at).toLocaleString('fr-FR')}
-            </span>
-          </div>
-          <p className="text-sm text-atlas-fg-1 whitespace-pre-wrap">{note.text}</p>
-          <span className="block mt-1.5 text-2xs text-atlas-fg-3">{authorName(note.authorId)}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ─────────── 4. Pièces jointes (aggregated gallery) ─────────── */
-
-interface AggregatedAttachment {
-  att: BudgetAttachment;
-  source: string;
-}
-
-/** Human-readable file size. */
-function formatSize(bytes?: number): string {
-  if (!bytes || bytes <= 0) return '';
-  if (bytes < 1024) return `${bytes} o`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
-}
-
-function FilesTab({ lines, expenses }: { lines: BudgetLine[]; expenses: Expense[] }) {
-  const pushToast = useApp((s) => s.pushToast);
-  const [busyId, setBusyId] = useState<string | null>(null);
-
-  const items = useMemo<AggregatedAttachment[]>(() => {
-    const out: AggregatedAttachment[] = [];
-    for (const l of lines) {
-      for (const a of l.attachments) out.push({ att: a, source: `Ligne · ${l.name}` });
-    }
-    for (const e of expenses) {
-      for (const a of e.attachments) out.push({ att: a, source: `Dépense · ${e.label}` });
-    }
-    return out.sort((a, b) => b.att.uploadedAt.localeCompare(a.att.uploadedAt));
-  }, [lines, expenses]);
-
-  const onDownload = async (att: BudgetAttachment) => {
-    setBusyId(att.id);
-    try {
-      const url = await signedBudgetUrl(att.path);
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
-      else pushToast({ kind: 'error', title: 'Téléchargement impossible', body: att.name });
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  if (items.length === 0) {
-    return (
-      <div className="panel p-10 text-center">
-        <Paperclip className="w-8 h-8 mx-auto mb-2 text-atlas-fg-3 opacity-40" />
-        <p className="text-sm text-atlas-fg-3">Aucune pièce jointe budgétaire pour ce projet.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-      {items.map(({ att, source }) => {
-        const busy = busyId === att.id;
-        const size = formatSize(att.size);
-        return (
-          <div key={att.id} className="group panel p-3 flex items-center gap-3 hover:border-atlas-line-2">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center border bg-atlas-amber/15 text-atlas-amber-deep border-atlas-amber/30 shrink-0">
-              <Paperclip className="w-4 h-4" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-atlas-fg-1 truncate">{att.name}</div>
-              <div className="text-2xs text-atlas-fg-3 truncate">
-                {size && `${size} · `}
-                {source}
-              </div>
-            </div>
-            <button
-              onClick={() => onDownload(att)}
-              disabled={busy}
-              className="btn-ghost !p-1.5 shrink-0 disabled:opacity-50"
-              aria-label="Télécharger"
-              title="Télécharger"
-            >
-              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-            </button>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+/* Notes & pièces jointes ne sont plus des sous-onglets : elles vivent
+   directement DANS chaque ligne et DANS chaque dépense (voir BudgetLineRow /
+   ExpenseRow). Les pièces jointes du budget sont aussi agrégées dans l'onglet
+   « Fichiers » du projet (cf. ProjectView). */
