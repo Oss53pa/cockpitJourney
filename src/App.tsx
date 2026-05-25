@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState, type ComponentType } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Sparkles } from 'lucide-react';
 import { Sidebar } from './components/layout/Sidebar';
@@ -15,50 +15,100 @@ import { LandingPage } from './components/views/LandingPage';
 import { AuthCallback } from './components/AuthCallback';
 // Legal pages are lazy — they're crawler-visible static content but
 // rarely loaded by signed-in users.
-const CguPage = lazy(() => import('./components/legal/CguPage').then((m) => ({ default: m.CguPage })));
-const ConfidentialitePage = lazy(() =>
+const CguPage = lazyWithReload(() =>
+  import('./components/legal/CguPage').then((m) => ({ default: m.CguPage }))
+);
+const ConfidentialitePage = lazyWithReload(() =>
   import('./components/legal/ConfidentialitePage').then((m) => ({ default: m.ConfidentialitePage }))
 );
-const CookiesPage = lazy(() =>
+const CookiesPage = lazyWithReload(() =>
   import('./components/legal/CookiesPage').then((m) => ({ default: m.CookiesPage }))
 );
-const MentionsPage = lazy(() =>
+const MentionsPage = lazyWithReload(() =>
   import('./components/legal/MentionsPage').then((m) => ({ default: m.MentionsPage }))
 );
-const AcceptInvite = lazy(() => import('./pages/auth/AcceptInvite'));
-const PublicFormPage = lazy(() => import('./pages/public/PublicFormPage'));
+const AcceptInvite = lazyWithReload(() => import('./pages/auth/AcceptInvite'));
+const PublicFormPage = lazyWithReload(() => import('./pages/public/PublicFormPage'));
 import { ModalRoot } from './components/modals/ModalRoot';
 import { OnboardingModal } from './components/modals/OnboardingModal';
 import { InstallPromptBanner } from './components/pwa/InstallPromptBanner';
-const TeamSettingsPage = lazy(() => import('./pages/settings/TeamSettingsPage'));
-const IntegrationsSettingsPage = lazy(() => import('./pages/settings/IntegrationsSettingsPage'));
+const TeamSettingsPage = lazyWithReload(() => import('./pages/settings/TeamSettingsPage'));
+const IntegrationsSettingsPage = lazyWithReload(() => import('./pages/settings/IntegrationsSettingsPage'));
 import { Toaster } from './components/ui/Toaster';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useApp } from './stores/appStore';
 import { cn } from './lib/utils';
 import type { Task, ViewKey } from './types';
 
+/**
+ * `lazy()` wrapper that self-heals after a deploy. When a new version ships,
+ * Vite renames the content-hashed chunks and deletes the old ones; a tab still
+ * running the previous bundle then fails to import a now-missing chunk
+ * ("Failed to fetch dynamically imported module") the moment the user navigates
+ * to a lazy view (Reports, Budget…). We catch that exactly once and force a
+ * single full reload to pull the fresh index.html + current chunk hashes. A
+ * sessionStorage guard prevents an infinite reload loop when the failure is
+ * genuine (truly offline / chunk really gone).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function lazyWithReload<T extends ComponentType<any>>(factory: () => Promise<{ default: T }>) {
+  return lazy(async () => {
+    const RELOAD_KEY = 'cj-chunk-reload';
+    try {
+      const mod = await factory();
+      try {
+        sessionStorage.removeItem(RELOAD_KEY);
+      } catch {
+        /* sessionStorage unavailable (private mode) — ignore */
+      }
+      return mod;
+    } catch (err) {
+      let alreadyReloaded = true;
+      try {
+        alreadyReloaded = sessionStorage.getItem(RELOAD_KEY) === '1';
+        if (!alreadyReloaded) sessionStorage.setItem(RELOAD_KEY, '1');
+      } catch {
+        alreadyReloaded = false;
+      }
+      if (!alreadyReloaded && typeof window !== 'undefined') {
+        window.location.reload();
+        // Never resolve: the reload is imminent — don't surface the error.
+        return new Promise<{ default: T }>(() => {});
+      }
+      throw err;
+    }
+  });
+}
+
 // Lazy-load heavy views to keep initial bundle small
-const ProjectView = lazy(() =>
+const ProjectView = lazyWithReload(() =>
   import('./components/views/ProjectView').then((m) => ({ default: m.ProjectView }))
 );
-const DashboardView = lazy(() =>
+const DashboardView = lazyWithReload(() =>
   import('./components/views/DashboardView').then((m) => ({ default: m.DashboardView }))
 );
-const GoalsView = lazy(() => import('./components/views/GoalsView').then((m) => ({ default: m.GoalsView })));
-const FocusView = lazy(() => import('./components/views/FocusView').then((m) => ({ default: m.FocusView })));
-const InboxView = lazy(() => import('./components/views/InboxView').then((m) => ({ default: m.InboxView })));
-const AutomationsView = lazy(() =>
+const GoalsView = lazyWithReload(() =>
+  import('./components/views/GoalsView').then((m) => ({ default: m.GoalsView }))
+);
+const FocusView = lazyWithReload(() =>
+  import('./components/views/FocusView').then((m) => ({ default: m.FocusView }))
+);
+const InboxView = lazyWithReload(() =>
+  import('./components/views/InboxView').then((m) => ({ default: m.InboxView }))
+);
+const AutomationsView = lazyWithReload(() =>
   import('./components/views/AutomationsView').then((m) => ({ default: m.AutomationsView }))
 );
-const FormsView = lazy(() => import('./components/views/FormsView').then((m) => ({ default: m.FormsView })));
-const ReportsView = lazy(() =>
+const FormsView = lazyWithReload(() =>
+  import('./components/views/FormsView').then((m) => ({ default: m.FormsView }))
+);
+const ReportsView = lazyWithReload(() =>
   import('./components/views/ReportsView').then((m) => ({ default: m.ReportsView }))
 );
-const ProjectsView = lazy(() =>
+const ProjectsView = lazyWithReload(() =>
   import('./components/views/ProjectsView').then((m) => ({ default: m.ProjectsView }))
 );
-const BudgetOverview = lazy(() =>
+const BudgetOverview = lazyWithReload(() =>
   import('./components/budget/BudgetOverview').then((m) => ({ default: m.BudgetOverview }))
 );
 
