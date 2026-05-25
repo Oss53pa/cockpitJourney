@@ -58,6 +58,15 @@ export async function exportToXlsx(payload: ExportPayload): Promise<void> {
   const { report, options, projectNames } = payload;
   const docRef = buildDocRef(report);
   const wb = XLSX.utils.book_new();
+  // Workbook properties (standard — visible in Excel → Fichier → Informations).
+  wb.Props = {
+    Title: `${report.title} — ${report.period}`,
+    Subject: `Rapport ${report.kind} · ${formatPeriodRange(report)}`,
+    Author: COPY.brandLong,
+    Company: COPY.studio,
+    Keywords: docRef,
+    CreatedDate: new Date(report.generatedAt),
+  };
 
   // Map of section → resulting sheet name (for sommaire hyperlinks).
   const sheetForKey: Partial<Record<SectionKey, string>> = {};
