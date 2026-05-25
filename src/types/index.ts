@@ -163,7 +163,13 @@ export interface PropheticInsight {
 
 /* ─────────── Budget module (per-project) ─────────── */
 
-export type ExpenseStatus = 'planned' | 'committed' | 'paid';
+/**
+ * Cycle de vie d'une dépense (du prévisionnel au décaissement) :
+ *   prévue → engagée → facturée → payée
+ * `invoiced` (facturée) s'intercale entre l'engagement et le paiement —
+ * la facture est reçue/émise mais pas encore réglée.
+ */
+export type ExpenseStatus = 'planned' | 'committed' | 'invoiced' | 'paid';
 
 /** Free-text note attached to a budget line or an expense. */
 export interface BudgetNote {
