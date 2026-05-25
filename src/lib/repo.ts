@@ -157,6 +157,7 @@ function indexedColsFor(table: AppTable, entity: Record<string, unknown>): Index
     case 'budgetLines':
       return {
         project_id: entity.projectId,
+        parent_line_id: entity.parentLineId ?? null,
         owner_id: entity.ownerId ?? null,
         name: entity.name,
         allocated_amount: entity.allocatedAmount ?? 0,

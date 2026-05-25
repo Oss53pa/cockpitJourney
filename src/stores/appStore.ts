@@ -435,7 +435,10 @@ interface State {
 
   // budget (per-project) — lines + expenses + notes. Allocated / spent /
   // remaining / % are NEVER stored; they're derived from these arrays.
-  createBudgetLine: (projectId: string, input: { name: string; allocatedAmount: number }) => BudgetLine;
+  createBudgetLine: (
+    projectId: string,
+    input: { name: string; allocatedAmount: number; parentLineId?: string | null }
+  ) => BudgetLine;
   updateBudgetLine: (id: string, patch: Partial<BudgetLine>) => void;
   deleteBudgetLine: (id: string) => void;
   createExpense: (
@@ -2335,14 +2338,18 @@ Reste sous 400 mots, ton factuel et engagé.`,
     dbPersist.bulkPut('subtasks', updated);
   },
 
-  createBudgetLine: (projectId, { name, allocatedAmount }) => {
+  createBudgetLine: (projectId, { name, allocatedAmount, parentLineId }) => {
     const now = new Date().toISOString();
+    const parent = parentLineId ?? null;
+    // sortOrder is computed among SIBLINGS (same parent), so each level of
+    // the tree keeps its own ordering.
     const maxOrder = get()
-      .budgetLines.filter((l) => l.projectId === projectId)
+      .budgetLines.filter((l) => l.projectId === projectId && (l.parentLineId ?? null) === parent)
       .reduce((m, l) => Math.max(m, l.sortOrder), -1);
     const line: BudgetLine = {
       id: uid('bl'),
       projectId,
+      parentLineId: parent,
       ownerId: get().currentProfileId ?? null,
       name: name.trim(),
       allocatedAmount: Number.isFinite(allocatedAmount) ? allocatedAmount : 0,
@@ -2369,18 +2376,38 @@ Reste sous 400 mots, ton factuel et engagé.`,
     if (updated) dbPersist.put('budgetLines', updated);
   },
   deleteBudgetLine: (id) => {
-    const line = get().budgetLines.find((l) => l.id === id);
-    // Detach (don't delete) this line's expenses — they become "non
-    // ventilées" but keep their amount in the project total. Mirrors the
-    // DB FK (cj_expenses.line_id ON DELETE SET NULL).
-    const orphaned = get().expenses.filter((e) => e.lineId === id);
+    const allLines = get().budgetLines;
+    const line = allLines.find((l) => l.id === id);
+    // Compute the whole subtree to delete (this line + all descendants),
+    // mirroring the DB FK (cj_budget_lines.parent_line_id ON DELETE CASCADE).
+    const toDelete = new Set<string>([id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const l of allLines) {
+        const parent = l.parentLineId ?? null;
+        if (parent && toDelete.has(parent) && !toDelete.has(l.id)) {
+          toDelete.add(l.id);
+          grew = true;
+        }
+      }
+    }
+    // Detach (don't delete) expenses on ANY of the deleted lines — they
+    // become "non ventilées" but keep their amount in the project total.
+    // Mirrors the DB FK (cj_expenses.line_id ON DELETE SET NULL).
+    const orphaned = get().expenses.filter((e) => e.lineId && toDelete.has(e.lineId));
+    const now = new Date().toISOString();
     set((s) => ({
-      budgetLines: s.budgetLines.filter((l) => l.id !== id),
+      budgetLines: s.budgetLines.filter((l) => !toDelete.has(l.id)),
       expenses: s.expenses.map((e) =>
-        e.lineId === id ? { ...e, lineId: null, updatedAt: new Date().toISOString() } : e
+        e.lineId && toDelete.has(e.lineId) ? { ...e, lineId: null, updatedAt: now } : e
       ),
     }));
-    dbPersist.delete('budgetLines', id);
+    // The DB cascades sub-lines server-side, but delete each locally so the
+    // cache mirror stays correct.
+    for (const lineId of toDelete) {
+      dbPersist.delete('budgetLines', lineId);
+    }
     for (const e of orphaned) {
       const updated = get().expenses.find((x) => x.id === e.id);
       if (updated) dbPersist.put('expenses', updated);

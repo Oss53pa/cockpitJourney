@@ -37,10 +37,12 @@ import {
   LayoutDashboard,
   Target,
   ListChecks,
+  Loader2,
   type LucideIcon,
 } from 'lucide-react';
-import type { Project, Section, Task, Priority } from '../../types';
+import type { Project, Section, Task, Priority, BudgetAttachment } from '../../types';
 import { useApp } from '../../stores/appStore';
+import { signedBudgetUrl } from '../../lib/budgetStorage';
 import { AvatarGroup } from '../ui/Avatar';
 import { PriorityBadge } from '../ui/PriorityBadge';
 import { StatusBadge, ProgressBar } from '../ui/StatusBadge';
@@ -1425,10 +1427,41 @@ function SimpleMarkdown({ source }: { source: string }) {
 function ProjectFilesTab({ projectId }: { projectId: string }) {
   const allAttachments = useApp((s) => s.attachments);
   const tasks = useApp((s) => s.tasks);
+  const budgetLines = useApp((s) => s.budgetLines);
+  const expenses = useApp((s) => s.expenses);
   const projectAttachments = allAttachments.filter(
     (a) => tasks.find((t) => t.id === a.taskId)?.projectId === projectId
   );
   const pushToast = useApp((s) => s.pushToast);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  // Budget attachments of this project — gathered from every budget line and
+  // expense of the project, each labelled with its source.
+  const budgetAttachments = useMemo(() => {
+    const out: { att: BudgetAttachment; source: string }[] = [];
+    for (const l of budgetLines) {
+      if (l.projectId !== projectId) continue;
+      for (const a of l.attachments) out.push({ att: a, source: `Ligne · ${l.name}` });
+    }
+    for (const e of expenses) {
+      if (e.projectId !== projectId) continue;
+      for (const a of e.attachments) out.push({ att: a, source: `Dépense · ${e.label}` });
+    }
+    return out.sort((a, b) => b.att.uploadedAt.localeCompare(a.att.uploadedAt));
+  }, [budgetLines, expenses, projectId]);
+
+  const totalCount = projectAttachments.length + budgetAttachments.length;
+
+  const onDownloadBudget = async (att: BudgetAttachment) => {
+    setBusyId(att.id);
+    try {
+      const url = await signedBudgetUrl(att.path);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      else pushToast({ kind: 'error', title: 'Téléchargement impossible', body: att.name });
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const map: Record<string, { icon: any; cls: string }> = {
     pdf: { icon: FileText, cls: 'bg-signal-red/15 text-signal-red border-signal-red/30' },
@@ -1442,14 +1475,14 @@ function ProjectFilesTab({ projectId }: { projectId: string }) {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-2xs uppercase tracking-[0.18em] text-atlas-fg-3 font-medium inline-flex items-center gap-2">
-          <Paperclip className="w-3.5 h-3.5" /> Pièces jointes du projet · {projectAttachments.length}
+          <Paperclip className="w-3.5 h-3.5" /> Pièces jointes du projet · {totalCount}
         </h3>
         <button
           onClick={() =>
             pushToast({
               kind: 'info',
               title: 'Téléversement',
-              body: 'Allez dans une tâche pour ajouter une pièce jointe',
+              body: 'Allez dans une tâche ou le budget pour ajouter une pièce jointe',
             })
           }
           className="btn-secondary text-xs px-3 py-1.5"
@@ -1479,12 +1512,47 @@ function ProjectFilesTab({ projectId }: { projectId: string }) {
             </div>
           );
         })}
-        {projectAttachments.length === 0 && (
+
+        {/* Budget attachments — labelled with a "Budget" chip + source. */}
+        {budgetAttachments.map(({ att, source }) => {
+          const busy = busyId === att.id;
+          return (
+            <div key={att.id} className="group panel p-3 flex items-center gap-3 hover:border-atlas-line-2">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center border bg-atlas-amber/15 text-atlas-amber-deep border-atlas-amber/30 shrink-0">
+                <Wallet className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium text-atlas-fg-1 truncate">{att.name}</span>
+                  <span className="chip bg-atlas-amber/15 text-atlas-amber-deep border border-atlas-amber/30 shrink-0">
+                    Budget
+                  </span>
+                </div>
+                <div className="text-2xs text-atlas-fg-3 truncate">{source}</div>
+              </div>
+              <button
+                onClick={() => onDownloadBudget(att)}
+                disabled={busy}
+                className="btn-ghost !p-1.5 shrink-0 disabled:opacity-50"
+                aria-label="Télécharger"
+                title="Télécharger"
+              >
+                {busy ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
+          );
+        })}
+
+        {totalCount === 0 && (
           <div className="col-span-full panel p-10 text-center">
             <Paperclip className="w-8 h-8 mx-auto text-atlas-fg-3 mb-2" />
             <h3 className="text-sm font-medium text-atlas-fg-1">Aucune pièce jointe</h3>
             <p className="text-2xs text-atlas-fg-3 mt-1">
-              Les fichiers ajoutés sur les tâches de ce projet apparaîtront ici.
+              Les fichiers ajoutés sur les tâches ou le budget de ce projet apparaîtront ici.
             </p>
           </div>
         )}

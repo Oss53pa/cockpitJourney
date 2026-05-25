@@ -16,11 +16,16 @@ interface Props {
   projectId: string;
   /** Pre-selected budget line (null = non ventilée). */
   defaultLineId?: string | null;
-  /** Budget lines of the project, to populate the line picker. */
-  lines: BudgetLine[];
+  /** Budget lines of the project (flattened, with tree depth) for the picker. */
+  lines: { line: BudgetLine; depth: number }[];
   /** When set, the modal edits this expense instead of creating a new one. */
   initial?: Expense;
   onClose: () => void;
+}
+
+/** Non-breaking-space indent so nested lines read as a tree in the <select>. */
+function indent(depth: number): string {
+  return depth > 0 ? '  '.repeat(depth) + '└ ' : '';
 }
 
 export function ExpenseModal({ projectId, defaultLineId, lines, initial, onClose }: Props) {
@@ -127,9 +132,10 @@ export function ExpenseModal({ projectId, defaultLineId, lines, initial, onClose
             <FieldLabel>Ligne budgétaire</FieldLabel>
             <NativeSelect value={lineId} onChange={(e) => setLineId(e.target.value)}>
               <option value="">— Non ventilée</option>
-              {lines.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
+              {lines.map(({ line, depth }) => (
+                <option key={line.id} value={line.id}>
+                  {indent(depth)}
+                  {line.name}
                 </option>
               ))}
             </NativeSelect>

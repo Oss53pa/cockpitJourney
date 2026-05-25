@@ -193,6 +193,8 @@ export interface BudgetLine {
   allocatedAmount: number;
   currency: string;
   sortOrder: number;
+  /** Parent line for hierarchical budgets. Null/undefined = top-level. */
+  parentLineId?: string | null;
   notes: BudgetNote[];
   attachments: BudgetAttachment[];
   createdAt: string;
