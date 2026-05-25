@@ -10,18 +10,22 @@ import {
   StickyNote,
   Receipt,
   Download,
-  Filter,
+  CornerDownRight,
+  LayoutDashboard,
+  ListTree,
+  MessageSquare,
+  Paperclip,
+  Loader2,
 } from 'lucide-react';
 import { useApp } from '../../stores/appStore';
 import { cn, formatFCFA, formatDate } from '../../lib/utils';
 import { Menu, MenuItem, MenuSeparator } from '../ui/Menu';
-import { NativeSelect, TextInput } from '../ui/Field';
+import { signedBudgetUrl } from '../../lib/budgetStorage';
 import { BudgetLineModal } from './BudgetLineModal';
 import { ExpenseModal } from './ExpenseModal';
 import { AttachmentsBlock } from './AttachmentsBlock';
-import type { BudgetLine, Expense, ExpenseStatus } from '../../types';
-
-type StatusFilter = 'all' | ExpenseStatus;
+import { buildBudgetTree, computeBudgetTotals, flattenTree, type BudgetTreeNode } from './rollups';
+import type { BudgetLine, BudgetAttachment, BudgetNote, Expense, ExpenseStatus } from '../../types';
 
 const statusCfg: Record<ExpenseStatus, { label: string; cls: string }> = {
   planned: { label: 'Prévu', cls: 'bg-black/[0.04] text-atlas-fg-2 border-atlas-line' },
@@ -42,88 +46,170 @@ function pctText(pct: number): string {
   return 'text-atlas-fg-2';
 }
 
+/** Export the budget (lines + expenses) to a CSV file (UTF-8 BOM, ; separator → Excel). */
+function downloadBudgetCsv(flatLines: { line: BudgetLine; depth: number }[], expenses: Expense[]): void {
+  const spentByLine = new Map<string, number>();
+  for (const e of expenses)
+    if (e.lineId) spentByLine.set(e.lineId, (spentByLine.get(e.lineId) ?? 0) + e.amount);
+  const esc = (v: unknown) => {
+    const s = String(v ?? '');
+    return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lineName = (id: string | null | undefined) =>
+    flatLines.find((f) => f.line.id === id)?.line.name ?? '(non ventilée)';
+  const rows: string[] = [];
+  rows.push('LIGNES BUDGÉTAIRES');
+  rows.push(['Ligne', 'Alloué (FCFA)', 'Dépensé direct (FCFA)', 'Reste (FCFA)'].join(';'));
+  for (const { line, depth } of flatLines) {
+    const sp = spentByLine.get(line.id) ?? 0;
+    rows.push(
+      [esc('  '.repeat(depth) + line.name), line.allocatedAmount, sp, line.allocatedAmount - sp].join(';')
+    );
+  }
+  rows.push('');
+  rows.push('DÉPENSES');
+  rows.push(['Date', 'Ligne', 'Libellé', 'Montant (FCFA)', 'Statut', 'Fournisseur'].join(';'));
+  for (const e of [...expenses].sort((a, b) => b.expenseDate.localeCompare(a.expenseDate))) {
+    rows.push(
+      [
+        esc(e.expenseDate?.slice(0, 10)),
+        esc(lineName(e.lineId)),
+        esc(e.label),
+        e.amount,
+        e.status,
+        esc(e.vendor ?? ''),
+      ].join(';')
+    );
+  }
+  const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'budget.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+type SubTab = 'overview' | 'lines' | 'notes' | 'files';
+
 interface ModalState {
-  kind: 'line-create' | 'line-edit' | 'expense-create' | 'expense-edit';
+  kind: 'line-create' | 'line-edit' | 'sub-create' | 'expense-create' | 'expense-edit';
   line?: BudgetLine;
   expense?: Expense;
+  parentLineId?: string | null;
+  parentName?: string;
   defaultLineId?: string | null;
 }
+
+const subTabs: { key: SubTab; label: string; icon: typeof Wallet }[] = [
+  { key: 'overview', label: "Vue d'ensemble", icon: LayoutDashboard },
+  { key: 'lines', label: 'Lignes & dépenses', icon: ListTree },
+  { key: 'notes', label: 'Notes', icon: MessageSquare },
+  { key: 'files', label: 'Pièces jointes', icon: Paperclip },
+];
 
 export function BudgetPanel({ projectId }: { projectId: string }) {
   const allLines = useApp((s) => s.budgetLines);
   const allExpenses = useApp((s) => s.expenses);
 
-  const lines = useMemo(
-    () => allLines.filter((l) => l.projectId === projectId).sort((a, b) => a.sortOrder - b.sortOrder),
-    [allLines, projectId]
-  );
+  const lines = useMemo(() => allLines.filter((l) => l.projectId === projectId), [allLines, projectId]);
   const expenses = useMemo(
     () => allExpenses.filter((e) => e.projectId === projectId),
     [allExpenses, projectId]
   );
 
+  const tree = useMemo(() => buildBudgetTree(lines, expenses), [lines, expenses]);
+  const totals = useMemo(() => computeBudgetTotals(lines, expenses), [lines, expenses]);
+  const flatLines = useMemo(() => flattenTree(tree), [tree]);
+
+  const [tab, setTab] = useState<SubTab>('overview');
   const [modal, setModal] = useState<ModalState | null>(null);
-
-  // Expense filters — affect ONLY the expense tables shown in expanded
-  // rows (and the "filtré" summary). Budget rollups below stay on ALL
-  // expenses (the source of truth).
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const filtersActive = statusFilter !== 'all' || dateFrom !== '' || dateTo !== '';
-
-  const matchesFilter = (e: Expense): boolean => {
-    if (statusFilter !== 'all' && e.status !== statusFilter) return false;
-    const d = e.expenseDate.slice(0, 10);
-    if (dateFrom && d < dateFrom) return false;
-    if (dateTo && d > dateTo) return false;
-    return true;
-  };
-
-  const filteredExpenses = useMemo(
-    () => expenses.filter(matchesFilter),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [expenses, statusFilter, dateFrom, dateTo]
-  );
-  const filteredCount = filteredExpenses.length;
-  const filteredSum = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-
-  // Derived totals — never stored. Always computed on ALL expenses.
-  const totalAllocated = lines.reduce((sum, l) => sum + l.allocatedAmount, 0);
-  const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const totalRemaining = totalAllocated - totalSpent;
-  const totalPct = totalAllocated > 0 ? (totalSpent / totalAllocated) * 100 : 0;
-
-  // Spend per line + unallocated ("non ventilées") — on ALL expenses.
-  const spentByLine = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const e of expenses) {
-      const key = e.lineId ?? '__none__';
-      map.set(key, (map.get(key) ?? 0) + e.amount);
-    }
-    return map;
-  }, [expenses]);
-
-  const unallocatedSpent = spentByLine.get('__none__') ?? 0;
-
-  const project = useApp((s) => s.projects.find((p) => p.id === projectId));
-  const onExport = () => {
-    const csv = buildBudgetCsv(lines, expenses, spentByLine);
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `budget-${project?.slug || projectId}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  };
 
   return (
     <div className="space-y-5">
-      {/* KPI strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Sub-tab bar — pill tabs matching the project view toggles + export. */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <nav className="flex items-center gap-1 p-1 bg-black/[0.03] border border-atlas-line rounded-xl w-fit">
+          {subTabs.map((st) => {
+            const T = st.icon;
+            const active = tab === st.key;
+            return (
+              <button
+                key={st.key}
+                onClick={() => setTab(st.key)}
+                className={cn('tab-base', active && 'tab-active')}
+              >
+                <T className="w-3.5 h-3.5" />
+                {st.label}
+              </button>
+            );
+          })}
+        </nav>
+        <button
+          onClick={() => downloadBudgetCsv(flatLines, expenses)}
+          disabled={lines.length === 0 && expenses.length === 0}
+          className="btn-secondary text-sm px-3 py-1.5 disabled:opacity-40"
+        >
+          <Download className="w-3.5 h-3.5" /> Exporter
+        </button>
+      </div>
+
+      {tab === 'overview' && <OverviewTab tree={tree} totals={totals} />}
+      {tab === 'lines' && (
+        <LinesTab
+          projectId={projectId}
+          tree={tree}
+          expenses={expenses}
+          onCreateRoot={() => setModal({ kind: 'line-create' })}
+          onCreateSub={(parent) =>
+            setModal({ kind: 'sub-create', parentLineId: parent.id, parentName: parent.name })
+          }
+          onEditLine={(line) => setModal({ kind: 'line-edit', line })}
+          onAddExpense={(lineId) => setModal({ kind: 'expense-create', defaultLineId: lineId })}
+          onEditExpense={(expense) => setModal({ kind: 'expense-edit', expense })}
+        />
+      )}
+      {tab === 'notes' && <NotesTab lines={lines} expenses={expenses} />}
+      {tab === 'files' && <FilesTab lines={lines} expenses={expenses} />}
+
+      {/* Modals */}
+      {(modal?.kind === 'line-create' || modal?.kind === 'line-edit' || modal?.kind === 'sub-create') && (
+        <BudgetLineModal
+          projectId={projectId}
+          initial={modal.line}
+          parentLineId={modal.parentLineId}
+          parentName={modal.parentName}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {(modal?.kind === 'expense-create' || modal?.kind === 'expense-edit') && (
+        <ExpenseModal
+          projectId={projectId}
+          lines={flatLines}
+          defaultLineId={modal.defaultLineId}
+          initial={modal.expense}
+          onClose={() => setModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─────────── 1. Vue d'ensemble ─────────── */
+
+function OverviewTab({
+  tree,
+  totals,
+}: {
+  tree: BudgetTreeNode[];
+  totals: ReturnType<typeof computeBudgetTotals>;
+}) {
+  const { totalAllocated, totalSpent, totalRemaining, pct, byStatus } = totals;
+
+  return (
+    <div className="space-y-5">
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi icon={Wallet} label="Budget total" value={formatFCFA(totalAllocated)} tone="neutral" />
         <Kpi icon={TrendingDown} label="Dépensé" value={formatFCFA(totalSpent)} tone="spent" />
         <Kpi
@@ -132,173 +218,89 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
           value={formatFCFA(totalRemaining)}
           tone={totalRemaining < 0 ? 'over' : 'ok'}
         />
+        <Kpi
+          icon={TrendingDown}
+          label="Consommé"
+          value={`${Math.round(pct)}%`}
+          tone={pct > 100 ? 'over' : pct > 90 ? 'spent' : 'ok'}
+        />
       </div>
 
+      {/* Global consumption bar */}
       <div className="panel p-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">
             Consommation du budget
           </span>
-          <span className={cn('text-sm font-medium font-mono tabular-nums', pctText(totalPct))}>
-            {Math.round(totalPct)}%
+          <span className={cn('text-sm font-medium font-mono tabular-nums', pctText(pct))}>
+            {Math.round(pct)}%
           </span>
         </div>
         <div className="h-2.5 rounded-full bg-black/[0.06] overflow-hidden">
           <div
-            className={cn('h-full rounded-full transition-all', barColor(totalPct))}
-            style={{ width: `${Math.min(100, totalPct)}%` }}
+            className={cn('h-full rounded-full transition-all', barColor(pct))}
+            style={{ width: `${Math.min(100, pct)}%` }}
           />
         </div>
       </div>
 
-      {/* Lines */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-atlas-fg-1">
-          Lignes budgétaires <span className="text-atlas-fg-3 font-mono">({lines.length})</span>
-        </h3>
-        <div className="flex items-center gap-2">
-          <button onClick={onExport} className="btn-ghost text-sm px-3 py-1.5">
-            <Download className="w-3.5 h-3.5" /> Exporter
-          </button>
-          <button
-            onClick={() => setModal({ kind: 'expense-create', defaultLineId: null })}
-            className="btn-secondary text-sm px-3 py-1.5"
-          >
-            <Receipt className="w-3.5 h-3.5" /> Dépense
-          </button>
-          <button
-            onClick={() => setModal({ kind: 'line-create' })}
-            className="btn-primary text-sm px-3 py-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" /> Ligne budgétaire
-          </button>
+      {/* Status breakdown */}
+      <div className="panel p-4">
+        <span className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">
+          Répartition par statut
+        </span>
+        <div className="mt-3 grid grid-cols-3 gap-3">
+          <StatusCell label="Prévu" value={byStatus.planned} cls="text-atlas-fg-2" />
+          <StatusCell label="Engagé" value={byStatus.committed} cls="text-signal-blue" />
+          <StatusCell label="Payé" value={byStatus.paid} cls="text-signal-green" />
         </div>
       </div>
 
-      {/* Filter bar — affects only the expense tables shown when a line is
-          expanded, not the budget rollups. */}
-      <div className="panel p-3 flex flex-wrap items-end gap-3">
-        <div className="inline-flex items-center gap-1.5 text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium self-center">
-          <Filter className="w-3.5 h-3.5" /> Filtres
-        </div>
-        <label className="flex flex-col gap-1">
-          <span className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">Statut</span>
-          <NativeSelect
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="h-9 w-36"
-          >
-            <option value="all">Tous</option>
-            <option value="planned">Prévu</option>
-            <option value="committed">Engagé</option>
-            <option value="paid">Payé</option>
-          </NativeSelect>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">Du</span>
-          <TextInput
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="h-9 w-40"
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">Au</span>
-          <TextInput
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="h-9 w-40"
-          />
-        </label>
-        {filtersActive && (
-          <button
-            onClick={() => {
-              setStatusFilter('all');
-              setDateFrom('');
-              setDateTo('');
-            }}
-            className="btn-ghost text-xs px-2.5 py-1.5 self-center"
-          >
-            Réinitialiser
-          </button>
-        )}
-        {filtersActive && (
-          <span className="ml-auto self-center text-2xs text-atlas-fg-2 font-mono">
-            filtré : {filteredCount} dépense{filteredCount > 1 ? 's' : ''} · {formatFCFA(filteredSum)}
-          </span>
+      {/* Top-level lines with rolled-up spend */}
+      <div className="panel p-4">
+        <span className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">
+          Lignes principales
+        </span>
+        {tree.length === 0 ? (
+          <p className="mt-3 text-sm text-atlas-fg-3 italic">Aucune ligne budgétaire pour ce projet.</p>
+        ) : (
+          <div className="mt-3 space-y-3">
+            {tree.map((node) => {
+              const linePct =
+                node.line.allocatedAmount > 0
+                  ? (node.subtreeSpent / node.line.allocatedAmount) * 100
+                  : node.subtreeSpent > 0
+                    ? 100
+                    : 0;
+              return (
+                <div key={node.line.id}>
+                  <div className="flex items-center justify-between gap-3 mb-1.5">
+                    <span className="text-sm font-medium text-atlas-fg-1 truncate">{node.line.name}</span>
+                    <span className="text-2xs font-mono text-atlas-fg-3 shrink-0">
+                      {formatFCFA(node.subtreeSpent)} / {formatFCFA(node.line.allocatedAmount)}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-black/[0.06] overflow-hidden">
+                    <div
+                      className={cn('h-full rounded-full transition-all', barColor(linePct))}
+                      style={{ width: `${Math.min(100, linePct)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
+    </div>
+  );
+}
 
-      {lines.length === 0 && unallocatedSpent === 0 ? (
-        <div className="panel p-10 text-center">
-          <Wallet className="w-8 h-8 mx-auto mb-2 text-atlas-fg-3 opacity-40" />
-          <p className="text-sm text-atlas-fg-3">
-            Aucune ligne budgétaire pour ce projet.
-            <br />
-            <button
-              onClick={() => setModal({ kind: 'line-create' })}
-              className="text-atlas-amber-deep hover:underline mt-2"
-            >
-              Créer la première ligne
-            </button>
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {lines.map((line) => (
-            <BudgetLineRow
-              key={line.id}
-              projectId={projectId}
-              line={line}
-              spent={spentByLine.get(line.id) ?? 0}
-              expenseCount={expenses.filter((e) => e.lineId === line.id).length}
-              expenses={filteredExpenses.filter((e) => e.lineId === line.id)}
-              onEdit={() => setModal({ kind: 'line-edit', line })}
-              onAddExpense={() => setModal({ kind: 'expense-create', defaultLineId: line.id })}
-              onEditExpense={(expense) => setModal({ kind: 'expense-edit', expense })}
-            />
-          ))}
-
-          {/* Unallocated expenses bucket — shown only when present. */}
-          {unallocatedSpent > 0 && (
-            <UnallocatedRow
-              spent={unallocatedSpent}
-              expenseCount={expenses.filter((e) => !e.lineId).length}
-              expenses={filteredExpenses.filter((e) => !e.lineId)}
-              onEditExpense={(expense) => setModal({ kind: 'expense-edit', expense })}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Totals row */}
-      {(lines.length > 0 || unallocatedSpent > 0) && (
-        <div className="panel p-4 grid grid-cols-3 gap-3 text-center">
-          <TotalCell label="Alloué" value={formatFCFA(totalAllocated)} />
-          <TotalCell label="Dépensé" value={formatFCFA(totalSpent)} />
-          <TotalCell
-            label="Reste"
-            value={formatFCFA(totalRemaining)}
-            tone={totalRemaining < 0 ? 'over' : 'ok'}
-          />
-        </div>
-      )}
-
-      {/* Modals */}
-      {(modal?.kind === 'line-create' || modal?.kind === 'line-edit') && (
-        <BudgetLineModal projectId={projectId} initial={modal.line} onClose={() => setModal(null)} />
-      )}
-      {(modal?.kind === 'expense-create' || modal?.kind === 'expense-edit') && (
-        <ExpenseModal
-          projectId={projectId}
-          lines={lines}
-          defaultLineId={modal.defaultLineId}
-          initial={modal.expense}
-          onClose={() => setModal(null)}
-        />
-      )}
+function StatusCell({ label, value, cls }: { label: string; value: number; cls: string }) {
+  return (
+    <div className="rounded-lg border border-atlas-line bg-white px-3 py-2.5 text-center">
+      <div className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">{label}</div>
+      <div className={cn('mt-1 text-sm font-medium tabular-nums', cls)}>{formatFCFA(value)}</div>
     </div>
   );
 }
@@ -314,14 +316,7 @@ function Kpi({
   value: string;
   tone: 'neutral' | 'spent' | 'ok' | 'over';
 }) {
-  const toneCls =
-    tone === 'over'
-      ? 'text-signal-red'
-      : tone === 'ok'
-        ? 'text-atlas-sage'
-        : tone === 'spent'
-          ? 'text-atlas-fg-1'
-          : 'text-atlas-fg-1';
+  const toneCls = tone === 'over' ? 'text-signal-red' : tone === 'ok' ? 'text-atlas-sage' : 'text-atlas-fg-1';
   return (
     <div className="panel p-4">
       <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">
@@ -333,50 +328,104 @@ function Kpi({
   );
 }
 
-function TotalCell({ label, value, tone }: { label: string; value: string; tone?: 'over' | 'ok' }) {
+/* ─────────── 2. Lignes & dépenses (arborescence) ─────────── */
+
+function LinesTab({
+  projectId,
+  tree,
+  expenses,
+  onCreateRoot,
+  onCreateSub,
+  onEditLine,
+  onAddExpense,
+  onEditExpense,
+}: {
+  projectId: string;
+  tree: BudgetTreeNode[];
+  expenses: Expense[];
+  onCreateRoot: () => void;
+  onCreateSub: (parent: BudgetLine) => void;
+  onEditLine: (line: BudgetLine) => void;
+  onAddExpense: (lineId: string) => void;
+  onEditExpense: (e: Expense) => void;
+}) {
+  // Unallocated expenses (no line) — shown as a special bucket.
+  const unallocated = useMemo(() => expenses.filter((e) => !e.lineId), [expenses]);
+
   return (
-    <div>
-      <div className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">{label}</div>
-      <div
-        className={cn(
-          'mt-0.5 text-sm font-medium tabular-nums',
-          tone === 'over' ? 'text-signal-red' : tone === 'ok' ? 'text-atlas-sage' : 'text-atlas-fg-1'
-        )}
-      >
-        {value}
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-atlas-fg-1">Arborescence budgétaire</h3>
+        <div className="flex items-center gap-2">
+          <button onClick={() => onAddExpense('')} className="btn-secondary text-sm px-3 py-1.5">
+            <Receipt className="w-3.5 h-3.5" /> Dépense
+          </button>
+          <button onClick={onCreateRoot} className="btn-primary text-sm px-3 py-1.5">
+            <Plus className="w-3.5 h-3.5" /> Ligne
+          </button>
+        </div>
       </div>
+
+      {tree.length === 0 && unallocated.length === 0 ? (
+        <div className="panel p-10 text-center">
+          <Wallet className="w-8 h-8 mx-auto mb-2 text-atlas-fg-3 opacity-40" />
+          <p className="text-sm text-atlas-fg-3">
+            Aucune ligne budgétaire pour ce projet.
+            <br />
+            <button onClick={onCreateRoot} className="text-atlas-amber-deep hover:underline mt-2">
+              Créer la première ligne
+            </button>
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {tree.map((node) => (
+            <BudgetLineRow
+              key={node.line.id}
+              projectId={projectId}
+              node={node}
+              expenses={expenses}
+              onCreateSub={onCreateSub}
+              onEditLine={onEditLine}
+              onAddExpense={onAddExpense}
+              onEditExpense={onEditExpense}
+            />
+          ))}
+
+          {unallocated.length > 0 && <UnallocatedRow expenses={unallocated} onEditExpense={onEditExpense} />}
+        </div>
+      )}
     </div>
   );
 }
 
 function BudgetLineRow({
   projectId,
-  line,
-  spent,
-  expenseCount,
+  node,
   expenses,
-  onEdit,
+  onCreateSub,
+  onEditLine,
   onAddExpense,
   onEditExpense,
 }: {
   projectId: string;
-  line: BudgetLine;
-  spent: number;
-  /** Total expenses on this line (unfiltered) — for the count badge. */
-  expenseCount: number;
-  /** Filtered expenses shown in the expanded table. */
+  node: BudgetTreeNode;
   expenses: Expense[];
-  onEdit: () => void;
-  onAddExpense: () => void;
+  onCreateSub: (parent: BudgetLine) => void;
+  onEditLine: (line: BudgetLine) => void;
+  onAddExpense: (lineId: string) => void;
   onEditExpense: (e: Expense) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const { line, depth, subtreeSpent, remaining } = node;
+  const [open, setOpen] = useState(depth === 0);
   const [noteDraft, setNoteDraft] = useState('');
   const deleteBudgetLine = useApp((s) => s.deleteBudgetLine);
   const addBudgetNote = useApp((s) => s.addBudgetNote);
+  const liveLine = useApp((s) => s.budgetLines.find((l) => l.id === line.id));
 
-  const remaining = line.allocatedAmount - spent;
-  const pct = line.allocatedAmount > 0 ? (spent / line.allocatedAmount) * 100 : spent > 0 ? 100 : 0;
+  const pct =
+    line.allocatedAmount > 0 ? (subtreeSpent / line.allocatedAmount) * 100 : subtreeSpent > 0 ? 100 : 0;
+  const directExpenses = expenses.filter((e) => e.lineId === line.id);
 
   const submitNote = () => {
     if (!noteDraft.trim()) return;
@@ -386,7 +435,7 @@ function BudgetLineRow({
 
   return (
     <div className="panel overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3">
+      <div className="flex items-center gap-2.5 px-3 py-3" style={{ paddingLeft: 12 + depth * 22 }}>
         <button
           onClick={() => setOpen((v) => !v)}
           className="text-atlas-fg-3 hover:text-atlas-fg-1 shrink-0"
@@ -396,8 +445,13 @@ function BudgetLineRow({
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
+            {depth > 0 && <CornerDownRight className="w-3 h-3 text-atlas-fg-3 shrink-0" />}
             <span className="text-sm font-medium text-atlas-fg-1 truncate">{line.name}</span>
-            <span className="text-2xs font-mono text-atlas-fg-3">{expenseCount} dép.</span>
+            {node.children.length > 0 && (
+              <span className="text-2xs font-mono text-atlas-fg-3">
+                {node.children.length} sous-ligne{node.children.length > 1 ? 's' : ''}
+              </span>
+            )}
           </div>
           <div className="mt-1.5 h-1.5 rounded-full bg-black/[0.06] overflow-hidden">
             <div
@@ -406,9 +460,9 @@ function BudgetLineRow({
             />
           </div>
         </div>
-        <div className="hidden sm:grid grid-cols-3 gap-4 text-right shrink-0 w-[360px]">
+        <div className="hidden md:grid grid-cols-3 gap-4 text-right shrink-0 w-[340px]">
           <Cell label="Alloué" value={formatFCFA(line.allocatedAmount)} />
-          <Cell label="Dépensé" value={formatFCFA(spent)} />
+          <Cell label="Dépensé" value={formatFCFA(subtreeSpent)} />
           <Cell label="Reste" value={formatFCFA(remaining)} tone={remaining < 0 ? 'over' : 'ok'} />
         </div>
         <span
@@ -422,15 +476,24 @@ function BudgetLineRow({
               <Edit3 className="w-3.5 h-3.5" />
             </button>
           }
-          width={180}
+          width={190}
         >
           {(close) => (
             <>
               <MenuItem
+                icon={CornerDownRight}
+                onClick={() => {
+                  close();
+                  onCreateSub(line);
+                }}
+              >
+                Ajouter une sous-ligne
+              </MenuItem>
+              <MenuItem
                 icon={Receipt}
                 onClick={() => {
                   close();
-                  onAddExpense();
+                  onAddExpense(line.id);
                 }}
               >
                 Ajouter une dépense
@@ -439,7 +502,7 @@ function BudgetLineRow({
                 icon={Edit3}
                 onClick={() => {
                   close();
-                  onEdit();
+                  onEditLine(line);
                 }}
               >
                 Modifier la ligne
@@ -461,38 +524,63 @@ function BudgetLineRow({
       </div>
 
       {open && (
-        <div className="border-t border-black/[0.05] bg-black/[0.015] px-4 py-3 space-y-4">
-          {/* Expenses table */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">Dépenses</span>
-              <button
-                onClick={onAddExpense}
-                className="text-2xs text-atlas-fg-3 hover:text-atlas-fg-1 inline-flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" /> Dépense
-              </button>
+        <div className="border-t border-black/[0.05] bg-black/[0.015]">
+          {/* Recursive sub-lines */}
+          {node.children.length > 0 && (
+            <div className="space-y-2 px-3 py-3">
+              {node.children.map((child) => (
+                <BudgetLineRow
+                  key={child.line.id}
+                  projectId={projectId}
+                  node={child}
+                  expenses={expenses}
+                  onCreateSub={onCreateSub}
+                  onEditLine={onEditLine}
+                  onAddExpense={onAddExpense}
+                  onEditExpense={onEditExpense}
+                />
+              ))}
             </div>
-            {expenses.length === 0 ? (
-              <p className="text-2xs text-atlas-fg-3 italic py-2">
-                {expenseCount === 0
-                  ? 'Aucune dépense sur cette ligne.'
-                  : 'Aucune dépense ne correspond aux filtres.'}
-              </p>
-            ) : (
-              <ExpenseTable expenses={expenses} onEditExpense={onEditExpense} />
-            )}
+          )}
+
+          <div className="px-4 py-3 space-y-4">
+            {/* Direct expenses */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">
+                  Dépenses directes
+                </span>
+                <button
+                  onClick={() => onAddExpense(line.id)}
+                  className="text-2xs text-atlas-fg-3 hover:text-atlas-fg-1 inline-flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" /> Dépense
+                </button>
+              </div>
+              {directExpenses.length === 0 ? (
+                <p className="text-2xs text-atlas-fg-3 italic py-1">
+                  Aucune dépense directe sur cette ligne.
+                </p>
+              ) : (
+                <ExpenseTable expenses={directExpenses} onEditExpense={onEditExpense} />
+              )}
+            </div>
+
+            {/* Notes */}
+            <NotesBlock
+              notes={liveLine?.notes ?? line.notes}
+              draft={noteDraft}
+              setDraft={setNoteDraft}
+              onSubmit={submitNote}
+            />
+
+            {/* Pièces jointes */}
+            <AttachmentsBlock
+              projectId={projectId}
+              target={{ kind: 'line', id: line.id }}
+              attachments={liveLine?.attachments ?? line.attachments}
+            />
           </div>
-
-          {/* Notes */}
-          <NotesBlock notes={line.notes} draft={noteDraft} setDraft={setNoteDraft} onSubmit={submitNote} />
-
-          {/* Pièces jointes */}
-          <AttachmentsBlock
-            projectId={projectId}
-            target={{ kind: 'line', id: line.id }}
-            attachments={line.attachments}
-          />
         </div>
       )}
     </div>
@@ -500,19 +588,14 @@ function BudgetLineRow({
 }
 
 function UnallocatedRow({
-  spent,
-  expenseCount,
   expenses,
   onEditExpense,
 }: {
-  spent: number;
-  /** Total unallocated expenses (unfiltered) — for the count badge. */
-  expenseCount: number;
-  /** Filtered unallocated expenses shown in the expanded table. */
   expenses: Expense[];
   onEditExpense: (e: Expense) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const spent = expenses.reduce((sum, e) => sum + e.amount, 0);
   return (
     <div className="panel overflow-hidden border-dashed">
       <div className="flex items-center gap-3 px-4 py-3">
@@ -525,21 +608,13 @@ function UnallocatedRow({
         </button>
         <div className="min-w-0 flex-1">
           <span className="text-sm font-medium text-atlas-fg-2 italic">Dépenses non ventilées</span>
-          <span className="ml-2 text-2xs font-mono text-atlas-fg-3">{expenseCount} dép.</span>
+          <span className="ml-2 text-2xs font-mono text-atlas-fg-3">{expenses.length} dép.</span>
         </div>
         <span className="text-sm font-medium tabular-nums text-atlas-fg-1 shrink-0">{formatFCFA(spent)}</span>
       </div>
       {open && (
         <div className="border-t border-black/[0.05] bg-black/[0.015] px-4 py-3">
-          {expenses.length === 0 ? (
-            <p className="text-2xs text-atlas-fg-3 italic py-2">
-              {expenseCount === 0
-                ? 'Aucune dépense non ventilée.'
-                : 'Aucune dépense ne correspond aux filtres.'}
-            </p>
-          ) : (
-            <ExpenseTable expenses={expenses} onEditExpense={onEditExpense} />
-          )}
+          <ExpenseTable expenses={expenses} onEditExpense={onEditExpense} />
         </div>
       )}
     </div>
@@ -696,46 +771,136 @@ function Cell({ label, value, tone }: { label: string; value: string; tone?: 'ov
   );
 }
 
-/** Quote a single CSV cell — wrap in double-quotes and escape inner quotes. */
-function csvCell(value: string | number): string {
-  const s = String(value ?? '');
-  return `"${s.replace(/"/g, '""')}"`;
+/* ─────────── 3. Notes / Communication (aggregated timeline) ─────────── */
+
+interface AggregatedNote {
+  note: BudgetNote;
+  source: string;
 }
 
-/**
- * Build the project budget CSV (two sections: lignes, then dépenses).
- * Numbers are written raw (no thousands separator) so Excel parses them as
- * numbers; the caller prepends a UTF-8 BOM so accents render in Excel.
- */
-function buildBudgetCsv(lines: BudgetLine[], expenses: Expense[], spentByLine: Map<string, number>): string {
-  const rows: string[] = [];
-  const lineNameById = new Map(lines.map((l) => [l.id, l.name]));
+function NotesTab({ lines, expenses }: { lines: BudgetLine[]; expenses: Expense[] }) {
+  const users = useApp((s) => s.users);
+  const items = useMemo<AggregatedNote[]>(() => {
+    const out: AggregatedNote[] = [];
+    for (const l of lines) {
+      for (const n of l.notes) out.push({ note: n, source: `Ligne · ${l.name}` });
+    }
+    for (const e of expenses) {
+      for (const n of e.notes) out.push({ note: n, source: `Dépense · ${e.label}` });
+    }
+    return out.sort((a, b) => b.note.at.localeCompare(a.note.at));
+  }, [lines, expenses]);
 
-  rows.push(csvCell('Lignes budgétaires'));
-  rows.push(['Nom', 'Alloué', 'Dépensé', 'Reste'].map(csvCell).join(';'));
-  for (const l of lines) {
-    const spent = spentByLine.get(l.id) ?? 0;
-    rows.push([l.name, l.allocatedAmount, spent, l.allocatedAmount - spent].map(csvCell).join(';'));
-  }
+  const authorName = (id: string | null) => users.find((u) => u.id === id)?.name ?? 'Inconnu';
 
-  rows.push('');
-  rows.push(csvCell('Dépenses'));
-  rows.push(['Date', 'Ligne', 'Libellé', 'Montant', 'Statut', 'Fournisseur'].map(csvCell).join(';'));
-  const sortedExpenses = [...expenses].sort((a, b) => a.expenseDate.localeCompare(b.expenseDate));
-  for (const e of sortedExpenses) {
-    rows.push(
-      [
-        e.expenseDate.slice(0, 10),
-        e.lineId ? (lineNameById.get(e.lineId) ?? '') : 'Non ventilée',
-        e.label,
-        e.amount,
-        statusCfg[e.status].label,
-        e.vendor ?? '',
-      ]
-        .map(csvCell)
-        .join(';')
+  if (items.length === 0) {
+    return (
+      <div className="panel p-10 text-center">
+        <MessageSquare className="w-8 h-8 mx-auto mb-2 text-atlas-fg-3 opacity-40" />
+        <p className="text-sm text-atlas-fg-3">Aucune note budgétaire pour ce projet.</p>
+      </div>
     );
   }
 
-  return rows.join('\r\n');
+  return (
+    <div className="space-y-2">
+      {items.map(({ note, source }) => (
+        <div key={note.id} className="panel p-4">
+          <div className="flex items-center justify-between gap-3 mb-1.5">
+            <span className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium truncate">
+              {source}
+            </span>
+            <span className="text-2xs font-mono text-atlas-fg-3 shrink-0">
+              {new Date(note.at).toLocaleString('fr-FR')}
+            </span>
+          </div>
+          <p className="text-sm text-atlas-fg-1 whitespace-pre-wrap">{note.text}</p>
+          <span className="block mt-1.5 text-2xs text-atlas-fg-3">{authorName(note.authorId)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─────────── 4. Pièces jointes (aggregated gallery) ─────────── */
+
+interface AggregatedAttachment {
+  att: BudgetAttachment;
+  source: string;
+}
+
+/** Human-readable file size. */
+function formatSize(bytes?: number): string {
+  if (!bytes || bytes <= 0) return '';
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+function FilesTab({ lines, expenses }: { lines: BudgetLine[]; expenses: Expense[] }) {
+  const pushToast = useApp((s) => s.pushToast);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const items = useMemo<AggregatedAttachment[]>(() => {
+    const out: AggregatedAttachment[] = [];
+    for (const l of lines) {
+      for (const a of l.attachments) out.push({ att: a, source: `Ligne · ${l.name}` });
+    }
+    for (const e of expenses) {
+      for (const a of e.attachments) out.push({ att: a, source: `Dépense · ${e.label}` });
+    }
+    return out.sort((a, b) => b.att.uploadedAt.localeCompare(a.att.uploadedAt));
+  }, [lines, expenses]);
+
+  const onDownload = async (att: BudgetAttachment) => {
+    setBusyId(att.id);
+    try {
+      const url = await signedBudgetUrl(att.path);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      else pushToast({ kind: 'error', title: 'Téléchargement impossible', body: att.name });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (items.length === 0) {
+    return (
+      <div className="panel p-10 text-center">
+        <Paperclip className="w-8 h-8 mx-auto mb-2 text-atlas-fg-3 opacity-40" />
+        <p className="text-sm text-atlas-fg-3">Aucune pièce jointe budgétaire pour ce projet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      {items.map(({ att, source }) => {
+        const busy = busyId === att.id;
+        const size = formatSize(att.size);
+        return (
+          <div key={att.id} className="group panel p-3 flex items-center gap-3 hover:border-atlas-line-2">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center border bg-atlas-amber/15 text-atlas-amber-deep border-atlas-amber/30 shrink-0">
+              <Paperclip className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-atlas-fg-1 truncate">{att.name}</div>
+              <div className="text-2xs text-atlas-fg-3 truncate">
+                {size && `${size} · `}
+                {source}
+              </div>
+            </div>
+            <button
+              onClick={() => onDownload(att)}
+              disabled={busy}
+              className="btn-ghost !p-1.5 shrink-0 disabled:opacity-50"
+              aria-label="Télécharger"
+              title="Télécharger"
+            >
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
