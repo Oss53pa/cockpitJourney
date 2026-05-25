@@ -223,22 +223,46 @@ export function Sidebar({
   ).length;
   const inboxCount = notifications.filter((n) => !n.read).length;
 
-  const items: { key: ViewKey; label: string; icon: LucideIcon; badge?: string }[] = [
-    { key: 'today', label: 'Aujourd’hui', icon: Sun, badge: todayCount ? String(todayCount) : undefined },
+  // Top-level navigation, grouped into labeled sections (like the Projets
+  // tree below). Each group gets a small uppercase header so the menu reads
+  // as logical zones rather than one long flat list.
+  type NavItem = { key: ViewKey; label: string; icon: LucideIcon; badge?: string };
+  const navGroups: { label: string; items: NavItem[] }[] = [
     {
-      key: 'inbox',
-      label: 'Boîte d’entrée',
-      icon: Inbox,
-      badge: inboxCount ? String(inboxCount) : undefined,
+      label: 'Mon quotidien',
+      items: [
+        { key: 'today', label: 'Aujourd’hui', icon: Sun, badge: todayCount ? String(todayCount) : undefined },
+        {
+          key: 'inbox',
+          label: 'Boîte d’entrée',
+          icon: Inbox,
+          badge: inboxCount ? String(inboxCount) : undefined,
+        },
+        { key: 'focus', label: 'Mode Focus', icon: Timer },
+      ],
     },
-    { key: 'projects', label: 'Tous les projets', icon: FolderTree },
-    { key: 'budget', label: 'Budget', icon: Wallet },
-    { key: 'goals', label: 'Goals & OKRs', icon: Target },
-    { key: 'dashboards', label: 'Dashboards', icon: LayoutDashboard },
-    { key: 'focus', label: 'Mode Focus', icon: Timer },
-    { key: 'automations', label: 'Automatisations', icon: Workflow },
-    { key: 'forms', label: 'Forms d’intake', icon: ClipboardList },
-    { key: 'reports', label: 'Rapports', icon: FileBarChart },
+    {
+      label: 'Pilotage',
+      items: [
+        { key: 'projects', label: 'Tous les projets', icon: FolderTree },
+        { key: 'budget', label: 'Budget', icon: Wallet },
+        { key: 'goals', label: 'Goals & OKRs', icon: Target },
+      ],
+    },
+    {
+      label: 'Analyse',
+      items: [
+        { key: 'dashboards', label: 'Dashboards', icon: LayoutDashboard },
+        { key: 'reports', label: 'Rapports', icon: FileBarChart },
+      ],
+    },
+    {
+      label: 'Automatisation',
+      items: [
+        { key: 'automations', label: 'Automatisations', icon: Workflow },
+        { key: 'forms', label: 'Forms d’intake', icon: ClipboardList },
+      ],
+    },
   ];
 
   return (
@@ -282,40 +306,47 @@ export function Sidebar({
         </button>
       </div>
 
-      <nav className="px-3 mt-2 space-y-0.5">
-        {items.map((it) => {
-          const active = view === it.key;
-          const Icon = it.icon;
-          return (
-            <button
-              key={it.key}
-              onClick={() => onNavigate(it.key)}
-              className={cn('nav-item group w-full', active && 'nav-item-active')}
-            >
-              {active && (
-                <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-atlas-amber shadow-[0_0_12px_rgba(110,139,88,0.6)]" />
-              )}
-              <Icon
-                className={cn(
-                  'w-[18px] h-[18px]',
-                  active ? 'text-atlas-amber-deep' : 'text-atlas-fg-3 group-hover:text-atlas-fg-2'
-                )}
-                strokeWidth={1.7}
-              />
-              <span className="flex-1 text-left">{it.label}</span>
-              {it.badge && (
-                <span
-                  className={cn(
-                    'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-md text-[10px] font-medium',
-                    active ? 'bg-atlas-amber text-white' : 'bg-black/[0.06] text-atlas-fg-2'
-                  )}
+      <nav className="px-3 mt-2 space-y-2.5">
+        {navGroups.map((group) => (
+          <div key={group.label} className="space-y-0.5">
+            <span className="block px-3 pt-1 pb-0.5 text-2xs uppercase tracking-[0.18em] font-medium text-atlas-fg-3/80">
+              {group.label}
+            </span>
+            {group.items.map((it) => {
+              const active = view === it.key;
+              const Icon = it.icon;
+              return (
+                <button
+                  key={it.key}
+                  onClick={() => onNavigate(it.key)}
+                  className={cn('nav-item group w-full', active && 'nav-item-active')}
                 >
-                  {it.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
+                  {active && (
+                    <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-atlas-amber shadow-[0_0_12px_rgba(110,139,88,0.6)]" />
+                  )}
+                  <Icon
+                    className={cn(
+                      'w-[18px] h-[18px]',
+                      active ? 'text-atlas-amber-deep' : 'text-atlas-fg-3 group-hover:text-atlas-fg-2'
+                    )}
+                    strokeWidth={1.7}
+                  />
+                  <span className="flex-1 text-left">{it.label}</span>
+                  {it.badge && (
+                    <span
+                      className={cn(
+                        'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-md text-[10px] font-medium',
+                        active ? 'bg-atlas-amber text-white' : 'bg-black/[0.06] text-atlas-fg-2'
+                      )}
+                    >
+                      {it.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       <div className="mt-6 px-3 flex-1 min-h-0 overflow-y-auto">
