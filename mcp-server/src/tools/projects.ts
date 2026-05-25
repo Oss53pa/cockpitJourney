@@ -9,7 +9,7 @@
  * + a quick task summary so Claude can answer "what's in this project?"
  * in one call.
  */
-import { pickRow, type ToolDefinition } from './common.js';
+import { pickRow, getProfileId, camelizePatch, type ToolDefinition } from './common.js';
 import { requireScope } from '../auth.js';
 
 interface ListProjectsArgs {
@@ -118,7 +118,7 @@ export const getProject: ToolDefinition<GetProjectArgs> = {
 export const createProject: ToolDefinition<CreateProjectArgs> = {
   name: 'cj_create_project',
   description:
-    "Crée un nouveau projet. Génère automatiquement un slug et un id namespaced. Le projet est créé sans sections — utiliser cj_create_task pour ajouter du contenu.",
+    "Crée un nouveau projet et l'amorce avec 4 sections kanban par défaut (À faire / En cours / En revue / Terminé), exactement comme l'app. Génère automatiquement un slug et un id namespaced.",
   inputSchema: {
     type: 'object',
     properties: {
@@ -134,36 +134,65 @@ export const createProject: ToolDefinition<CreateProjectArgs> = {
   async handler(args, session) {
     requireScope(session, 'write', 'admin');
 
+    const ownerId = await getProfileId(session);
     const userPrefix = session.userId.slice(0, 8);
     const id = `${userPrefix}_p_${cryptoRandomSuffix()}`;
     const now = new Date().toISOString();
     const slug = slugify(args.name);
 
+    // camelCase entity matching src/types/index.ts `Project` (the app reads `data`).
     const data = {
       id,
-      name: args.name,
       slug,
+      name: args.name,
       description: args.description ?? '',
+      status: 'active',
       color: args.color ?? '#6E8B58',
       icon: args.icon ?? 'briefcase',
-      status: 'active',
-      folder_id: args.folder_id ?? null,
-      owner_id: session.userId,
-      created_at: now,
-      updated_at: now,
-      created_via: 'mcp',
+      ownerId,
+      folderId: args.folder_id ?? null,
+      health: 'green',
+      progress: 0,
+      taskCount: 0,
+      membersIds: ownerId ? [ownerId] : [],
+      createdAt: now,
+      updatedAt: now,
     };
 
     const { error } = await session.client.from('cj_projects').insert({
       id,
       folder_id: args.folder_id ?? null,
-      owner_id: session.userId,
+      owner_id: ownerId,
       status: 'active',
       data,
       auth_user_id: session.userId,
     });
     if (error) throw new Error(`cj_create_project: ${error.message}`);
-    return { ok: true, project: data };
+
+    // Seed the 4 default sections like the app's createProject. Each `data`
+    // is a camelCase `Section` (id, projectId, name, color, position, wipLimit?).
+    const sectionDefs: Array<{ name: string; color: string; position: number; wipLimit?: number }> = [
+      { name: 'À faire', color: '#5A6055', position: 0 },
+      { name: 'En cours', color: '#95B07D', position: 1, wipLimit: 5 },
+      { name: 'En revue', color: '#8AA6C4', position: 2 },
+      { name: 'Terminé', color: '#7AC388', position: 3 },
+    ];
+    const sectionRows = sectionDefs.map((s) => {
+      const sid = `${userPrefix}_s_${cryptoRandomSuffix()}`;
+      const sData: Record<string, unknown> = {
+        id: sid,
+        projectId: id,
+        name: s.name,
+        color: s.color,
+        position: s.position,
+      };
+      if (s.wipLimit !== undefined) sData.wipLimit = s.wipLimit;
+      return { id: sid, project_id: id, auth_user_id: session.userId, data: sData };
+    });
+    const { error: sErr } = await session.client.from('cj_sections').insert(sectionRows);
+    if (sErr) throw new Error(`cj_create_project (sections): ${sErr.message}`);
+
+    return { ok: true, project: data, sectionIds: sectionRows.map((r) => r.id) };
   },
 };
 
@@ -196,15 +225,16 @@ export const updateProject: ToolDefinition<UpdateProjectArgs> = {
     if (!row) throw new Error(`Projet ${args.project_id} introuvable`);
 
     const now = new Date().toISOString();
+    const patch = camelizePatch(args.patch);
     const merged = {
       ...((row.data ?? {}) as Record<string, unknown>),
-      ...args.patch,
-      updated_at: now,
+      ...patch,
+      updatedAt: now,
     };
 
     const update: Record<string, unknown> = { data: merged };
-    if ('status' in args.patch) update.status = args.patch.status;
-    if ('folder_id' in args.patch) update.folder_id = args.patch.folder_id;
+    if ('status' in patch) update.status = patch.status;
+    if ('folderId' in patch) update.folder_id = patch.folderId;
 
     const { error } = await session.client.from('cj_projects').update(update).eq('id', args.project_id);
     if (error) throw new Error(`cj_update_project: ${error.message}`);

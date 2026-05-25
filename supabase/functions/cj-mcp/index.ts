@@ -144,6 +144,39 @@ function slugify(s: string): string {
     .slice(0, 60);
 }
 
+// The app reads `data` and expects camelCase keys. Incoming update patches
+// may use snake_case (e.g. due_date, project_id) for convenience — convert
+// the known indexed/foreign keys so the merged `data` stays camelCase.
+const SNAKE_TO_CAMEL: Record<string, string> = {
+  due_date: "dueDate",
+  start_date: "startDate",
+  end_date: "endDate",
+  project_id: "projectId",
+  section_id: "sectionId",
+  parent_task_id: "parentTaskId",
+  folder_id: "folderId",
+  owner_id: "ownerId",
+  author_id: "authorId",
+  target_value: "targetValue",
+  current_value: "currentValue",
+  start_value: "startValue",
+  metric_type: "metricType",
+  created_at: "createdAt",
+  updated_at: "updatedAt",
+  completion_date: "completionDate",
+  estimated_minutes: "estimatedMinutes",
+  actual_minutes: "actualMinutes",
+  goal_id: "goalId",
+  task_id: "taskId",
+};
+function camelizePatch(patch: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(patch ?? {})) {
+    out[SNAKE_TO_CAMEL[k] ?? k] = v;
+  }
+  return out;
+}
+
 // ─────────────────────────── Tools (18) ───────────────────────────
 interface Tool {
   name: string;
@@ -217,7 +250,7 @@ const TOOLS: Tool[] = [
   {
     name: "cj_create_project",
     description:
-      "Crée un nouveau projet. Génère automatiquement un slug et un id namespaced. Le projet est créé sans sections — utiliser cj_create_task pour ajouter du contenu.",
+      "Crée un nouveau projet et l'amorce avec 4 sections kanban par défaut (À faire / En cours / En revue / Terminé), exactement comme l'app. Génère automatiquement un slug et un id namespaced.",
     inputSchema: {
       type: "object",
       properties: {
@@ -236,25 +269,49 @@ const TOOLS: Tool[] = [
       const userPrefix = session.userId.slice(0, 8);
       const id = `${userPrefix}_p_${rand()}`;
       const now = new Date().toISOString();
+      // camelCase entity matching src/types/index.ts `Project` (the app reads `data`).
       const data = {
         id,
-        name: args.name,
         slug: slugify(args.name),
+        name: args.name,
         description: args.description ?? "",
+        status: "active",
         color: args.color ?? "#6E8B58",
         icon: args.icon ?? "briefcase",
-        status: "active",
-        folder_id: args.folder_id ?? null,
-        owner_id: ownerId,
-        created_at: now,
-        updated_at: now,
-        created_via: "mcp",
+        ownerId,
+        folderId: args.folder_id ?? null,
+        health: "green",
+        progress: 0,
+        taskCount: 0,
+        membersIds: ownerId ? [ownerId] : [],
+        createdAt: now,
+        updatedAt: now,
       };
       const { error } = await session.client.from("cj_projects").insert({
         id, folder_id: args.folder_id ?? null, owner_id: ownerId, status: "active", data, auth_user_id: session.userId,
       });
       if (error) throw new Error(`cj_create_project: ${error.message}`);
-      return { ok: true, project: data };
+
+      // Seed the 4 default sections like the app's createProject. Each
+      // `data` is a camelCase `Section` (id, projectId, name, color, position, wipLimit?).
+      const sectionDefs = [
+        { name: "À faire", color: "#5A6055", position: 0 },
+        { name: "En cours", color: "#95B07D", position: 1, wipLimit: 5 },
+        { name: "En revue", color: "#8AA6C4", position: 2 },
+        { name: "Terminé", color: "#7AC388", position: 3 },
+      ];
+      const sectionRows = sectionDefs.map((s) => {
+        const sid = `${userPrefix}_s_${rand()}`;
+        const sData: Record<string, unknown> = {
+          id: sid, projectId: id, name: s.name, color: s.color, position: s.position,
+        };
+        if (s.wipLimit !== undefined) sData.wipLimit = s.wipLimit;
+        return { id: sid, project_id: id, auth_user_id: session.userId, data: sData };
+      });
+      const { error: sErr } = await session.client.from("cj_sections").insert(sectionRows);
+      if (sErr) throw new Error(`cj_create_project (sections): ${sErr.message}`);
+
+      return { ok: true, project: data, sectionIds: sectionRows.map((r) => r.id) };
     },
   },
   {
@@ -276,10 +333,11 @@ const TOOLS: Tool[] = [
       if (readErr) throw new Error(`cj_update_project (read): ${readErr.message}`);
       if (!row) throw new Error(`Projet ${args.project_id} introuvable`);
       const now = new Date().toISOString();
-      const merged = { ...((row.data ?? {}) as Record<string, unknown>), ...args.patch, updated_at: now };
+      const patch = camelizePatch(args.patch as Record<string, unknown>);
+      const merged = { ...((row.data ?? {}) as Record<string, unknown>), ...patch, updatedAt: now };
       const update: Record<string, unknown> = { data: merged };
-      if ("status" in args.patch) update.status = args.patch.status;
-      if ("folder_id" in args.patch) update.folder_id = args.patch.folder_id;
+      if ("status" in patch) update.status = patch.status;
+      if ("folderId" in patch) update.folder_id = patch.folderId;
       const { error } = await session.client.from("cj_projects").update(update).eq("id", args.project_id);
       if (error) throw new Error(`cj_update_project: ${error.message}`);
       return { ok: true, project: merged };
@@ -326,7 +384,7 @@ const TOOLS: Tool[] = [
       properties: {
         title: { type: "string", minLength: 1, description: "Titre de la tâche (obligatoire)" },
         project_id: { type: "string", description: "ID du projet (omis = inbox)" },
-        priority: { type: "number", enum: [1, 2, 3, 4], description: "Priorité 1-4 (défaut 3)" },
+        priority: { type: "number", enum: [1, 2, 3, 4], description: "Priorité 1-4 (défaut 2)" },
         due_date: { type: "string", description: "Échéance ISO 8601 (ex: 2026-05-15T17:00:00Z)" },
         description: { type: "string", description: "Description / notes" },
         status: { type: "string", enum: ["todo", "in_progress", "in_review", "done"], description: "Statut initial (défaut todo)" },
@@ -339,14 +397,48 @@ const TOOLS: Tool[] = [
       const userPrefix = session.userId.slice(0, 8);
       const id = `${userPrefix}_t_${rand()}`;
       const now = new Date().toISOString();
+      const projectId = args.project_id ?? null;
+
+      // A task MUST have a valid sectionId to render in the Kanban. Resolve
+      // it to the project's lowest-position section (position read from
+      // data->>'position'). No project / no sections → sectionId stays null.
+      let sectionId: string | null = null;
+      if (projectId) {
+        const { data: secs, error: secErr } = await session.client
+          .from("cj_sections").select("id, data").eq("project_id", projectId);
+        if (secErr) throw new Error(`cj_create_task (sections): ${secErr.message}`);
+        if (secs && secs.length > 0) {
+          // deno-lint-ignore no-explicit-any
+          const sorted = [...secs].sort((a: any, b: any) => {
+            const pa = Number((a.data ?? {}).position ?? 0);
+            const pb = Number((b.data ?? {}).position ?? 0);
+            return pa - pb;
+          });
+          // deno-lint-ignore no-explicit-any
+          sectionId = (sorted[0] as any).id as string;
+        }
+      }
+
+      // camelCase entity matching src/types/index.ts `Task` (the app reads `data`).
       const data = {
-        id, title: args.title, project_id: args.project_id ?? null, priority: args.priority ?? 3,
-        status: args.status ?? "todo", due_date: args.due_date ?? null, description: args.description ?? "",
-        assignees: [], tags: [], created_at: now, updated_at: now, created_via: "mcp",
+        id,
+        projectId,
+        sectionId,
+        title: args.title,
+        description: args.description ?? "",
+        status: args.status ?? "todo",
+        priority: args.priority ?? 2,
+        dueDate: args.due_date ?? null,
+        assignees: [],
+        tags: [],
+        source: "manual",
+        commentCount: 0,
+        attachmentCount: 0,
+        createdAt: now,
       };
       const { error } = await session.client.from("cj_tasks").insert({
-        id, project_id: args.project_id ?? null, status: args.status ?? "todo", priority: args.priority ?? 3,
-        due_date: args.due_date ?? null, data, auth_user_id: session.userId,
+        id, project_id: projectId, section_id: sectionId, status: args.status ?? "todo",
+        priority: args.priority ?? 2, due_date: args.due_date ?? null, data, auth_user_id: session.userId,
       });
       if (error) throw new Error(`cj_create_task: ${error.message}`);
       return { ok: true, task: data };
@@ -371,12 +463,14 @@ const TOOLS: Tool[] = [
       if (readErr) throw new Error(`cj_update_task (read): ${readErr.message}`);
       if (!row) throw new Error(`Tâche ${args.task_id} introuvable`);
       const now = new Date().toISOString();
-      const merged = { ...((row.data ?? {}) as Record<string, unknown>), ...args.patch, updated_at: now };
+      const patch = camelizePatch(args.patch as Record<string, unknown>);
+      const merged = { ...((row.data ?? {}) as Record<string, unknown>), ...patch, updatedAt: now };
       const update: Record<string, unknown> = { data: merged };
-      if ("status" in args.patch) update.status = args.patch.status;
-      if ("priority" in args.patch) update.priority = args.patch.priority;
-      if ("due_date" in args.patch) update.due_date = args.patch.due_date;
-      if ("project_id" in args.patch) update.project_id = args.patch.project_id;
+      if ("status" in patch) update.status = patch.status;
+      if ("priority" in patch) update.priority = patch.priority;
+      if ("dueDate" in patch) update.due_date = patch.dueDate;
+      if ("projectId" in patch) update.project_id = patch.projectId;
+      if ("sectionId" in patch) update.section_id = patch.sectionId;
       const { error } = await session.client.from("cj_tasks").update(update).eq("id", args.task_id);
       if (error) throw new Error(`cj_update_task: ${error.message}`);
       return { ok: true, task: merged };
@@ -384,7 +478,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "cj_complete_task",
-    description: "Marque une tâche comme terminée (status = 'done', completed_at = now).",
+    description: "Marque une tâche comme terminée (status = 'done', completionDate = now).",
     inputSchema: {
       type: "object",
       properties: { task_id: { type: "string", description: "ID de la tâche à compléter" } },
@@ -397,7 +491,7 @@ const TOOLS: Tool[] = [
       const { data: row, error: readErr } = await session.client.from("cj_tasks").select("data").eq("id", args.task_id).maybeSingle();
       if (readErr) throw new Error(`cj_complete_task (read): ${readErr.message}`);
       if (!row) throw new Error(`Tâche ${args.task_id} introuvable`);
-      const merged = { ...((row.data ?? {}) as Record<string, unknown>), status: "done", completed_at: now, updated_at: now };
+      const merged = { ...((row.data ?? {}) as Record<string, unknown>), status: "done", completionDate: now, updatedAt: now };
       const { error } = await session.client.from("cj_tasks").update({ status: "done", data: merged }).eq("id", args.task_id);
       if (error) throw new Error(`cj_complete_task: ${error.message}`);
       return { ok: true, task_id: args.task_id, completed_at: now };
@@ -431,12 +525,13 @@ const TOOLS: Tool[] = [
       requireScope(session, "write", "admin");
       const userPrefix = session.userId.slice(0, 8);
       const now = new Date().toISOString();
+      // camelCase entity matching appStore `Subtask` (the app reads `data`):
+      // it uses `done: boolean` and `position: number` — NOT status/order.
       // deno-lint-ignore no-explicit-any
       const rows = (args.subtasks as any[]).map((s, i) => {
         const id = `${userPrefix}_st_${rand()}_${i}`;
         const data = {
-          id, task_id: args.task_id, title: s.title, status: s.status ?? "todo",
-          description: s.description ?? "", order: i, created_at: now, updated_at: now, created_via: "mcp",
+          id, taskId: args.task_id, title: s.title, done: s.status === "done", position: i,
         };
         return { id, task_id: args.task_id, data, auth_user_id: session.userId };
       });
@@ -454,8 +549,8 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        status: { type: "string", enum: ["active", "achieved", "missed", "cancelled"], description: "Filtre par statut (défaut: actifs uniquement)" },
-        level: { type: "string", enum: ["personal", "team", "company"], description: "Niveau hiérarchique" },
+        status: { type: "string", enum: ["on_track", "at_risk", "off_track", "achieved", "missed"], description: "Filtre par statut (défaut: tous)" },
+        level: { type: "string", enum: ["personal", "team", "company", "workspace"], description: "Niveau hiérarchique" },
         limit: { type: "number", minimum: 1, maximum: 100, description: "Max résultats (défaut 50)" },
       },
       additionalProperties: false,
@@ -463,16 +558,16 @@ const TOOLS: Tool[] = [
     async handler(args, session) {
       // deno-lint-ignore no-explicit-any
       let q: any = session.client.from("cj_goals").select("id, owner_id, level, status, data, updated_at");
-      q = q.eq("status", args.status ?? "active");
-      if (args.level) q = q.eq("level", args.level);
+      if (args.status) q = q.eq("status", args.status);
+      if (args.level) q = q.eq("level", args.level === "company" ? "workspace" : args.level);
       q = q.order("updated_at", { ascending: false }).limit(args.limit ?? 50);
       const { data, error } = await q;
       if (error) throw new Error(`cj_list_goals: ${error.message}`);
       const goals = (data ?? []).map((row: unknown) => {
         const g = pickRow(row) as Record<string, unknown>;
-        const target = Number(g.target_value ?? 0);
-        const current = Number(g.current_value ?? 0);
-        const start = Number(g.start_value ?? 0);
+        const target = Number(g.targetValue ?? 0);
+        const current = Number(g.currentValue ?? 0);
+        const start = Number(g.startValue ?? 0);
         const denom = target - start || target || 1;
         const progress = Math.max(0, Math.min(100, ((current - start) / denom) * 100));
         return { ...g, progress_pct: Math.round(progress * 10) / 10 };
@@ -505,15 +600,32 @@ const TOOLS: Tool[] = [
       const id = `${userPrefix}_g_${rand()}`;
       const now = new Date().toISOString();
       const start = args.start_value ?? 0;
+      // The app's Goal.level is 'workspace'|'team'|'personal'. Map the MCP
+      // 'company' alias to 'workspace' so GoalsView renders it.
+      const level = args.level === "company" ? "workspace" : (args.level ?? "personal");
+      // camelCase entity matching src/types/index.ts `Goal` (the app reads `data`).
       const data = {
-        id, title: args.title, description: args.description ?? "", target_value: args.target_value,
-        start_value: start, current_value: start, unit: args.unit, due_date: args.due_date,
-        level: args.level ?? "personal", status: "active", owner_id: ownerId,
-        progress_history: [{ at: now, value: start, note: "OKR créé" }],
-        created_at: now, updated_at: now, created_via: "mcp",
+        id,
+        title: args.title,
+        description: args.description ?? "",
+        ownerId,
+        level,
+        metricType: "number",
+        targetValue: args.target_value,
+        currentValue: start,
+        startValue: start,
+        unit: args.unit,
+        period: "quarterly",
+        startDate: now,
+        endDate: args.due_date,
+        dueDate: args.due_date,
+        status: "on_track",
+        health: "green",
+        progressHistory: [{ at: now, value: start, note: "OKR créé" }],
+        createdAt: now,
       };
       const { error } = await session.client.from("cj_goals").insert({
-        id, owner_id: ownerId, level: args.level ?? "personal", status: "active", data, auth_user_id: session.userId,
+        id, owner_id: ownerId, level, status: "on_track", data, auth_user_id: session.userId,
       });
       if (error) throw new Error(`cj_create_goal: ${error.message}`);
       return { ok: true, goal: data };
@@ -522,7 +634,7 @@ const TOOLS: Tool[] = [
   {
     name: "cj_update_goal_progress",
     description:
-      "Met à jour la progression d'un OKR. Ajoute une entrée dans progress_history pour traçabilité. Si current_value atteint target_value, le statut bascule automatiquement à 'achieved'.",
+      "Met à jour la progression d'un OKR. Ajoute une entrée dans progressHistory pour traçabilité. Si current_value atteint target_value, le statut bascule automatiquement à 'achieved'.",
     inputSchema: {
       type: "object",
       properties: {
@@ -540,14 +652,14 @@ const TOOLS: Tool[] = [
       if (!row) throw new Error(`OKR ${args.goal_id} introuvable`);
       const now = new Date().toISOString();
       const existing = (row.data ?? {}) as Record<string, unknown>;
-      const history = Array.isArray(existing.progress_history) ? existing.progress_history : [];
-      const target = Number(existing.target_value ?? 0);
+      const history = Array.isArray(existing.progressHistory) ? existing.progressHistory : [];
+      const target = Number(existing.targetValue ?? 0);
       const reached = args.current_value >= target;
       const merged = {
-        ...existing, current_value: args.current_value,
-        status: reached ? "achieved" : (existing.status ?? "active"),
-        progress_history: [...history, { at: now, value: args.current_value, note: args.note ?? null }],
-        updated_at: now, ...(reached ? { achieved_at: now } : {}),
+        ...existing, currentValue: args.current_value,
+        status: reached ? "achieved" : (existing.status ?? "on_track"),
+        progressHistory: [...history, { at: now, value: args.current_value, note: args.note ?? null }],
+        updatedAt: now,
       };
       const { error } = await session.client.from("cj_goals").update({ data: merged, status: reached ? "achieved" : row.status }).eq("id", args.goal_id);
       if (error) throw new Error(`cj_update_goal_progress: ${error.message}`);
@@ -576,9 +688,11 @@ const TOOLS: Tool[] = [
       const userPrefix = session.userId.slice(0, 8);
       const id = `${userPrefix}_c_${rand()}`;
       const now = new Date().toISOString();
+      // camelCase entity matching src/types/index.ts `Comment` (the app reads `data`).
+      // The store's addComment uses `body`. Mentions kept as an extra field.
       const data = {
-        id, task_id: args.task_id, author_id: authorId, author_email: session.email,
-        text: args.text, mentions: args.mentions ?? [], created_at: now, updated_at: now, created_via: "mcp",
+        id, taskId: args.task_id, authorId, body: args.text, createdAt: now,
+        mentions: args.mentions ?? [],
       };
       const { error } = await session.client.from("cj_comments").insert({
         id, task_id: args.task_id, author_id: authorId, data, auth_user_id: session.userId,
@@ -603,13 +717,15 @@ const TOOLS: Tool[] = [
     async handler(args, session) {
       requireScope(session, "write", "admin");
       const now = new Date().toISOString();
-      const userPrefix = session.userId.slice(0, 8);
-      const noteId = `${userPrefix}_n_${rand()}`;
+      // camelCase entity matching appStore `TaskNote` (the app reads `data`):
+      // { taskId, markdown, updatedAt }. PK is task_id (no `id` column).
       const data = {
-        id: noteId, task_id: args.task_id, content: args.content, author_id: session.userId,
-        author_email: session.email, created_at: now, updated_at: now, created_via: "mcp",
+        taskId: args.task_id, markdown: args.content, updatedAt: now,
       };
-      const { error } = await session.client.from("cj_notes").insert({ task_id: args.task_id, data, auth_user_id: session.userId });
+      const { error } = await session.client.from("cj_notes").upsert(
+        { task_id: args.task_id, data, auth_user_id: session.userId },
+        { onConflict: "task_id" },
+      );
       if (error) throw new Error(`cj_add_note: ${error.message}`);
       return { ok: true, note: data };
     },
@@ -697,7 +813,7 @@ const TOOLS: Tool[] = [
         session.client.from("cj_tasks").select("id, priority, due_date, data").gte("due_date", startOfDay).lt("due_date", endOfDay).neq("status", "done").order("priority", { ascending: true }).limit(20),
         session.client.from("cj_tasks").select("id", { count: "exact", head: true }).neq("status", "done").neq("status", "cancelled"),
         session.client.from("cj_projects").select("id, data").eq("status", "active").order("updated_at", { ascending: false }).limit(10),
-        session.client.from("cj_goals").select("id, data").eq("status", "active").order("updated_at", { ascending: false }).limit(20),
+        session.client.from("cj_goals").select("id, data").not("status", "in", "(achieved,missed)").order("updated_at", { ascending: false }).limit(20),
       ]);
       if (e1) throw new Error(`dashboard.overdue: ${e1.message}`);
       if (e2) throw new Error(`dashboard.today: ${e2.message}`);
@@ -706,12 +822,12 @@ const TOOLS: Tool[] = [
       if (e5) throw new Error(`dashboard.goals: ${e5.message}`);
       const goalProgress = (activeGoals ?? []).map((row: unknown) => {
         const g = pickRow(row) as Record<string, unknown>;
-        const target = Number(g.target_value ?? 0);
-        const current = Number(g.current_value ?? 0);
-        const start = Number(g.start_value ?? 0);
+        const target = Number(g.targetValue ?? 0);
+        const current = Number(g.currentValue ?? 0);
+        const start = Number(g.startValue ?? 0);
         const denom = target - start || target || 1;
         const pct = Math.max(0, Math.min(100, ((current - start) / denom) * 100));
-        return { id: g.id, title: g.title, progress_pct: Math.round(pct * 10) / 10, on_track: pct >= 50, due_date: g.due_date };
+        return { id: g.id, title: g.title, progress_pct: Math.round(pct * 10) / 10, on_track: pct >= 50, due_date: g.dueDate, due_date_iso: g.endDate };
       });
       return {
         generated_at: now.toISOString(),
@@ -728,7 +844,7 @@ const TOOLS: Tool[] = [
   {
     name: "cj_search",
     description:
-      "Recherche globale dans les projets, tâches et notes du propriétaire du token. Match insensible à la casse sur le contenu jsonb (nom, titre, description, content).",
+      "Recherche globale dans les projets, tâches et notes du propriétaire du token. Match insensible à la casse sur le contenu jsonb (nom, titre, description, markdown).",
     inputSchema: {
       type: "object",
       properties: {
@@ -744,7 +860,7 @@ const TOOLS: Tool[] = [
       const [{ data: projects }, { data: tasks }, { data: notes }] = await Promise.all([
         session.client.from("cj_projects").select("id, status, data, updated_at").ilike("data->>name", pattern).limit(limit),
         session.client.from("cj_tasks").select("id, status, priority, due_date, data, updated_at").ilike("data->>title", pattern).limit(limit),
-        session.client.from("cj_notes").select("task_id, data, updated_at").ilike("data->>content", pattern).limit(limit),
+        session.client.from("cj_notes").select("task_id, data, updated_at").ilike("data->>markdown", pattern).limit(limit),
       ]);
       return {
         query: args.query,

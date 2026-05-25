@@ -10,7 +10,7 @@
  * staying in sync — same pattern as the web app's repo.ts adapter.
  */
 import { requireScope } from '../auth.js';
-import { pickRow, type ToolDefinition } from './common.js';
+import { pickRow, camelizePatch, type ToolDefinition } from './common.js';
 
 interface ListTasksArgs {
   status?: 'todo' | 'in_progress' | 'in_review' | 'done' | 'cancelled';
@@ -116,29 +116,52 @@ export const createTask: ToolDefinition<CreateTaskArgs> = {
     const userPrefix = session.userId.slice(0, 8);
     const id = `${userPrefix}_t_${cryptoRandomSuffix()}`;
     const now = new Date().toISOString();
+    const projectId = args.project_id ?? null;
 
+    // A task MUST have a valid sectionId to render in the Kanban. Resolve it
+    // to the project's lowest-position section (position read from the
+    // section's data jsonb). No project / no sections → sectionId stays null.
+    let sectionId: string | null = null;
+    if (projectId) {
+      const { data: secs, error: secErr } = await session.client
+        .from('cj_sections')
+        .select('id, data')
+        .eq('project_id', projectId);
+      if (secErr) throw new Error(`cj_create_task (sections): ${secErr.message}`);
+      if (secs && secs.length > 0) {
+        const sorted = [...secs].sort((a, b) => {
+          const pa = Number(((a as { data?: { position?: number } }).data ?? {}).position ?? 0);
+          const pb = Number(((b as { data?: { position?: number } }).data ?? {}).position ?? 0);
+          return pa - pb;
+        });
+        sectionId = (sorted[0] as { id: string }).id;
+      }
+    }
+
+    // camelCase entity matching src/types/index.ts `Task` (the app reads `data`).
     const data = {
       id,
+      projectId,
+      sectionId,
       title: args.title,
-      project_id: args.project_id ?? null,
-      priority: args.priority ?? 3,
-      status: args.status ?? 'todo',
-      due_date: args.due_date ?? null,
       description: args.description ?? '',
-      // Required arrays in the web-app Task type — set them so tasks created
-      // via MCP are well-formed (DashboardView etc. read .assignees/.tags).
+      status: args.status ?? 'todo',
+      priority: args.priority ?? 2,
+      dueDate: args.due_date ?? null,
       assignees: [],
       tags: [],
-      created_at: now,
-      updated_at: now,
-      created_via: 'mcp',
+      source: 'manual',
+      commentCount: 0,
+      attachmentCount: 0,
+      createdAt: now,
     };
 
     const { error } = await session.client.from('cj_tasks').insert({
       id,
-      project_id: args.project_id ?? null,
+      project_id: projectId,
+      section_id: sectionId,
       status: args.status ?? 'todo',
-      priority: args.priority ?? 3,
+      priority: args.priority ?? 2,
       due_date: args.due_date ?? null,
       data,
       auth_user_id: session.userId,
@@ -172,7 +195,7 @@ export const completeTask: ToolDefinition<CompleteTaskArgs> = {
     if (readErr) throw new Error(`cj_complete_task (read): ${readErr.message}`);
     if (!row) throw new Error(`Tâche ${args.task_id} introuvable`);
 
-    const merged = { ...((row.data ?? {}) as Record<string, unknown>), status: 'done', completed_at: now, updated_at: now };
+    const merged = { ...((row.data ?? {}) as Record<string, unknown>), status: 'done', completionDate: now, updatedAt: now };
 
     const { error } = await session.client
       .from('cj_tasks')
@@ -213,18 +236,20 @@ export const updateTask: ToolDefinition<UpdateTaskArgs> = {
     if (!row) throw new Error(`Tâche ${args.task_id} introuvable`);
 
     const now = new Date().toISOString();
+    const patch = camelizePatch(args.patch);
     const merged = {
       ...((row.data ?? {}) as Record<string, unknown>),
-      ...args.patch,
-      updated_at: now,
+      ...patch,
+      updatedAt: now,
     };
 
     // Mirror the indexed columns for any field that's also indexed.
     const update: Record<string, unknown> = { data: merged };
-    if ('status' in args.patch) update.status = args.patch.status;
-    if ('priority' in args.patch) update.priority = args.patch.priority;
-    if ('due_date' in args.patch) update.due_date = args.patch.due_date;
-    if ('project_id' in args.patch) update.project_id = args.patch.project_id;
+    if ('status' in patch) update.status = patch.status;
+    if ('priority' in patch) update.priority = patch.priority;
+    if ('dueDate' in patch) update.due_date = patch.dueDate;
+    if ('projectId' in patch) update.project_id = patch.projectId;
+    if ('sectionId' in patch) update.section_id = patch.sectionId;
 
     const { error } = await session.client.from('cj_tasks').update(update).eq('id', args.task_id);
     if (error) throw new Error(`cj_update_task: ${error.message}`);
@@ -267,20 +292,17 @@ export const addSubtasks: ToolDefinition<AddSubtasksArgs> = {
     requireScope(session, 'write', 'admin');
 
     const userPrefix = session.userId.slice(0, 8);
-    const now = new Date().toISOString();
 
+    // camelCase entity matching appStore `Subtask` (the app reads `data`):
+    // it uses `done: boolean` and `position: number` — NOT status/order.
     const rows = args.subtasks.map((s, i) => {
       const id = `${userPrefix}_st_${cryptoRandomSuffix()}_${i}`;
       const data = {
         id,
-        task_id: args.task_id,
+        taskId: args.task_id,
         title: s.title,
-        status: s.status ?? 'todo',
-        description: s.description ?? '',
-        order: i,
-        created_at: now,
-        updated_at: now,
-        created_via: 'mcp',
+        done: s.status === 'done',
+        position: i,
       };
       return { id, task_id: args.task_id, data, auth_user_id: session.userId };
     });
