@@ -91,6 +91,14 @@ export async function exportToPdf(payload: ExportPayload): Promise<void> {
   const wordmarkDataUrl = await loadWordmarkDataUrl();
 
   const doc = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
+  // Document metadata (PDF/ISO standard) — surfaces in viewers, search, DMS.
+  doc.setProperties({
+    title: `${report.title} — ${report.period}`,
+    subject: `Rapport ${report.kind} · ${formatPeriodRange(report)}`,
+    author: COPY.brandLong,
+    keywords: `CockpitJourney, rapport, ${report.kind}, ${report.period}, ${docRef}`,
+    creator: COPY.poweredBy,
+  });
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
 

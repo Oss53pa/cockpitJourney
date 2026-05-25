@@ -68,6 +68,12 @@ export async function exportToPptx(payload: ExportPayload): Promise<void> {
 
   const pres = new PptxGenJS();
   pres.layout = 'LAYOUT_WIDE'; // 13.333 × 7.5 in
+  // Presentation metadata (standard — visible in PowerPoint → Fichier → Informations / DMS).
+  pres.author = COPY.brandLong;
+  pres.company = COPY.studio;
+  pres.subject = `Rapport ${report.kind} · ${formatPeriodRange(report)}`;
+  pres.title = `${report.title} — ${report.period}`;
+  pres.revision = docRef;
 
   // Define a master slide with the running header + footer
   pres.defineSlideMaster({
