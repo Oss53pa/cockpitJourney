@@ -159,6 +159,66 @@ export interface PropheticInsight {
   cta?: { label: string; action: string };
 }
 
+/* ─────────── Budget module (per-project) ─────────── */
+
+export type ExpenseStatus = 'planned' | 'committed' | 'paid';
+
+/** Free-text note attached to a budget line or an expense. */
+export interface BudgetNote {
+  id: string;
+  text: string;
+  authorId: string | null;
+  at: string;
+}
+
+/**
+ * File attached to a budget line or expense. The TYPE exists so the data
+ * shape is stable, but upload-to-Storage is OUT OF SCOPE for this slice —
+ * `attachments` arrays stay empty until the upload UI ships.
+ */
+export interface BudgetAttachment {
+  id: string;
+  name: string;
+  path: string;
+  size?: number;
+  uploadedAt: string;
+}
+
+/** A budget line (ligne budgétaire) with an allocated amount in FCFA (XOF). */
+export interface BudgetLine {
+  id: string;
+  projectId: string;
+  ownerId: string | null;
+  name: string;
+  allocatedAmount: number;
+  currency: string;
+  sortOrder: number;
+  notes: BudgetNote[];
+  attachments: BudgetAttachment[];
+  createdAt: string;
+  updatedAt: string;
+  createdVia?: string;
+}
+
+/** A recorded expense against a project (optionally a specific budget line). */
+export interface Expense {
+  id: string;
+  projectId: string;
+  lineId: string | null;
+  taskId?: string | null;
+  label: string;
+  amount: number;
+  currency: string;
+  status: ExpenseStatus;
+  expenseDate: string;
+  vendor?: string | null;
+  notes: BudgetNote[];
+  attachments: BudgetAttachment[];
+  createdAt: string;
+  updatedAt: string;
+  createdVia?: string;
+}
+
 export type ViewKey =
   | 'today'
   | 'inbox'

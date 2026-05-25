@@ -707,6 +707,10 @@ export async function buildOfflineSnapshot(authUserId: string) {
     activity: nsClone(activity, prefix),
     notes: nsClone(notes, prefix),
     subtasks: nsClone(subtasks, prefix),
+    // Budget module — no demo seed data; the offline fallback starts with
+    // empty budget lines / expenses (DEV-only path).
+    budgetLines: [],
+    expenses: [],
     settings: defaultSettings,
     selfProfileId: `${prefix}_u_pame`,
   };

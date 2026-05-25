@@ -38,6 +38,8 @@ const emptySnap = {
   activity: [],
   notes: [],
   subtasks: [],
+  budgetLines: [],
+  expenses: [],
   settings: {},
 };
 
