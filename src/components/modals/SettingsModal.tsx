@@ -15,6 +15,7 @@ import {
   X,
   Plug,
   ChevronRight,
+  Users,
 } from 'lucide-react';
 import { PROVIDERS, type ProphProvider } from '../../lib/proph3t';
 import { BillingSection } from './BillingSection';
@@ -337,6 +338,31 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <div className="text-sm font-medium text-atlas-fg-1">Personal Access Tokens</div>
               <div className="text-2xs text-atlas-fg-3">
                 Connectez Claude Cowork, Claude Code ou tout client MCP à votre cockpit.
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-atlas-fg-3 shrink-0" />
+          </button>
+        </section>
+
+        <section>
+          <h3 className="text-2xs uppercase tracking-wider font-medium text-atlas-fg-3 mb-3 inline-flex items-center gap-2">
+            <Users className="w-3 h-3 text-atlas-sage-deep" /> Équipe
+          </h3>
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              navigate('/settings/team');
+            }}
+            className="panel p-4 w-full flex items-center gap-3 text-left hover:border-atlas-sage-deep/40 transition"
+          >
+            <div className="w-9 h-9 rounded-xl bg-atlas-sage/12 grid place-items-center shrink-0">
+              <Users className="w-4 h-4 text-atlas-sage-deep" />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-medium text-atlas-fg-1">Membres & collaborateurs</div>
+              <div className="text-2xs text-atlas-fg-3">
+                Inviter des collaborateurs, gérer les rôles et les sièges de l'équipe.
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-atlas-fg-3 shrink-0" />
