@@ -292,6 +292,22 @@ export function normalizeSection(s: Section): Section {
   };
 }
 
+/**
+ * Backfill required array fields on tasks. Tasks created outside the web
+ * app (e.g. via the MCP server / Claude connector, or legacy seeds) may
+ * omit `assignees` / `tags`, which several views (DashboardView, board,
+ * filters) read with `.includes()` / `.map()` — an `undefined` there
+ * crashes the whole render. Normalizing at read-time keeps the app
+ * resilient regardless of where the row was created.
+ */
+export function normalizeTask(t: Task): Task {
+  return {
+    ...t,
+    assignees: Array.isArray(t.assignees) ? t.assignees : [],
+    tags: Array.isArray(t.tags) ? t.tags : [],
+  };
+}
+
 export async function loadSnapshot(): Promise<Snapshot> {
   if (!SUPABASE_CONFIGURED) {
     return emptySnapshot();
@@ -351,7 +367,7 @@ export async function loadSnapshot(): Promise<Snapshot> {
     folders: folders.map(normalizeFolder),
     projects: projects.map(normalizeProject),
     sections: sections.map(normalizeSection),
-    tasks,
+    tasks: tasks.map(normalizeTask),
     goals,
     comments,
     notifications,
