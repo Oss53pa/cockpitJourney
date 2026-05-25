@@ -9,13 +9,19 @@ import {
   Trash2,
   StickyNote,
   Receipt,
+  Download,
+  Filter,
 } from 'lucide-react';
 import { useApp } from '../../stores/appStore';
 import { cn, formatFCFA, formatDate } from '../../lib/utils';
 import { Menu, MenuItem, MenuSeparator } from '../ui/Menu';
+import { NativeSelect, TextInput } from '../ui/Field';
 import { BudgetLineModal } from './BudgetLineModal';
 import { ExpenseModal } from './ExpenseModal';
+import { AttachmentsBlock } from './AttachmentsBlock';
 import type { BudgetLine, Expense, ExpenseStatus } from '../../types';
+
+type StatusFilter = 'all' | ExpenseStatus;
 
 const statusCfg: Record<ExpenseStatus, { label: string; cls: string }> = {
   planned: { label: 'Prévu', cls: 'bg-black/[0.04] text-atlas-fg-2 border-atlas-line' },
@@ -58,13 +64,37 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
 
   const [modal, setModal] = useState<ModalState | null>(null);
 
-  // Derived totals — never stored.
+  // Expense filters — affect ONLY the expense tables shown in expanded
+  // rows (and the "filtré" summary). Budget rollups below stay on ALL
+  // expenses (the source of truth).
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const filtersActive = statusFilter !== 'all' || dateFrom !== '' || dateTo !== '';
+
+  const matchesFilter = (e: Expense): boolean => {
+    if (statusFilter !== 'all' && e.status !== statusFilter) return false;
+    const d = e.expenseDate.slice(0, 10);
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo && d > dateTo) return false;
+    return true;
+  };
+
+  const filteredExpenses = useMemo(
+    () => expenses.filter(matchesFilter),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [expenses, statusFilter, dateFrom, dateTo]
+  );
+  const filteredCount = filteredExpenses.length;
+  const filteredSum = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+  // Derived totals — never stored. Always computed on ALL expenses.
   const totalAllocated = lines.reduce((sum, l) => sum + l.allocatedAmount, 0);
   const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
   const totalRemaining = totalAllocated - totalSpent;
   const totalPct = totalAllocated > 0 ? (totalSpent / totalAllocated) * 100 : 0;
 
-  // Spend per line + unallocated ("non ventilées").
+  // Spend per line + unallocated ("non ventilées") — on ALL expenses.
   const spentByLine = useMemo(() => {
     const map = new Map<string, number>();
     for (const e of expenses) {
@@ -75,6 +105,20 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
   }, [expenses]);
 
   const unallocatedSpent = spentByLine.get('__none__') ?? 0;
+
+  const project = useApp((s) => s.projects.find((p) => p.id === projectId));
+  const onExport = () => {
+    const csv = buildBudgetCsv(lines, expenses, spentByLine);
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `budget-${project?.slug || projectId}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-5">
@@ -113,6 +157,9 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
           Lignes budgétaires <span className="text-atlas-fg-3 font-mono">({lines.length})</span>
         </h3>
         <div className="flex items-center gap-2">
+          <button onClick={onExport} className="btn-ghost text-sm px-3 py-1.5">
+            <Download className="w-3.5 h-3.5" /> Exporter
+          </button>
           <button
             onClick={() => setModal({ kind: 'expense-create', defaultLineId: null })}
             className="btn-secondary text-sm px-3 py-1.5"
@@ -126,6 +173,62 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
             <Plus className="w-3.5 h-3.5" /> Ligne budgétaire
           </button>
         </div>
+      </div>
+
+      {/* Filter bar — affects only the expense tables shown when a line is
+          expanded, not the budget rollups. */}
+      <div className="panel p-3 flex flex-wrap items-end gap-3">
+        <div className="inline-flex items-center gap-1.5 text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium self-center">
+          <Filter className="w-3.5 h-3.5" /> Filtres
+        </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">Statut</span>
+          <NativeSelect
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            className="h-9 w-36"
+          >
+            <option value="all">Tous</option>
+            <option value="planned">Prévu</option>
+            <option value="committed">Engagé</option>
+            <option value="paid">Payé</option>
+          </NativeSelect>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">Du</span>
+          <TextInput
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="h-9 w-40"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">Au</span>
+          <TextInput
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="h-9 w-40"
+          />
+        </label>
+        {filtersActive && (
+          <button
+            onClick={() => {
+              setStatusFilter('all');
+              setDateFrom('');
+              setDateTo('');
+            }}
+            className="btn-ghost text-xs px-2.5 py-1.5 self-center"
+          >
+            Réinitialiser
+          </button>
+        )}
+        {filtersActive && (
+          <span className="ml-auto self-center text-2xs text-atlas-fg-2 font-mono">
+            filtré : {filteredCount} dépense{filteredCount > 1 ? 's' : ''} · {formatFCFA(filteredSum)}
+          </span>
+        )}
       </div>
 
       {lines.length === 0 && unallocatedSpent === 0 ? (
@@ -147,9 +250,11 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
           {lines.map((line) => (
             <BudgetLineRow
               key={line.id}
+              projectId={projectId}
               line={line}
               spent={spentByLine.get(line.id) ?? 0}
-              expenses={expenses.filter((e) => e.lineId === line.id)}
+              expenseCount={expenses.filter((e) => e.lineId === line.id).length}
+              expenses={filteredExpenses.filter((e) => e.lineId === line.id)}
               onEdit={() => setModal({ kind: 'line-edit', line })}
               onAddExpense={() => setModal({ kind: 'expense-create', defaultLineId: line.id })}
               onEditExpense={(expense) => setModal({ kind: 'expense-edit', expense })}
@@ -160,7 +265,8 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
           {unallocatedSpent > 0 && (
             <UnallocatedRow
               spent={unallocatedSpent}
-              expenses={expenses.filter((e) => !e.lineId)}
+              expenseCount={expenses.filter((e) => !e.lineId).length}
+              expenses={filteredExpenses.filter((e) => !e.lineId)}
               onEditExpense={(expense) => setModal({ kind: 'expense-edit', expense })}
             />
           )}
@@ -244,15 +350,21 @@ function TotalCell({ label, value, tone }: { label: string; value: string; tone?
 }
 
 function BudgetLineRow({
+  projectId,
   line,
   spent,
+  expenseCount,
   expenses,
   onEdit,
   onAddExpense,
   onEditExpense,
 }: {
+  projectId: string;
   line: BudgetLine;
   spent: number;
+  /** Total expenses on this line (unfiltered) — for the count badge. */
+  expenseCount: number;
+  /** Filtered expenses shown in the expanded table. */
   expenses: Expense[];
   onEdit: () => void;
   onAddExpense: () => void;
@@ -285,7 +397,7 @@ function BudgetLineRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-atlas-fg-1 truncate">{line.name}</span>
-            <span className="text-2xs font-mono text-atlas-fg-3">{expenses.length} dép.</span>
+            <span className="text-2xs font-mono text-atlas-fg-3">{expenseCount} dép.</span>
           </div>
           <div className="mt-1.5 h-1.5 rounded-full bg-black/[0.06] overflow-hidden">
             <div
@@ -362,7 +474,11 @@ function BudgetLineRow({
               </button>
             </div>
             {expenses.length === 0 ? (
-              <p className="text-2xs text-atlas-fg-3 italic py-2">Aucune dépense sur cette ligne.</p>
+              <p className="text-2xs text-atlas-fg-3 italic py-2">
+                {expenseCount === 0
+                  ? 'Aucune dépense sur cette ligne.'
+                  : 'Aucune dépense ne correspond aux filtres.'}
+              </p>
             ) : (
               <ExpenseTable expenses={expenses} onEditExpense={onEditExpense} />
             )}
@@ -370,6 +486,13 @@ function BudgetLineRow({
 
           {/* Notes */}
           <NotesBlock notes={line.notes} draft={noteDraft} setDraft={setNoteDraft} onSubmit={submitNote} />
+
+          {/* Pièces jointes */}
+          <AttachmentsBlock
+            projectId={projectId}
+            target={{ kind: 'line', id: line.id }}
+            attachments={line.attachments}
+          />
         </div>
       )}
     </div>
@@ -378,10 +501,14 @@ function BudgetLineRow({
 
 function UnallocatedRow({
   spent,
+  expenseCount,
   expenses,
   onEditExpense,
 }: {
   spent: number;
+  /** Total unallocated expenses (unfiltered) — for the count badge. */
+  expenseCount: number;
+  /** Filtered unallocated expenses shown in the expanded table. */
   expenses: Expense[];
   onEditExpense: (e: Expense) => void;
 }) {
@@ -398,13 +525,21 @@ function UnallocatedRow({
         </button>
         <div className="min-w-0 flex-1">
           <span className="text-sm font-medium text-atlas-fg-2 italic">Dépenses non ventilées</span>
-          <span className="ml-2 text-2xs font-mono text-atlas-fg-3">{expenses.length} dép.</span>
+          <span className="ml-2 text-2xs font-mono text-atlas-fg-3">{expenseCount} dép.</span>
         </div>
         <span className="text-sm font-medium tabular-nums text-atlas-fg-1 shrink-0">{formatFCFA(spent)}</span>
       </div>
       {open && (
         <div className="border-t border-black/[0.05] bg-black/[0.015] px-4 py-3">
-          <ExpenseTable expenses={expenses} onEditExpense={onEditExpense} />
+          {expenses.length === 0 ? (
+            <p className="text-2xs text-atlas-fg-3 italic py-2">
+              {expenseCount === 0
+                ? 'Aucune dépense non ventilée.'
+                : 'Aucune dépense ne correspond aux filtres.'}
+            </p>
+          ) : (
+            <ExpenseTable expenses={expenses} onEditExpense={onEditExpense} />
+          )}
         </div>
       )}
     </div>
@@ -559,4 +694,48 @@ function Cell({ label, value, tone }: { label: string; value: string; tone?: 'ov
       </div>
     </div>
   );
+}
+
+/** Quote a single CSV cell — wrap in double-quotes and escape inner quotes. */
+function csvCell(value: string | number): string {
+  const s = String(value ?? '');
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+/**
+ * Build the project budget CSV (two sections: lignes, then dépenses).
+ * Numbers are written raw (no thousands separator) so Excel parses them as
+ * numbers; the caller prepends a UTF-8 BOM so accents render in Excel.
+ */
+function buildBudgetCsv(lines: BudgetLine[], expenses: Expense[], spentByLine: Map<string, number>): string {
+  const rows: string[] = [];
+  const lineNameById = new Map(lines.map((l) => [l.id, l.name]));
+
+  rows.push(csvCell('Lignes budgétaires'));
+  rows.push(['Nom', 'Alloué', 'Dépensé', 'Reste'].map(csvCell).join(';'));
+  for (const l of lines) {
+    const spent = spentByLine.get(l.id) ?? 0;
+    rows.push([l.name, l.allocatedAmount, spent, l.allocatedAmount - spent].map(csvCell).join(';'));
+  }
+
+  rows.push('');
+  rows.push(csvCell('Dépenses'));
+  rows.push(['Date', 'Ligne', 'Libellé', 'Montant', 'Statut', 'Fournisseur'].map(csvCell).join(';'));
+  const sortedExpenses = [...expenses].sort((a, b) => a.expenseDate.localeCompare(b.expenseDate));
+  for (const e of sortedExpenses) {
+    rows.push(
+      [
+        e.expenseDate.slice(0, 10),
+        e.lineId ? (lineNameById.get(e.lineId) ?? '') : 'Non ventilée',
+        e.label,
+        e.amount,
+        statusCfg[e.status].label,
+        e.vendor ?? '',
+      ]
+        .map(csvCell)
+        .join(';')
+    );
+  }
+
+  return rows.join('\r\n');
 }
