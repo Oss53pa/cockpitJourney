@@ -88,7 +88,11 @@ export function ProjectsView({ onNavigate }: Props) {
   const projectsOf = (folderId: string) => projects.filter((p) => p.folderId === folderId);
   const statsFor = (projectId: string) => {
     const list = tasks.filter((t) => t.projectId === projectId);
-    return { total: list.length, done: list.filter((t) => t.status === 'done').length };
+    const total = list.length;
+    const done = list.filter((t) => t.status === 'done').length;
+    // Avancement calculé en direct depuis les statuts réels (jamais p.progress,
+    // qui est figé à la création et se désynchronise).
+    return { total, done, pct: total ? Math.round((done / total) * 100) : 0 };
   };
 
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -102,7 +106,7 @@ export function ProjectsView({ onNavigate }: Props) {
     });
 
   const renderProject = (p: Project) => {
-    const { total, done } = statsFor(p.id);
+    const { total, done, pct } = statsFor(p.id);
     const Icon = projectIcons[p.icon] || Compass;
     const members = p.membersIds.map((id) => usersById.get(id)).filter((u): u is User => Boolean(u));
     return (
@@ -129,9 +133,9 @@ export function ProjectsView({ onNavigate }: Props) {
         </span>
         <span className="flex items-center gap-2">
           <span className="flex-1">
-            <ProgressBar value={p.progress} />
+            <ProgressBar value={pct} />
           </span>
-          <span className="text-2xs text-atlas-fg-3 font-mono w-8 text-right">{p.progress}%</span>
+          <span className="text-2xs text-atlas-fg-3 font-mono w-8 text-right">{pct}%</span>
         </span>
         <span className="text-2xs text-atlas-fg-2 font-mono text-right">
           {done}/{total}
