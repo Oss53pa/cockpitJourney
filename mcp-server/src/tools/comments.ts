@@ -5,7 +5,7 @@
  * Notes are longer markdown-rich content attached to a task (think
  * "meeting notes" or "decision log"). Both go into their own table.
  */
-import type { ToolDefinition } from './common.js';
+import { getProfileId, type ToolDefinition } from './common.js';
 import { requireScope } from '../auth.js';
 
 interface AddCommentArgs {
@@ -40,26 +40,26 @@ export const addComment: ToolDefinition<AddCommentArgs> = {
   async handler(args, session) {
     requireScope(session, 'write', 'admin');
 
+    const authorId = await getProfileId(session);
     const userPrefix = session.userId.slice(0, 8);
     const id = `${userPrefix}_c_${cryptoRandomSuffix()}`;
     const now = new Date().toISOString();
 
+    // camelCase entity matching src/types/index.ts `Comment` (the app reads `data`).
+    // The store's addComment uses `body`. Mentions kept as an extra field.
     const data = {
       id,
-      task_id: args.task_id,
-      author_id: session.userId,
-      author_email: session.email,
-      text: args.text,
+      taskId: args.task_id,
+      authorId,
+      body: args.text,
+      createdAt: now,
       mentions: args.mentions ?? [],
-      created_at: now,
-      updated_at: now,
-      created_via: 'mcp',
     };
 
     const { error } = await session.client.from('cj_comments').insert({
       id,
       task_id: args.task_id,
-      author_id: session.userId,
+      author_id: authorId,
       data,
       auth_user_id: session.userId,
     });
@@ -89,27 +89,23 @@ export const addNote: ToolDefinition<AddNoteArgs> = {
     requireScope(session, 'write', 'admin');
 
     const now = new Date().toISOString();
-    // Notes table doesn't have an `id` column in its index list — only
-    // task_id + data. The id lives inside `data`.
-    const userPrefix = session.userId.slice(0, 8);
-    const noteId = `${userPrefix}_n_${cryptoRandomSuffix()}`;
-
+    // camelCase entity matching appStore `TaskNote` (the app reads `data`):
+    // { taskId, markdown, updatedAt }. PK is task_id (no `id` column) — the
+    // app keeps a single note per task, so upsert on conflict like setNote.
     const data = {
-      id: noteId,
-      task_id: args.task_id,
-      content: args.content,
-      author_id: session.userId,
-      author_email: session.email,
-      created_at: now,
-      updated_at: now,
-      created_via: 'mcp',
+      taskId: args.task_id,
+      markdown: args.content,
+      updatedAt: now,
     };
 
-    const { error } = await session.client.from('cj_notes').insert({
-      task_id: args.task_id,
-      data,
-      auth_user_id: session.userId,
-    });
+    const { error } = await session.client.from('cj_notes').upsert(
+      {
+        task_id: args.task_id,
+        data,
+        auth_user_id: session.userId,
+      },
+      { onConflict: 'task_id' }
+    );
     if (error) throw new Error(`cj_add_note: ${error.message}`);
     return { ok: true, note: data };
   },

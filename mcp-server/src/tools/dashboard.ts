@@ -67,7 +67,7 @@ export const getDashboard: ToolDefinition<Record<string, never>> = {
       session.client
         .from('cj_goals')
         .select('id, data')
-        .eq('status', 'active')
+        .not('status', 'in', '(achieved,missed)')
         .order('updated_at', { ascending: false })
         .limit(20),
     ]);
@@ -79,9 +79,9 @@ export const getDashboard: ToolDefinition<Record<string, never>> = {
 
     const goalProgress = (activeGoals ?? []).map((row) => {
       const g = pickRow(row as { id: string; data: unknown }) as Record<string, unknown>;
-      const target = Number(g.target_value ?? 0);
-      const current = Number(g.current_value ?? 0);
-      const start = Number(g.start_value ?? 0);
+      const target = Number(g.targetValue ?? 0);
+      const current = Number(g.currentValue ?? 0);
+      const start = Number(g.startValue ?? 0);
       const denom = target - start || target || 1;
       const pct = Math.max(0, Math.min(100, ((current - start) / denom) * 100));
       return {
@@ -89,7 +89,8 @@ export const getDashboard: ToolDefinition<Record<string, never>> = {
         title: g.title,
         progress_pct: Math.round(pct * 10) / 10,
         on_track: pct >= 50,
-        due_date: g.due_date,
+        due_date: g.dueDate,
+        due_date_iso: g.endDate,
       };
     });
 
@@ -148,7 +149,7 @@ export const search: ToolDefinition<SearchArgs> = {
       session.client
         .from('cj_notes')
         .select('task_id, data, updated_at')
-        .ilike('data->>content', pattern)
+        .ilike('data->>markdown', pattern)
         .limit(limit),
     ]);
 

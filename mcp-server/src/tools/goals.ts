@@ -4,12 +4,12 @@
  * `cj_goals` has indexed columns owner_id, level, status; the data jsonb
  * carries title, target_value, current_value, unit, due_date, key_results.
  */
-import { pickRow, type ToolDefinition } from './common.js';
+import { pickRow, getProfileId, type ToolDefinition } from './common.js';
 import { requireScope } from '../auth.js';
 
 interface ListGoalsArgs {
-  status?: 'active' | 'achieved' | 'missed' | 'cancelled';
-  level?: 'personal' | 'team' | 'company';
+  status?: 'on_track' | 'at_risk' | 'off_track' | 'achieved' | 'missed';
+  level?: 'personal' | 'team' | 'company' | 'workspace';
   limit?: number;
 }
 
@@ -38,12 +38,12 @@ export const listGoals: ToolDefinition<ListGoalsArgs> = {
     properties: {
       status: {
         type: 'string',
-        enum: ['active', 'achieved', 'missed', 'cancelled'],
-        description: 'Filtre par statut (défaut: actifs uniquement)',
+        enum: ['on_track', 'at_risk', 'off_track', 'achieved', 'missed'],
+        description: 'Filtre par statut (défaut: tous)',
       },
       level: {
         type: 'string',
-        enum: ['personal', 'team', 'company'],
+        enum: ['personal', 'team', 'company', 'workspace'],
         description: 'Niveau hiérarchique',
       },
       limit: { type: 'number', minimum: 1, maximum: 100, description: 'Max résultats (défaut 50)' },
@@ -52,8 +52,8 @@ export const listGoals: ToolDefinition<ListGoalsArgs> = {
   },
   async handler(args, session) {
     let q = session.client.from('cj_goals').select('id, owner_id, level, status, data, updated_at');
-    q = q.eq('status', args.status ?? 'active');
-    if (args.level) q = q.eq('level', args.level);
+    if (args.status) q = q.eq('status', args.status);
+    if (args.level) q = q.eq('level', args.level === 'company' ? 'workspace' : args.level);
     q = q.order('updated_at', { ascending: false }).limit(args.limit ?? 50);
 
     const { data, error } = await q;
@@ -61,9 +61,9 @@ export const listGoals: ToolDefinition<ListGoalsArgs> = {
 
     const goals = (data ?? []).map((row) => {
       const g = pickRow(row as { id: string; data: unknown }) as Record<string, unknown>;
-      const target = Number(g.target_value ?? 0);
-      const current = Number(g.current_value ?? 0);
-      const start = Number(g.start_value ?? 0);
+      const target = Number(g.targetValue ?? 0);
+      const current = Number(g.currentValue ?? 0);
+      const start = Number(g.startValue ?? 0);
       const denom = target - start || target || 1;
       const progress = Math.max(0, Math.min(100, ((current - start) / denom) * 100));
       return { ...g, progress_pct: Math.round(progress * 10) / 10 };
@@ -94,34 +94,42 @@ export const createGoal: ToolDefinition<CreateGoalArgs> = {
   async handler(args, session) {
     requireScope(session, 'write', 'admin');
 
+    const ownerId = await getProfileId(session);
     const userPrefix = session.userId.slice(0, 8);
     const id = `${userPrefix}_g_${cryptoRandomSuffix()}`;
     const now = new Date().toISOString();
     const start = args.start_value ?? 0;
+    // The app's Goal.level is 'workspace'|'team'|'personal'. Map the MCP
+    // 'company' alias to 'workspace' so GoalsView renders it.
+    const level = args.level === 'company' ? 'workspace' : (args.level ?? 'personal');
 
+    // camelCase entity matching src/types/index.ts `Goal` (the app reads `data`).
     const data = {
       id,
       title: args.title,
       description: args.description ?? '',
-      target_value: args.target_value,
-      start_value: start,
-      current_value: start,
+      ownerId,
+      level,
+      metricType: 'number',
+      targetValue: args.target_value,
+      currentValue: start,
+      startValue: start,
       unit: args.unit,
-      due_date: args.due_date,
-      level: args.level ?? 'personal',
-      status: 'active',
-      owner_id: session.userId,
-      progress_history: [{ at: now, value: start, note: 'OKR créé' }],
-      created_at: now,
-      updated_at: now,
-      created_via: 'mcp',
+      period: 'quarterly',
+      startDate: now,
+      endDate: args.due_date,
+      dueDate: args.due_date,
+      status: 'on_track',
+      health: 'green',
+      progressHistory: [{ at: now, value: start, note: 'OKR créé' }],
+      createdAt: now,
     };
 
     const { error } = await session.client.from('cj_goals').insert({
       id,
-      owner_id: session.userId,
-      level: args.level ?? 'personal',
-      status: 'active',
+      owner_id: ownerId,
+      level,
+      status: 'on_track',
       data,
       auth_user_id: session.userId,
     });
@@ -157,17 +165,16 @@ export const updateGoalProgress: ToolDefinition<UpdateGoalProgressArgs> = {
 
     const now = new Date().toISOString();
     const existing = (row.data ?? {}) as Record<string, unknown>;
-    const history = Array.isArray(existing.progress_history) ? existing.progress_history : [];
-    const target = Number(existing.target_value ?? 0);
+    const history = Array.isArray(existing.progressHistory) ? existing.progressHistory : [];
+    const target = Number(existing.targetValue ?? 0);
     const reached = args.current_value >= target;
 
     const merged = {
       ...existing,
-      current_value: args.current_value,
-      status: reached ? 'achieved' : (existing.status ?? 'active'),
-      progress_history: [...history, { at: now, value: args.current_value, note: args.note ?? null }],
-      updated_at: now,
-      ...(reached ? { achieved_at: now } : {}),
+      currentValue: args.current_value,
+      status: reached ? 'achieved' : (existing.status ?? 'on_track'),
+      progressHistory: [...history, { at: now, value: args.current_value, note: args.note ?? null }],
+      updatedAt: now,
     };
 
     const { error } = await session.client
