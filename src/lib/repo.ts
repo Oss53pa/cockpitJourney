@@ -263,6 +263,10 @@ async function fetchData<T>(sqlTable: string): Promise<T[]> {
 export function normalizeProject(p: Project): Project {
   return {
     ...p,
+    // Status may be null/missing on rows created outside the standard app
+    // flow (imports, MCP, legacy). Several views do STATUS[p.status].cls —
+    // an unknown key crashes the render, so default to 'active'.
+    status: p.status ?? 'active',
     health: p.health ?? 'green',
     progress: typeof p.progress === 'number' ? p.progress : 0,
     taskCount: typeof p.taskCount === 'number' ? p.taskCount : 0,
