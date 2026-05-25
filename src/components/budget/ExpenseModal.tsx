@@ -7,9 +7,10 @@ import { AttachmentsBlock } from './AttachmentsBlock';
 import type { Expense, ExpenseStatus, BudgetLine } from '../../types';
 
 const statusOptions: { value: ExpenseStatus; label: string }[] = [
-  { value: 'planned', label: 'Prévu' },
-  { value: 'committed', label: 'Engagé' },
-  { value: 'paid', label: 'Payé' },
+  { value: 'planned', label: 'Prévue' },
+  { value: 'committed', label: 'Engagée' },
+  { value: 'invoiced', label: 'Facturée' },
+  { value: 'paid', label: 'Payée' },
 ];
 
 interface Props {

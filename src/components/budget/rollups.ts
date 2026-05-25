@@ -87,7 +87,7 @@ export function buildBudgetTree(lines: BudgetLine[], expenses: Expense[]): Budge
  */
 export function computeBudgetTotals(lines: BudgetLine[], expenses: Expense[]): BudgetTotals {
   const totalAllocated = lines.reduce((sum, l) => sum + l.allocatedAmount, 0);
-  const byStatus: Record<ExpenseStatus, number> = { planned: 0, committed: 0, paid: 0 };
+  const byStatus: Record<ExpenseStatus, number> = { planned: 0, committed: 0, invoiced: 0, paid: 0 };
   let totalSpent = 0;
   let unallocatedSpent = 0;
   for (const e of expenses) {

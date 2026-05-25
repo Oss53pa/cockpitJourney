@@ -106,7 +106,7 @@ describe('computeBudgetTotals', () => {
       expense('e3', null, 300, { status: 'paid' }),
     ];
     const totals = computeBudgetTotals([], expenses);
-    expect(totals.byStatus).toEqual({ planned: 100, committed: 200, paid: 300 });
+    expect(totals.byStatus).toEqual({ planned: 100, committed: 200, invoiced: 0, paid: 300 });
   });
 
   it('pct is 0 when nothing allocated and nothing spent', () => {

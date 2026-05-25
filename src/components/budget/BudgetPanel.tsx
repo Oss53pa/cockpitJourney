@@ -25,9 +25,10 @@ import { buildBudgetTree, computeBudgetTotals, flattenTree, type BudgetTreeNode 
 import type { BudgetLine, Expense, ExpenseStatus } from '../../types';
 
 const statusCfg: Record<ExpenseStatus, { label: string; cls: string }> = {
-  planned: { label: 'Prévu', cls: 'bg-black/[0.04] text-atlas-fg-2 border-atlas-line' },
-  committed: { label: 'Engagé', cls: 'bg-signal-blue/15 text-signal-blue border-signal-blue/30' },
-  paid: { label: 'Payé', cls: 'bg-signal-green/15 text-signal-green border-signal-green/30' },
+  planned: { label: 'Prévue', cls: 'bg-black/[0.04] text-atlas-fg-2 border-atlas-line' },
+  committed: { label: 'Engagée', cls: 'bg-signal-blue/15 text-signal-blue border-signal-blue/30' },
+  invoiced: { label: 'Facturée', cls: 'bg-atlas-amber/20 text-atlas-amber-deep border-atlas-amber/40' },
+  paid: { label: 'Payée', cls: 'bg-signal-green/15 text-signal-green border-signal-green/30' },
 };
 
 /** Tailwind classes for the spend progress bar fill, by usage ratio. */
@@ -242,10 +243,11 @@ function OverviewTab({
         <span className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">
           Répartition par statut
         </span>
-        <div className="mt-3 grid grid-cols-3 gap-3">
-          <StatusCell label="Prévu" value={byStatus.planned} cls="text-atlas-fg-2" />
-          <StatusCell label="Engagé" value={byStatus.committed} cls="text-signal-blue" />
-          <StatusCell label="Payé" value={byStatus.paid} cls="text-signal-green" />
+        <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatusCell label="Prévue" value={byStatus.planned} cls="text-atlas-fg-2" />
+          <StatusCell label="Engagée" value={byStatus.committed} cls="text-signal-blue" />
+          <StatusCell label="Facturée" value={byStatus.invoiced} cls="text-atlas-amber-deep" />
+          <StatusCell label="Payée" value={byStatus.paid} cls="text-signal-green" />
         </div>
       </div>
 
