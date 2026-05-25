@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeProject, normalizeFolder, normalizeSection } from './repo';
-import type { Project, Folder, Section } from '../types';
+import { normalizeProject, normalizeFolder, normalizeSection, normalizeStatus, normalizeTask } from './repo';
+import type { Project, Folder, Section, Task } from '../types';
 
 const baseProject: Project = {
   id: 'p1',
@@ -119,5 +119,63 @@ describe('normalizeSection', () => {
   it('preserves position when present, ignoring legacy order', () => {
     const both = { ...baseSection, position: 5, order: 99 } as Section & { order: number };
     expect(normalizeSection(both).position).toBe(5);
+  });
+});
+
+describe('normalizeStatus', () => {
+  it('passes canonical statuses through unchanged', () => {
+    expect(normalizeStatus('todo')).toBe('todo');
+    expect(normalizeStatus('in_progress')).toBe('in_progress');
+    expect(normalizeStatus('in_review')).toBe('in_review');
+    expect(normalizeStatus('done')).toBe('done');
+    expect(normalizeStatus('blocked')).toBe('blocked');
+  });
+
+  it('maps French aliases written by the connector / imports', () => {
+    expect(normalizeStatus('a_faire')).toBe('todo');
+    expect(normalizeStatus('en_cours')).toBe('in_progress');
+    expect(normalizeStatus('en_validation')).toBe('in_review');
+    expect(normalizeStatus('termine')).toBe('done');
+    expect(normalizeStatus('terminé')).toBe('done');
+    expect(normalizeStatus('bloqué')).toBe('blocked');
+  });
+
+  it('is case- and whitespace-insensitive', () => {
+    expect(normalizeStatus('  EN_COURS ')).toBe('in_progress');
+  });
+
+  it('defaults unknown / missing values to todo so the task still renders', () => {
+    expect(normalizeStatus('zzz')).toBe('todo');
+    expect(normalizeStatus(undefined)).toBe('todo');
+    expect(normalizeStatus(null)).toBe('todo');
+  });
+});
+
+describe('normalizeTask', () => {
+  const baseTask: Task = {
+    id: 't1',
+    projectId: 'p1',
+    sectionId: 's1',
+    title: 'Tâche',
+    status: 'todo',
+    priority: 2,
+    assignees: [],
+    tags: [],
+  };
+
+  it('coerces a French status so the task lands in a real column', () => {
+    const fr = { ...baseTask, status: 'a_faire' as unknown as Task['status'] };
+    expect(normalizeTask(fr).status).toBe('todo');
+  });
+
+  it('backfills missing assignees / tags arrays', () => {
+    const broken = {
+      ...baseTask,
+      assignees: undefined as unknown as string[],
+      tags: undefined as unknown as string[],
+    };
+    const out = normalizeTask(broken);
+    expect(out.assignees).toEqual([]);
+    expect(out.tags).toEqual([]);
   });
 });

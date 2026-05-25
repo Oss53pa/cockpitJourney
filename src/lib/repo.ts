@@ -17,6 +17,7 @@ import type {
   Project,
   Section,
   Task,
+  TaskStatus,
   Goal,
   Comment,
   Notification,
@@ -305,9 +306,52 @@ export function normalizeSection(s: Section): Section {
  * crashes the whole render. Normalizing at read-time keeps the app
  * resilient regardless of where the row was created.
  */
+const VALID_TASK_STATUS: readonly TaskStatus[] = ['todo', 'in_progress', 'in_review', 'done', 'blocked'];
+
+/**
+ * Non-canonical → canonical status aliases. Tasks created outside the web app
+ * (bulk paste organised by the Claude connector, imports, legacy seeds) have
+ * arrived with French status values — which match NO Kanban column and silently
+ * vanish from the board. We coerce them at read-time so a task always lands in a
+ * real column, whatever vocabulary it was written with. (A SQL migration also
+ * fixes the rows in place; this is the durable safety net for future writes.)
+ */
+const TASK_STATUS_ALIASES: Record<string, TaskStatus> = {
+  a_faire: 'todo',
+  à_faire: 'todo',
+  afaire: 'todo',
+  en_cours: 'in_progress',
+  encours: 'in_progress',
+  en_validation: 'in_review',
+  en_revue: 'in_review',
+  revue: 'in_review',
+  termine: 'done',
+  terminé: 'done',
+  termimne: 'done',
+  fait: 'done',
+  acheve: 'done',
+  achevé: 'done',
+  cancelled: 'done',
+  annule: 'done',
+  annulé: 'done',
+  bloque: 'blocked',
+  bloqué: 'blocked',
+};
+
+/** Coerce any incoming status to a canonical TaskStatus (defaults to 'todo'). */
+export function normalizeStatus(s: unknown): TaskStatus {
+  if (typeof s === 'string') {
+    if ((VALID_TASK_STATUS as readonly string[]).includes(s)) return s as TaskStatus;
+    const alias = TASK_STATUS_ALIASES[s.toLowerCase().trim()];
+    if (alias) return alias;
+  }
+  return 'todo';
+}
+
 export function normalizeTask(t: Task): Task {
   return {
     ...t,
+    status: normalizeStatus(t.status),
     assignees: Array.isArray(t.assignees) ? t.assignees : [],
     tags: Array.isArray(t.tags) ? t.tags : [],
   };
