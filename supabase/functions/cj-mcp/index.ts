@@ -174,7 +174,42 @@ function camelizePatch(patch: Record<string, unknown>): Record<string, unknown> 
   for (const [k, v] of Object.entries(patch ?? {})) {
     out[SNAKE_TO_CAMEL[k] ?? k] = v;
   }
+  // Coerce any task status to the canonical app vocabulary (see normTaskStatus).
+  if ("status" in out) out.status = normTaskStatus(out.status);
   return out;
+}
+
+// Canonical TaskStatus of the app (src/types/index.ts). The connector / Claude
+// sometimes sends French or non-canonical values; if written through, the task
+// matches NO Kanban column and never renders. We coerce at the write boundary.
+const VALID_TASK_STATUS = ["todo", "in_progress", "in_review", "done", "blocked"];
+const TASK_STATUS_ALIASES: Record<string, string> = {
+  a_faire: "todo",
+  "à_faire": "todo",
+  afaire: "todo",
+  en_cours: "in_progress",
+  encours: "in_progress",
+  en_validation: "in_review",
+  en_revue: "in_review",
+  revue: "in_review",
+  termine: "done",
+  "terminé": "done",
+  fait: "done",
+  acheve: "done",
+  "achevé": "done",
+  cancelled: "done",
+  annule: "done",
+  "annulé": "done",
+  bloque: "blocked",
+  "bloqué": "blocked",
+};
+function normTaskStatus(s: unknown): string {
+  if (typeof s === "string") {
+    if (VALID_TASK_STATUS.includes(s)) return s;
+    const alias = TASK_STATUS_ALIASES[s.toLowerCase().trim()];
+    if (alias) return alias;
+  }
+  return "todo";
 }
 
 // ─────────────────────────── Tools (18) ───────────────────────────
@@ -420,13 +455,14 @@ const TOOLS: Tool[] = [
       }
 
       // camelCase entity matching src/types/index.ts `Task` (the app reads `data`).
+      const status = normTaskStatus(args.status ?? "todo");
       const data = {
         id,
         projectId,
         sectionId,
         title: args.title,
         description: args.description ?? "",
-        status: args.status ?? "todo",
+        status,
         priority: args.priority ?? 2,
         dueDate: args.due_date ?? null,
         assignees: [],
@@ -437,7 +473,7 @@ const TOOLS: Tool[] = [
         createdAt: now,
       };
       const { error } = await session.client.from("cj_tasks").insert({
-        id, project_id: projectId, section_id: sectionId, status: args.status ?? "todo",
+        id, project_id: projectId, section_id: sectionId, status,
         priority: args.priority ?? 2, due_date: args.due_date ?? null, data, auth_user_id: session.userId,
       });
       if (error) throw new Error(`cj_create_task: ${error.message}`);
