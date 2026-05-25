@@ -20,9 +20,11 @@ npm install -g @atlas-studio/cockpit-journey-mcp
 
 Ou via `npx -y` à la volée — c'est ce que fait Claude Cowork par défaut.
 
+> ⚠️ **Pas encore publié sur npm.** Tant que le package n'est pas publié, `npm install -g` / `npx -y @atlas-studio/cockpit-journey-mcp` échouent (404). En attendant, pointez Claude sur la **build locale** — voir la section [Développement](#développement) plus bas (`node /chemin/vers/mcp-server/dist/index.js`).
+
 ## Configuration
 
-1. Connectez-vous sur [cockpitjourney.app](https://cockpitjourney.app) → **Paramètres → Intégrations** → **Nouveau token**.
+1. Connectez-vous sur [cockpit-journey.atlas-studio.org](https://cockpit-journey.atlas-studio.org) → **Paramètres → Intégrations** (`/settings/integrations`) → **Nouveau token**.
 2. Copiez le PAT (préfixé `cj_…`) — il ne sera affiché qu'une seule fois.
 3. Ajoutez le serveur MCP à votre config Claude :
 

@@ -21,7 +21,7 @@
     "url": "https://github.com/Oss53pa/cockpitJourney.git",
     "directory": "mcp-server"
   },
-  "homepage": "https://cockpitjourney.app",
+  "homepage": "https://cockpit-journey.atlas-studio.org",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@supabase/supabase-js": "^2.49.1",
