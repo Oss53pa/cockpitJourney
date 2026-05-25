@@ -274,7 +274,9 @@ function CockpitMockup() {
           <span className="w-2.5 h-2.5 rounded-full bg-signal-red/40" />
           <span className="w-2.5 h-2.5 rounded-full bg-signal-yellow/40" />
           <span className="w-2.5 h-2.5 rounded-full bg-signal-green/40" />
-          <span className="ml-3 text-2xs font-mono text-atlas-fg-3">cockpitjourney.app/dashboard</span>
+          <span className="ml-3 text-2xs font-mono text-atlas-fg-3">
+            cockpit-journey.atlas-studio.org/dashboard
+          </span>
         </div>
         {/* Content */}
         <div className="p-5 bg-gradient-to-br from-atlas-cream via-white to-atlas-sage/5">

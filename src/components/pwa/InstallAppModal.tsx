@@ -158,8 +158,8 @@ export function InstallAppModal({ open, onClose }: Props) {
               {!isIosSafari() && (
                 <div className="text-2xs text-signal-yellow leading-relaxed bg-signal-yellow/[0.08] border border-signal-yellow/30 rounded-lg p-3">
                   ⚠ Tu sembles utiliser Chrome / Firefox sur iPhone. Pour installer la PWA tu dois ouvrir
-                  cockpitjourney.app dans <strong>Safari</strong> (Apple ne permet pas l'install depuis les
-                  autres navigateurs sur iOS).
+                  cockpit-journey.atlas-studio.org dans <strong>Safari</strong> (Apple ne permet pas l'install
+                  depuis les autres navigateurs sur iOS).
                 </div>
               )}
             </div>

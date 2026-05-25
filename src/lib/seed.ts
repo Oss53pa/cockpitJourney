@@ -87,7 +87,7 @@ const forms = [
     enabled: true,
     submissions: 47,
     createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
-    publicUrl: 'https://cockpitjourney.app/f/support-cj',
+    publicUrl: 'https://cockpit-journey.atlas-studio.org/f/support-cj',
     fields: [
       {
         id: 'ff1',
@@ -128,7 +128,7 @@ const forms = [
     enabled: true,
     submissions: 124,
     createdAt: new Date(Date.now() - 12 * 86400000).toISOString(),
-    publicUrl: 'https://cockpitjourney.app/f/webinar-2026',
+    publicUrl: 'https://cockpit-journey.atlas-studio.org/f/webinar-2026',
     fields: [
       { id: 'fg1', type: 'short_text' as const, label: 'Prénom', required: true },
       { id: 'fg2', type: 'short_text' as const, label: 'Nom', required: true },

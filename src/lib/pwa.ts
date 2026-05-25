@@ -86,7 +86,7 @@ export function useInstallPrompt() {
 
 /* ────────────────────── Autostart ────────────────────── */
 
-const APP_URL = 'https://cockpitjourney.app';
+const APP_URL = 'https://cockpit-journey.atlas-studio.org';
 
 /**
  * Detect the user's OS from the user-agent. Used to choose the right

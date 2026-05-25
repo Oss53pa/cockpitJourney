@@ -99,7 +99,7 @@ Routes définies dans `src/App.tsx` :
 **Flow SSO en prod (token handoff via Edge Function)** :
 
 1. L'utilisateur se connecte sur `atlas-studio.org`
-2. Atlas Studio génère un JWT signé via son Edge Function `app-token` et redirige l'utilisateur vers `cockpitjourney.app/auth?token=<JWT>`
+2. Atlas Studio génère un JWT signé via son Edge Function `app-token` et redirige l'utilisateur vers `cockpit-journey.atlas-studio.org/auth?token=<JWT>`
 3. `AuthCallback` détecte le `?token=` et POST sur `${SUPABASE_URL}/functions/v1/atlas-sso` avec ce JWT
 4. L'Edge Function `atlas-sso` (déployée sur Supabase) valide le JWT et retourne `{ token_hash, email, type: 'magiclink', appId, appName }`
 5. CockpitJourney appelle `supabase.auth.verifyOtp({ type: 'magiclink', token_hash })` → session établie
@@ -124,8 +124,8 @@ Dans **Supabase Dashboard → Authentication → URL Configuration → Redirect 
 ```
 http://localhost:5400/auth
 http://localhost:5400/**
-https://cockpitjourney.app/auth
-https://cockpitjourney.app/**
+https://cockpit-journey.atlas-studio.org/auth
+https://cockpit-journey.atlas-studio.org/**
 ```
 
 Si vous déployez sous `cockpit.atlas-studio.org` :
