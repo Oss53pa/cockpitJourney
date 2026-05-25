@@ -89,7 +89,7 @@ export const COPY = {
   thanksSub:
     'Vos retours rendent ce cockpit meilleur. Pour toute question sur ce rapport, contactez votre référent Atlas Studio.',
   contact: 'support@atlas-studio.org',
-  website: 'cockpitjourney.app',
+  website: 'cockpit-journey.atlas-studio.org',
   studioWebsite: 'atlas-studio.org',
   toc: 'Sommaire',
   preparedBy: 'Préparé par',

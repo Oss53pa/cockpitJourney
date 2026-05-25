@@ -34,7 +34,7 @@ export const SUPABASE_CONFIGURED = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
  */
 export const APP_ID = 'CockpitJourney';
 export const APP_TAGLINE = 'Pilotez votre journée. Compagnon quotidien de gestion de tâches et projets.';
-export const APP_URL = 'https://cockpitjourney.app';
+export const APP_URL = 'https://cockpit-journey.atlas-studio.org';
 
 /**
  * Hybrid jsonb-backed row. Indexed columns are derived from `data`; we
