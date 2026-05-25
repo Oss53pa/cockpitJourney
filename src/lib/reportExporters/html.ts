@@ -83,7 +83,12 @@ function narrativeToHtml(md: string): string {
   return out.join('\n');
 }
 
-export async function exportToHtml(payload: ExportPayload): Promise<void> {
+/**
+ * Build the full standalone HTML document for a report and return it as a
+ * string. Used both by the download path (`exportToHtml`) and the in-app
+ * preview (live render in an iframe before the user picks a format).
+ */
+export function renderReportHtml(payload: ExportPayload): string {
   const { report, users, projectNames, options } = payload;
   const tasks = filterTasks(payload);
   const sections = options.sections;
@@ -648,6 +653,12 @@ export async function exportToHtml(payload: ExportPayload): Promise<void> {
 </body>
 </html>`;
 
+  return html;
+}
+
+/** Build the report HTML and trigger a browser download. */
+export async function exportToHtml(payload: ExportPayload): Promise<void> {
+  const html = renderReportHtml(payload);
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  downloadBlob(blob, buildFilename(report, 'html'));
+  downloadBlob(blob, buildFilename(payload.report, 'html'));
 }

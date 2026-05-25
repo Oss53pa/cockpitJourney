@@ -102,3 +102,19 @@ export async function exportReport(
     }
   }
 }
+
+/**
+ * Render the report to a standalone HTML string — used by the export dialog to
+ * show a live WYSIWYG preview before the user commits to a format/download.
+ * Reuses the same self-healing dynamic import as the exporters.
+ */
+export async function previewReportHtml(payload: {
+  report: Report;
+  tasks: Task[];
+  users: User[];
+  projectNames: Record<string, string>;
+  options: ExportOptions;
+}): Promise<string> {
+  const { renderReportHtml } = await importOrReload(() => import('./html'));
+  return renderReportHtml(payload as ExportPayload);
+}
