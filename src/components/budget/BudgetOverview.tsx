@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   AlertTriangle,
   Layers,
+  Download,
 } from 'lucide-react';
 import { useApp } from '../../stores/appStore';
 import { cn, formatFCFA } from '../../lib/utils';
@@ -16,9 +17,58 @@ import {
   thresholdLevel,
   type BudgetSummary,
   type FolderBudgetNode,
+  type PortfolioTree,
   type ThresholdLevel,
 } from './consolidation';
 import type { ViewKey } from '../../types';
+
+/** Export consolidé du portefeuille en CSV (UTF-8 BOM, séparateur ; → Excel). */
+function downloadPortfolioCsv(portfolio: PortfolioTree): void {
+  const esc = (v: unknown) => {
+    const s = String(v ?? '');
+    return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const cols = [
+    'Niveau',
+    'Nom',
+    'Alloué',
+    'Réalisé',
+    'Écart',
+    'Consommation %',
+    'Prévue',
+    'Engagée',
+    'Facturée',
+    'Payée',
+  ];
+  const sumRow = (level: string, name: string, s: BudgetSummary) =>
+    [
+      level,
+      esc(name),
+      Math.round(s.allocated),
+      Math.round(s.spent),
+      Math.round(s.variance),
+      Math.round(s.pct),
+      Math.round(s.byStatus.planned),
+      Math.round(s.byStatus.committed),
+      Math.round(s.byStatus.invoiced),
+      Math.round(s.byStatus.paid),
+    ].join(';');
+
+  const rows: string[] = ['CONSOLIDATION BUDGÉTAIRE — PORTEFEUILLE', cols.join(';')];
+  rows.push(sumRow('Portefeuille', 'TOTAL', portfolio.summary));
+  for (const f of portfolio.folders) {
+    rows.push(sumRow('Dossier', f.folder?.name ?? 'Projets sans dossier', f.summary));
+    for (const p of f.projects) rows.push(sumRow('Projet', p.project.name, p.summary));
+  }
+
+  const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'budget-portefeuille.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 /* ─────────── visual helpers (alignés sur les seuils 80 / 100 %) ─────────── */
 
@@ -87,31 +137,42 @@ export function BudgetOverview({ onNavigate }: { onNavigate: (v: ViewKey, projec
   return (
     <div className="px-6 sm:px-8 py-7 max-w-6xl mx-auto space-y-5">
       {/* Header + breadcrumb */}
-      {folderNode ? (
-        <div>
+      <div className="flex items-start justify-between gap-3">
+        {folderNode ? (
+          <div>
+            <button
+              onClick={() => setDrillId(undefined)}
+              className="inline-flex items-center gap-1 text-sm text-atlas-fg-3 hover:text-atlas-fg-1 transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" /> Portefeuille
+            </button>
+            <h1 className="mt-1 text-2xl font-display font-medium text-atlas-fg-1 flex items-center gap-2.5">
+              <FolderGlyph node={folderNode} />
+              {folderNode.folder?.name ?? 'Projets sans dossier'}
+            </h1>
+            <p className="mt-1 text-sm text-atlas-fg-3">
+              {folderNode.projects.length} projet{folderNode.projects.length > 1 ? 's' : ''} · budget
+              consolidé du dossier.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <h1 className="text-2xl font-display font-medium text-atlas-fg-1">Budget — portefeuille</h1>
+            <p className="mt-1 text-sm text-atlas-fg-3">
+              Consolidation en cascade : portefeuille → dossiers → projets. Cliquez pour descendre d’un
+              niveau.
+            </p>
+          </div>
+        )}
+        {!empty && (
           <button
-            onClick={() => setDrillId(undefined)}
-            className="inline-flex items-center gap-1 text-sm text-atlas-fg-3 hover:text-atlas-fg-1 transition-colors"
+            onClick={() => downloadPortfolioCsv(portfolio)}
+            className="btn-secondary text-sm px-3 py-1.5 shrink-0"
           >
-            <ChevronLeft className="w-4 h-4" /> Portefeuille
+            <Download className="w-3.5 h-3.5" /> Exporter
           </button>
-          <h1 className="mt-1 text-2xl font-display font-medium text-atlas-fg-1 flex items-center gap-2.5">
-            <FolderGlyph node={folderNode} />
-            {folderNode.folder?.name ?? 'Projets sans dossier'}
-          </h1>
-          <p className="mt-1 text-sm text-atlas-fg-3">
-            {folderNode.projects.length} projet{folderNode.projects.length > 1 ? 's' : ''} · budget consolidé
-            du dossier.
-          </p>
-        </div>
-      ) : (
-        <div>
-          <h1 className="text-2xl font-display font-medium text-atlas-fg-1">Budget — portefeuille</h1>
-          <p className="mt-1 text-sm text-atlas-fg-3">
-            Consolidation en cascade : portefeuille → dossiers → projets. Cliquez pour descendre d’un niveau.
-          </p>
-        </div>
-      )}
+        )}
+      </div>
 
       {empty ? (
         <div className="panel p-10 text-center">
