@@ -342,7 +342,7 @@ const TOOLS: Tool[] = [
       const data = {
         id, title: args.title, project_id: args.project_id ?? null, priority: args.priority ?? 3,
         status: args.status ?? "todo", due_date: args.due_date ?? null, description: args.description ?? "",
-        created_at: now, updated_at: now, created_via: "mcp",
+        assignees: [], tags: [], created_at: now, updated_at: now, created_via: "mcp",
       };
       const { error } = await session.client.from("cj_tasks").insert({
         id, project_id: args.project_id ?? null, status: args.status ?? "todo", priority: args.priority ?? 3,
