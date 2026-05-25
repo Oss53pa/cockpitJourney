@@ -49,6 +49,7 @@ import { StatusBadge, ProgressBar } from '../ui/StatusBadge';
 import { HealthDot } from '../ui/HealthDot';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../ui/Menu';
 import { cn, formatDate } from '../../lib/utils';
+import { completionPct } from '../../lib/taskProgress';
 import { SectionErrorBoundary } from '../SectionErrorBoundary';
 import { BudgetPanel } from '../budget/BudgetPanel';
 import {
@@ -139,6 +140,15 @@ export function ProjectView({ project, onOpenTask }: Props) {
     return list;
   }, [allTasks, project.id, filterPriority, filterAssignee, sort]);
 
+  // Unfiltered project tasks — the source of truth for the header avancement
+  // and the dashboard stats (the `tasks` memo above is narrowed by the
+  // priority/assignee toolbar filters, so it must NOT drive the % complete).
+  const projectTasks = useMemo(
+    () => allTasks.filter((t) => t.projectId === project.id),
+    [allTasks, project.id]
+  );
+  const progressPct = useMemo(() => completionPct(projectTasks), [projectTasks]);
+
   // Tasks shared into this project from another project (multi-projets).
   // Kept separate from the board so drag-and-drop never reassigns their
   // primary section.
@@ -189,11 +199,11 @@ export function ProjectView({ project, onOpenTask }: Props) {
                   <span className="text-2xs text-atlas-fg-3 uppercase tracking-wider font-medium">
                     Avancement
                   </span>
-                  <span className="text-xs font-medium text-atlas-fg-1">{project.progress}%</span>
+                  <span className="text-xs font-medium text-atlas-fg-1">{progressPct}%</span>
                   <div className="w-24 h-1 rounded-full bg-black/[0.06] overflow-hidden">
                     <div
                       className="h-full bg-amber-gradient rounded-full"
-                      style={{ width: `${project.progress}%` }}
+                      style={{ width: `${progressPct}%` }}
                     />
                   </div>
                 </Badge>
@@ -201,7 +211,7 @@ export function ProjectView({ project, onOpenTask }: Props) {
                   <span className="text-2xs text-atlas-fg-3 uppercase tracking-wider font-medium">
                     Tâches
                   </span>
-                  <span className="text-xs font-medium text-atlas-fg-1">{tasks.length}</span>
+                  <span className="text-xs font-medium text-atlas-fg-1">{projectTasks.length}</span>
                 </Badge>
                 {project.endDate && (
                   <Badge>
@@ -497,7 +507,7 @@ export function ProjectView({ project, onOpenTask }: Props) {
         )}
         {tab === 'dashboard' && (
           <SectionErrorBoundary section="Le dashboard" scope="project:dashboard">
-            <ProjectDashboardTab project={project} tasks={tasks} sections={sections} />
+            <ProjectDashboardTab project={project} tasks={projectTasks} sections={sections} />
           </SectionErrorBoundary>
         )}
         {tab === 'goals' && (
@@ -1692,7 +1702,7 @@ function ProjectDashboardTab({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Stat label="Avancement" value={`${project.progress}%`} />
+        <Stat label="Avancement" value={`${completionPct(tasks)}%`} />
         <Stat label="Tâches" value={String(tasks.length)} />
         <Stat label="Membres" value={String(project.membersIds.length)} />
         <Stat
