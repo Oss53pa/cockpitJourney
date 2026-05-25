@@ -327,6 +327,12 @@ export async function exportToHtml(payload: ExportPayload): Promise<void> {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${esc(report.title)} — ${esc(COPY.brand)}</title>
+  <meta name="description" content="Rapport ${esc(report.kind)} · ${esc(periodLabel)}">
+  <meta name="author" content="${esc(COPY.brandLong)}">
+  <meta name="generator" content="${esc(COPY.poweredBy)}">
+  <meta name="keywords" content="CockpitJourney, rapport, ${esc(report.kind)}, ${esc(report.period)}, ${esc(docRef)}">
+  <meta name="dcterms.created" content="${esc(new Date(report.generatedAt).toISOString())}">
+  <meta name="robots" content="noindex, nofollow">
   <style>
     :root {
       --brand: ${C.brand};
