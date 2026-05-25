@@ -663,7 +663,7 @@ function Workload() {
   const users = useApp((s) => s.users);
   const weeklyCapacity = useApp((s) => s.settings.weeklyCapacityHours);
   const data = users.slice(0, 6).map((u) => {
-    const open = tasks.filter((t) => t.assignees.includes(u.id) && t.status !== 'done');
+    const open = tasks.filter((t) => (t.assignees ?? []).includes(u.id) && t.status !== 'done');
     const planned = open.reduce((sum, t) => sum + (t.estimatedMinutes || 60), 0) / 60;
     const capacity = weeklyCapacity;
     return {
@@ -792,7 +792,7 @@ function DelayedList() {
     .slice(0, 6)
     .map((t) => {
       const days = Math.max(1, Math.floor((now - new Date(t.dueDate!).getTime()) / 86400000));
-      const owner = users.find((u) => t.assignees.includes(u.id))?.initials || '—';
+      const owner = users.find((u) => (t.assignees ?? []).includes(u.id))?.initials || '—';
       const impact = ['Faible', 'Normale', 'Haute', 'Critique'][t.priority - 1];
       return { title: t.title, delay: days, owner, impact };
     });
