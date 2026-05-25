@@ -120,7 +120,9 @@ export function ProjectsView({ onNavigate }: Props) {
           <span className="text-sm truncate text-atlas-fg-1 group-hover:text-atlas-amber-deep">{p.name}</span>
         </button>
         <span>
-          <span className={cn('chip text-2xs', STATUS[p.status].cls)}>{STATUS[p.status].label}</span>
+          <span className={cn('chip text-2xs', (STATUS[p.status] ?? STATUS.active).cls)}>
+            {(STATUS[p.status] ?? STATUS.active).label}
+          </span>
         </span>
         <span className="flex justify-center">
           <HealthDot health={p.health} />
