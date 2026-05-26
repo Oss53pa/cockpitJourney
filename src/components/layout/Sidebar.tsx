@@ -203,6 +203,27 @@ export function Sidebar({
   }, [openFolders]);
   const isFolderOpen = (id: string) => openFolders[id] !== false;
 
+  // Top-level nav group collapse state (Mon quotidien / Pilotage / …).
+  // Keyed by group label, default expanded, persisted like the folders.
+  const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem('cj.sidebar.openNavGroups');
+      return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+    } catch {
+      return {};
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('cj.sidebar.openNavGroups', JSON.stringify(openNavGroups));
+    } catch {
+      /* private mode / quota — collapse state just won't persist */
+    }
+  }, [openNavGroups]);
+  const isNavGroupOpen = (label: string) => openNavGroups[label] !== false;
+  const toggleNavGroup = (label: string) =>
+    setOpenNavGroups((s) => ({ ...s, [label]: s[label] === false ? true : false }));
+
   // Collapse-all / expand-all: a single affordance that flips every folder
   // at once. If any folder is currently open we collapse them all, otherwise
   // we expand them all — so the button is always "do the opposite of now".
@@ -307,46 +328,60 @@ export function Sidebar({
       </div>
 
       <nav className="px-3 mt-2 space-y-2.5">
-        {navGroups.map((group) => (
-          <div key={group.label} className="space-y-0.5">
-            <span className="block px-3 pt-1 pb-0.5 text-2xs uppercase tracking-[0.18em] font-medium text-atlas-fg-3/80">
-              {group.label}
-            </span>
-            {group.items.map((it) => {
-              const active = view === it.key;
-              const Icon = it.icon;
-              return (
-                <button
-                  key={it.key}
-                  onClick={() => onNavigate(it.key)}
-                  className={cn('nav-item group w-full', active && 'nav-item-active')}
-                >
-                  {active && (
-                    <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-atlas-amber shadow-[0_0_12px_rgba(110,139,88,0.6)]" />
+        {navGroups.map((group) => {
+          const groupOpen = isNavGroupOpen(group.label);
+          return (
+            <div key={group.label} className="space-y-0.5">
+              <button
+                onClick={() => toggleNavGroup(group.label)}
+                className="group/hdr w-full flex items-center gap-1 px-3 pt-1 pb-0.5 text-2xs uppercase tracking-[0.18em] font-medium text-atlas-fg-3/80 hover:text-atlas-fg-2 transition-colors"
+                aria-expanded={groupOpen}
+              >
+                <ChevronRight
+                  className={cn(
+                    'w-3 h-3 shrink-0 transition-transform text-atlas-fg-3/60',
+                    groupOpen && 'rotate-90'
                   )}
-                  <Icon
-                    className={cn(
-                      'w-[18px] h-[18px]',
-                      active ? 'text-atlas-amber-deep' : 'text-atlas-fg-3 group-hover:text-atlas-fg-2'
-                    )}
-                    strokeWidth={1.7}
-                  />
-                  <span className="flex-1 text-left">{it.label}</span>
-                  {it.badge && (
-                    <span
-                      className={cn(
-                        'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-md text-[10px] font-medium',
-                        active ? 'bg-atlas-amber text-white' : 'bg-black/[0.06] text-atlas-fg-2'
-                      )}
+                />
+                <span className="flex-1 text-left">{group.label}</span>
+              </button>
+              {groupOpen &&
+                group.items.map((it) => {
+                  const active = view === it.key;
+                  const Icon = it.icon;
+                  return (
+                    <button
+                      key={it.key}
+                      onClick={() => onNavigate(it.key)}
+                      className={cn('nav-item group w-full', active && 'nav-item-active')}
                     >
-                      {it.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        ))}
+                      {active && (
+                        <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-atlas-amber shadow-[0_0_12px_rgba(110,139,88,0.6)]" />
+                      )}
+                      <Icon
+                        className={cn(
+                          'w-[18px] h-[18px]',
+                          active ? 'text-atlas-amber-deep' : 'text-atlas-fg-3 group-hover:text-atlas-fg-2'
+                        )}
+                        strokeWidth={1.7}
+                      />
+                      <span className="flex-1 text-left">{it.label}</span>
+                      {it.badge && (
+                        <span
+                          className={cn(
+                            'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-md text-[10px] font-medium',
+                            active ? 'bg-atlas-amber text-white' : 'bg-black/[0.06] text-atlas-fg-2'
+                          )}
+                        >
+                          {it.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+            </div>
+          );
+        })}
       </nav>
 
       <div className="mt-6 px-3 flex-1 min-h-0 overflow-y-auto">
