@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import type { EmailOtpType, User } from '@supabase/supabase-js';
 
 export default function AcceptInvite() {
   const navigate = useNavigate();
@@ -25,32 +26,90 @@ export default function AcceptInvite() {
 
   useEffect(() => {
     let cancelled = false;
-    const sub = supabase.auth.onAuthStateChange((event, session) => {
+
+    const onReady = (user: User) => {
       if (cancelled) return;
-      if (event === 'SIGNED_IN' && session?.user) {
-        setUserEmail(session.user.email ?? null);
-        setUserName(
-          (session.user.user_metadata?.full_name as string | undefined) ??
-            (session.user.user_metadata?.name as string | undefined) ??
-            null
-        );
-        setSessionReady(true);
-      }
-    });
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (cancelled || !session?.user) return;
-      setUserEmail(session.user.email ?? null);
+      setUserEmail(user.email ?? null);
       setUserName(
-        (session.user.user_metadata?.full_name as string | undefined) ??
-          (session.user.user_metadata?.name as string | undefined) ??
+        (user.user_metadata?.full_name as string | undefined) ??
+          (user.user_metadata?.name as string | undefined) ??
           null
       );
       setSessionReady(true);
+    };
+
+    // GoTrue may redirect here with an error in the query OR the hash
+    // (#error=access_denied&error_code=otp_expired). Surface it immediately.
+    const search = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const errCode = search.get('error_code') ?? hash.get('error_code');
+    const errDesc = search.get('error_description') ?? hash.get('error_description');
+    if (errCode) {
+      setError(
+        errCode === 'otp_expired'
+          ? "Ce lien d'invitation a expiré. Demandez à votre administrateur de vous le renvoyer."
+          : errDesc
+            ? decodeURIComponent(errDesc).replace(/\+/g, ' ')
+            : errCode
+      );
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    // Catch the session once it's established — covers the PKCE (?code) and
+    // implicit (#access_token) flows that supabase-js resolves on its own,
+    // plus the verifyOtp() call below.
+    const sub = supabase.auth.onAuthStateChange((event, session) => {
+      if (cancelled) return;
+      if (
+        (event === 'SIGNED_IN' || event === 'PASSWORD_RECOVERY' || event === 'USER_UPDATED') &&
+        session?.user
+      ) {
+        onReady(session.user);
+      }
     });
+
+    void (async () => {
+      try {
+        // Anti-prefetch flow: the email link carries ?token_hash=…&type=… .
+        // Email scanners (SafeLinks, Proofpoint, Gmail) can't execute JS, so
+        // the token survives until the real click — we consume it here via
+        // verifyOtp() instead of a GoTrue action_link (which scanners burn).
+        const tokenHash = search.get('token_hash');
+        if (tokenHash) {
+          const otpType = (search.get('type') ?? 'invite') as EmailOtpType;
+          const { data, error: vErr } = await supabase.auth.verifyOtp({
+            type: otpType,
+            token_hash: tokenHash,
+          });
+          if (cancelled) return;
+          if (vErr) {
+            setError(
+              /expired|invalid|not found/i.test(vErr.message)
+                ? "Ce lien d'invitation a expiré ou a déjà été utilisé. Demandez un nouveau lien à votre administrateur."
+                : vErr.message
+            );
+            return;
+          }
+          if (data.user) onReady(data.user);
+          return;
+        }
+
+        // No token_hash → a PKCE/implicit session may already be resolving.
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!cancelled && session?.user) onReady(session.user);
+      } catch (e) {
+        if (!cancelled) setError((e as Error)?.message ?? "Impossible de valider l'invitation.");
+      }
+    })();
+
     const t = setTimeout(() => {
       if (!cancelled && !sessionReady)
-        setError("Lien invalide ou expiré. Réessayez depuis l'email d'invitation.");
-    }, 6000);
+        setError("Lien invalide ou expiré. Réessayez depuis l'email d'invitation ou demandez un renvoi.");
+    }, 7000);
     return () => {
       cancelled = true;
       clearTimeout(t);
