@@ -285,6 +285,66 @@ export function Sidebar({
       ],
     },
   ];
+  // « Analyse » et « Automatisation » sont rendus APRÈS l'arbre Projets ; les
+  // deux premiers groupes restent au-dessus.
+  const TOP_GROUPS = new Set(['Mon quotidien', 'Pilotage']);
+  const topNavGroups = navGroups.filter((g) => TOP_GROUPS.has(g.label));
+  const bottomNavGroups = navGroups.filter((g) => !TOP_GROUPS.has(g.label));
+
+  const renderNavGroup = (group: { label: string; items: NavItem[] }) => {
+    const groupOpen = isNavGroupOpen(group.label);
+    return (
+      <div key={group.label} className="space-y-0.5">
+        <button
+          onClick={() => toggleNavGroup(group.label)}
+          className="group/hdr w-full flex items-center gap-1 px-3 pt-1 pb-0.5 text-2xs uppercase tracking-[0.18em] font-medium text-atlas-fg-3/80 hover:text-atlas-fg-2 transition-colors"
+          aria-expanded={groupOpen}
+        >
+          <ChevronRight
+            className={cn(
+              'w-3 h-3 shrink-0 transition-transform text-atlas-fg-3/60',
+              groupOpen && 'rotate-90'
+            )}
+          />
+          <span className="flex-1 text-left">{group.label}</span>
+        </button>
+        {groupOpen &&
+          group.items.map((it) => {
+            const active = view === it.key;
+            const Icon = it.icon;
+            return (
+              <button
+                key={it.key}
+                onClick={() => onNavigate(it.key)}
+                className={cn('nav-item group w-full', active && 'nav-item-active')}
+              >
+                {active && (
+                  <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-atlas-amber shadow-[0_0_12px_rgba(110,139,88,0.6)]" />
+                )}
+                <Icon
+                  className={cn(
+                    'w-[18px] h-[18px]',
+                    active ? 'text-atlas-amber-deep' : 'text-atlas-fg-3 group-hover:text-atlas-fg-2'
+                  )}
+                  strokeWidth={1.7}
+                />
+                <span className="flex-1 text-left">{it.label}</span>
+                {it.badge && (
+                  <span
+                    className={cn(
+                      'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-md text-[10px] font-medium',
+                      active ? 'bg-atlas-amber text-white' : 'bg-black/[0.06] text-atlas-fg-2'
+                    )}
+                  >
+                    {it.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+      </div>
+    );
+  };
 
   return (
     <aside className="w-[280px] sm:w-[260px] shrink-0 h-full flex flex-col bg-atlas-ink/80 backdrop-blur-2xl border-r border-black/[0.05]">
@@ -327,62 +387,7 @@ export function Sidebar({
         </button>
       </div>
 
-      <nav className="px-3 mt-2 space-y-2.5">
-        {navGroups.map((group) => {
-          const groupOpen = isNavGroupOpen(group.label);
-          return (
-            <div key={group.label} className="space-y-0.5">
-              <button
-                onClick={() => toggleNavGroup(group.label)}
-                className="group/hdr w-full flex items-center gap-1 px-3 pt-1 pb-0.5 text-2xs uppercase tracking-[0.18em] font-medium text-atlas-fg-3/80 hover:text-atlas-fg-2 transition-colors"
-                aria-expanded={groupOpen}
-              >
-                <ChevronRight
-                  className={cn(
-                    'w-3 h-3 shrink-0 transition-transform text-atlas-fg-3/60',
-                    groupOpen && 'rotate-90'
-                  )}
-                />
-                <span className="flex-1 text-left">{group.label}</span>
-              </button>
-              {groupOpen &&
-                group.items.map((it) => {
-                  const active = view === it.key;
-                  const Icon = it.icon;
-                  return (
-                    <button
-                      key={it.key}
-                      onClick={() => onNavigate(it.key)}
-                      className={cn('nav-item group w-full', active && 'nav-item-active')}
-                    >
-                      {active && (
-                        <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-atlas-amber shadow-[0_0_12px_rgba(110,139,88,0.6)]" />
-                      )}
-                      <Icon
-                        className={cn(
-                          'w-[18px] h-[18px]',
-                          active ? 'text-atlas-amber-deep' : 'text-atlas-fg-3 group-hover:text-atlas-fg-2'
-                        )}
-                        strokeWidth={1.7}
-                      />
-                      <span className="flex-1 text-left">{it.label}</span>
-                      {it.badge && (
-                        <span
-                          className={cn(
-                            'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-md text-[10px] font-medium',
-                            active ? 'bg-atlas-amber text-white' : 'bg-black/[0.06] text-atlas-fg-2'
-                          )}
-                        >
-                          {it.badge}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-            </div>
-          );
-        })}
-      </nav>
+      <nav className="px-3 mt-2 space-y-2.5">{topNavGroups.map(renderNavGroup)}</nav>
 
       <div className="mt-6 px-3 flex-1 min-h-0 overflow-y-auto">
         <div className="flex items-center justify-between px-3 py-1.5 mb-1 sticky top-0 z-20 bg-atlas-ink/90 backdrop-blur-md">
@@ -457,7 +462,7 @@ export function Sidebar({
             items={sortedFolders.map((f) => 'folder-' + f.id)}
             strategy={verticalListSortingStrategy}
           >
-            {(['personnel', 'professionnel'] as const).map((sphereKey) => {
+            {(['professionnel', 'personnel'] as const).map((sphereKey) => {
               const sphereFolders = foldersBySphere[sphereKey];
               return (
                 <div key={sphereKey} className="mb-3">
@@ -667,6 +672,11 @@ export function Sidebar({
           </DragOverlay>
         </DndContext>
       </div>
+
+      {/* Analyse & Automatisation — sous l'arbre Projets, au-dessus du profil. */}
+      <nav className="px-3 pt-2 pb-1 space-y-2.5 border-t border-black/[0.05] shrink-0">
+        {bottomNavGroups.map(renderNavGroup)}
+      </nav>
 
       <div className="border-t border-black/[0.05] p-3">
         <Menu

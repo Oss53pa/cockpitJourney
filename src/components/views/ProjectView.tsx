@@ -680,8 +680,17 @@ function DraggableKanbanCard({
   hidden?: boolean;
 }) {
   const { attributes, listeners, setNodeRef } = useDraggable({ id: task.id });
+  // The WHOLE card is draggable (listeners on the root) — the previous grip-only
+  // handle was hover-only + tiny, so users couldn't tell cards were draggable.
+  // dnd-kit's 5px activation threshold means a plain click still opens the task;
+  // only a real drag moves it. The grip stays as a visual affordance.
   return (
-    <div ref={setNodeRef} className={cn(hidden && 'opacity-30')} {...attributes}>
+    <div
+      ref={setNodeRef}
+      className={cn('cursor-grab active:cursor-grabbing', hidden && 'opacity-30')}
+      {...attributes}
+      {...listeners}
+    >
       <KanbanCard task={task} onOpenTask={onOpenTask} index={index} dragHandle={listeners} />
     </div>
   );
@@ -728,14 +737,13 @@ function KanbanCard({
       <div onClick={() => onOpenTask(task)} className="cursor-pointer">
         <div className="flex items-start gap-2">
           {dragHandle && (
-            <button
-              {...dragHandle}
-              className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-atlas-fg-3 hover:text-atlas-fg-1 -ml-1 mt-0.5"
+            <span
+              className="opacity-40 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-atlas-fg-3 -ml-1 mt-0.5"
               title="Glisser-déposer"
-              onClick={(e) => e.stopPropagation()}
+              aria-hidden
             >
               <GripVertical className="w-3.5 h-3.5" />
-            </button>
+            </span>
           )}
           <button
             onClick={(e) => {
