@@ -139,35 +139,62 @@ export default function TeamSettingsPage() {
   const activeSeats = seats.filter((s) => s.status === 'active' && s.invitation_accepted_at).length;
   const pendingInvites = seats.filter((s) => s.status === 'active' && !s.invitation_accepted_at).length;
 
+  // Read the JSON body of a FunctionsHttpError (401/403/500) so we can surface
+  // the real message instead of "non-2xx status code".
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function fnErrorMessage(error: any): Promise<string> {
+    const ctx = error?.context;
+    if (ctx && typeof ctx.json === 'function') {
+      try {
+        const b = await ctx.json();
+        if (b?.error) return b.error;
+      } catch {
+        /* not json */
+      }
+    }
+    return error?.message ?? 'Erreur réseau';
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function offerManualLink(email: string, data: any): Promise<boolean> {
+    if (!data?.magicLink) return false;
+    const ok = window.confirm(
+      `L'email n'a pas pu être envoyé (${data.error ?? 'erreur'}).\n\n` +
+        `Voulez-vous copier le lien d'invitation pour l'envoyer manuellement à ${email} ?`
+    );
+    if (!ok) return false;
+    try {
+      await navigator.clipboard.writeText(data.magicLink);
+    } catch {
+      window.prompt('Copiez ce lien et envoyez-le à la personne :', data.magicLink);
+    }
+    return true;
+  }
+
+  const inviteAppUrl = () =>
+    typeof window !== 'undefined' ? window.location.origin : 'https://cockpit-journey.atlas-studio.org';
+
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault();
     if (!tenant) return;
     setInviting(true);
     setError(null);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) throw new Error('Session expirée');
-
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke('cj-invite-seat', {
+        body: {
           licence_id: tenant.licence_id,
           tenant_id: tenant.tenant_id,
           email: inviteForm.email,
           full_name: inviteForm.full_name,
           role: inviteForm.role,
-          send_email: true,
-        }),
+          appUrl: inviteAppUrl(),
+        },
       });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      if (error) throw new Error(await fnErrorMessage(error));
+      if (data?.success === false) {
+        const copied = await offerManualLink(inviteForm.email, data);
+        if (!copied) throw new Error(data.error ?? "Échec de l'invitation");
+      }
       setShowInvite(false);
       setInviteForm({ email: '', full_name: '', role: 'editor' });
       await loadTeam();
@@ -175,6 +202,35 @@ export default function TeamSettingsPage() {
       setError((e as Error).message);
     } finally {
       setInviting(false);
+    }
+  }
+
+  async function resendInvite(seat: Seat) {
+    if (!tenant) return;
+    setActioningSeat(seat.id);
+    setError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('cj-invite-seat', {
+        body: {
+          licence_id: tenant.licence_id,
+          tenant_id: tenant.tenant_id,
+          email: seat.email,
+          full_name: seat.full_name,
+          role: seat.role,
+          appUrl: inviteAppUrl(),
+          forceRecovery: true,
+        },
+      });
+      if (error) throw new Error(await fnErrorMessage(error));
+      if (data?.success === false) {
+        const copied = await offerManualLink(seat.email, data);
+        if (!copied) throw new Error(data.error ?? 'Échec du renvoi');
+      }
+      await loadTeam();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setActioningSeat(null);
     }
   }
 
@@ -382,6 +438,20 @@ export default function TeamSettingsPage() {
                   <td style={styles.td}>
                     {canIManage && (
                       <div style={{ display: 'flex', gap: 4 }}>
+                        {seat.status === 'active' && (
+                          <button
+                            onClick={() => resendInvite(seat)}
+                            disabled={actioningSeat === seat.id}
+                            style={styles.btnSecondary}
+                            title={
+                              isPending
+                                ? "Renvoyer l'invitation (lien d'activation)"
+                                : 'Envoyer un lien de réinitialisation du mot de passe'
+                            }
+                          >
+                            {actioningSeat === seat.id ? '…' : isPending ? 'Renvoyer' : 'Lien mot de passe'}
+                          </button>
+                        )}
                         {seat.status === 'active' ? (
                           <button
                             onClick={() => suspendSeat(seat)}
