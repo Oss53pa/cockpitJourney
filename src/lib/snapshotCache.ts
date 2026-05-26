@@ -63,11 +63,18 @@ if (typeof localStorage !== 'undefined') {
 // in a long while (e.g. backup laptop, returning user after sabbatical).
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-// Settings keys we deliberately STRIP before writing to localStorage to
-// avoid exposing secrets if the device is compromised (XSS via a future
-// dependency, malicious extension, shared computer). The Supabase server-
-// side row is still the source of truth — these come back on next load.
-const SETTINGS_BLOCKLIST = new Set<string>(['proph3t']);
+// Settings keys to STRIP from the localStorage mirror.
+//
+// NOTE: `proph3t` (which carries the AI API key) used to be here. That was
+// removed because it broke persistence UX without buying real security: the
+// key is ALSO stored in the RLS-protected `cj_settings` row and is reachable
+// from the in-memory store and the Supabase session token (itself in
+// localStorage) — so an attacker with XSS already has it. Stripping it only
+// made the key "disappear" on instant-boot until server revalidation, which
+// users reported as the key not staying saved. Keeping it in the mirror lets
+// it survive a reload immediately. Add a key here only if it must never touch
+// localStorage AND is never needed before the first server load.
+const SETTINGS_BLOCKLIST = new Set<string>();
 
 export interface CachedSnapshot extends Snapshot {
   /** The profile id that was active when this snapshot was captured. */

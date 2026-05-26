@@ -83,7 +83,7 @@ describe('writeSnapshotCache + readSnapshotCache', () => {
     expect(b!.projects.length).toBe(0);
   });
 
-  it('strips proph3t.apiKey from settings before persisting (secret blocklist)', () => {
+  it('persists proph3t (incl. AI key) so it survives an instant-boot reload', () => {
     const withSecret = {
       ...emptySnap,
       settings: {
@@ -94,9 +94,14 @@ describe('writeSnapshotCache + readSnapshotCache', () => {
     writeSnapshotCache('user-x', withSecret, 'prof-x');
     const raw = localStorage.getItem('cj-snap-v3:user-x');
     expect(raw).not.toBeNull();
-    expect(raw!).not.toContain('gsk_supersecret123');
-    expect(raw!).not.toContain('proph3t');
+    // The key is kept in the mirror (it's already in the RLS-protected DB and
+    // reachable in-memory; stripping it only broke persistence on reload).
+    expect(raw!).toContain('gsk_supersecret123');
+    expect(raw!).toContain('proph3t');
     expect(raw!).toContain('theme');
+    // And it round-trips back on read.
+    const back = readSnapshotCache('user-x');
+    expect((back!.settings as { proph3t?: { apiKey?: string } }).proph3t?.apiKey).toBe('gsk_supersecret123');
   });
 
   it('expires snapshots older than 7 days (TTL)', () => {
