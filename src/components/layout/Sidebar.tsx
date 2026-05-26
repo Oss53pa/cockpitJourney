@@ -464,13 +464,23 @@ export function Sidebar({
           >
             {(['professionnel', 'personnel'] as const).map((sphereKey) => {
               const sphereFolders = foldersBySphere[sphereKey];
+              const sphereOpen = isNavGroupOpen('sphere-' + sphereKey);
               return (
                 <div key={sphereKey} className="mb-3">
-                  {/* Sphere header — 2 grandes familles : Personnel / Professionnel */}
+                  {/* Sphere header — repliable (Personnel / Professionnel) */}
                   <div className="flex items-center justify-between px-3 mb-1.5">
-                    <span className="text-[10px] uppercase tracking-[0.22em] font-semibold text-atlas-amber-deep">
-                      {sphereKey === 'personnel' ? 'Personnel' : 'Professionnel'}
-                    </span>
+                    <button
+                      onClick={() => toggleNavGroup('sphere-' + sphereKey)}
+                      className="group/sph flex items-center gap-1 flex-1 text-left text-[10px] uppercase tracking-[0.22em] font-semibold text-atlas-amber-deep hover:opacity-80 transition-opacity"
+                      aria-expanded={sphereOpen}
+                    >
+                      <ChevronRight
+                        className={cn('w-3 h-3 shrink-0 transition-transform', sphereOpen && 'rotate-90')}
+                      />
+                      <span className="flex-1">
+                        {sphereKey === 'personnel' ? 'Personnel' : 'Professionnel'}
+                      </span>
+                    </button>
                     <button
                       onClick={() => openModal('folder-create', { sphere: sphereKey })}
                       title={`Nouveau dossier ${sphereKey === 'personnel' ? 'personnel' : 'professionnel'}`}
@@ -479,7 +489,7 @@ export function Sidebar({
                       <Plus className="w-3 h-3" />
                     </button>
                   </div>
-                  {sphereFolders.length === 0 ? (
+                  {!sphereOpen ? null : sphereFolders.length === 0 ? (
                     <div className="text-2xs text-atlas-fg-3 italic px-3 py-1.5">
                       Aucun dossier — cliquez sur + pour en ajouter
                     </div>
