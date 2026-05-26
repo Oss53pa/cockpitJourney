@@ -228,6 +228,8 @@ export interface Attachment {
   size: string;
   kind: 'pdf' | 'img' | 'doc' | 'csv' | 'link';
   uploadedAt: string;
+  /** Storage path in the `cj-attachments` bucket (real uploads only). */
+  path?: string;
 }
 export interface TaskDependency {
   id: string;
@@ -421,7 +423,13 @@ interface State {
   deleteReport: (id: string) => void;
 
   // attachments / dependencies / notes / activity
-  addAttachment: (taskId: string, name: string, kind: Attachment['kind'], size?: string) => void;
+  addAttachment: (
+    taskId: string,
+    name: string,
+    kind: Attachment['kind'],
+    size?: string,
+    path?: string
+  ) => void;
   removeAttachment: (id: string) => void;
   addDependency: (taskId: string, relatedTaskId: string, relation: TaskDependency['relation']) => void;
   removeDependency: (id: string) => void;
@@ -1921,8 +1929,16 @@ Reste sous 400 mots, ton factuel et engagé.`,
   },
 
   // === Attachments / Dependencies / Notes / Activity ===
-  addAttachment: (taskId, name, kind, size = '–') => {
-    const at: Attachment = { id: uid('at'), taskId, name, kind, size, uploadedAt: new Date().toISOString() };
+  addAttachment: (taskId, name, kind, size = '–', path) => {
+    const at: Attachment = {
+      id: uid('at'),
+      taskId,
+      name,
+      kind,
+      size,
+      uploadedAt: new Date().toISOString(),
+      ...(path ? { path } : {}),
+    };
     set((s) => ({ attachments: [...s.attachments, at] }));
     dbPersist.put('attachments', at);
     const t = get().tasks.find((x) => x.id === taskId);

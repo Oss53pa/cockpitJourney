@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   X,
   CalendarDays,
@@ -35,6 +35,7 @@ import {
   Star,
   Maximize2,
   Target,
+  Loader2,
 } from 'lucide-react';
 import type { Task, Priority } from '../types';
 import { useApp, useCurrentUser, type Attachment } from '../stores/appStore';
@@ -43,6 +44,7 @@ import { PriorityBadge } from './ui/PriorityBadge';
 import { StatusBadge, ProgressBar } from './ui/StatusBadge';
 import { Menu, MenuItem, MenuLabel } from './ui/Menu';
 import { cn, formatLongDate, formatTime, relativeTime } from '../lib/utils';
+import { uploadTaskFile, signedAttachmentUrl, removeAttachmentFile } from '../lib/attachmentStorage';
 
 interface Props {
   task: Task | null;
@@ -1019,53 +1021,114 @@ function FilesTab({ task, attachments }: { task: Task; attachments: Attachment[]
   const addAttachment = useApp((s) => s.addAttachment);
   const removeAttachment = useApp((s) => s.removeAttachment);
   const pushToast = useApp((s) => s.pushToast);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
-  const handleAdd = () => {
-    const types: Attachment['kind'][] = ['pdf', 'img', 'doc', 'csv'];
-    const names = [
-      'rapport-q2-2026.pdf',
-      'screenshot-bug.png',
-      'specs-detaillees.docx',
-      'export-metrics.csv',
-      'invoice-cosmos.pdf',
-    ];
-    const sizes = ['1.2 MB', '480 KB', '2.4 MB', '120 KB', '900 KB'];
-    const idx = Math.floor(Math.random() * names.length);
-    addAttachment(task.id, names[idx], types[idx % types.length], sizes[idx]);
+  const uploadFiles = async (files: FileList | File[]) => {
+    const list = Array.from(files);
+    if (list.length === 0) return;
+    setUploading(true);
+    try {
+      for (const file of list) {
+        try {
+          const meta = await uploadTaskFile(task.id, file);
+          addAttachment(task.id, meta.name, meta.kind, meta.size, meta.path);
+        } catch (err) {
+          pushToast({
+            kind: 'error',
+            title: 'Échec du téléversement',
+            body: `${file.name} — ${(err as Error)?.message ?? 'erreur'}`,
+          });
+        }
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (a: Attachment) => {
+    if (a.path) await removeAttachmentFile(a.path).catch(() => undefined);
+    removeAttachment(a.id);
   };
 
   return (
     <div className="px-6 py-5">
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) void uploadFiles(e.target.files);
+          e.target.value = '';
+        }}
+      />
       <div className="flex items-center justify-between mb-4">
         <SectionTitle icon={Paperclip}>Pièces jointes · {attachments.length}</SectionTitle>
         <div className="flex items-center gap-1">
           <button
             onClick={() =>
-              pushToast({ kind: 'info', title: 'Lien externe', body: 'Google Drive · OneDrive · Dropbox' })
+              pushToast({
+                kind: 'info',
+                title: 'Lien externe',
+                body: 'Bientôt : Google Drive · OneDrive · Dropbox',
+              })
             }
             className="btn-ghost text-xs px-2.5 py-1.5"
           >
             <LinkIcon className="w-3 h-3" /> Lier un fichier cloud
           </button>
-          <button onClick={handleAdd} className="btn-primary text-xs px-3 py-1.5">
-            <Plus className="w-3 h-3" /> Téléverser
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50"
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" /> Téléversement…
+              </>
+            ) : (
+              <>
+                <Plus className="w-3 h-3" /> Téléverser
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      {/* Drop zone */}
+      {/* Real drop zone — click opens the picker, drop uploads. */}
       <button
-        onClick={handleAdd}
-        className="w-full mb-4 border-2 border-dashed border-atlas-line hover:border-atlas-amber/60 rounded-xl px-6 py-10 flex flex-col items-center gap-2 text-atlas-fg-3 hover:text-atlas-amber-deep transition-colors bg-white/40"
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          if (e.dataTransfer.files) void uploadFiles(e.dataTransfer.files);
+        }}
+        disabled={uploading}
+        className={cn(
+          'w-full mb-4 border-2 border-dashed rounded-xl px-6 py-10 flex flex-col items-center gap-2 transition-colors bg-white/40',
+          dragOver
+            ? 'border-atlas-amber bg-atlas-amber/[0.06] text-atlas-amber-deep'
+            : 'border-atlas-line hover:border-atlas-amber/60 text-atlas-fg-3 hover:text-atlas-amber-deep'
+        )}
       >
-        <Paperclip className="w-6 h-6" />
-        <div className="text-sm font-medium">Glissez vos fichiers ici ou cliquez pour ajouter</div>
-        <div className="text-2xs">PDF · DOCX · XLSX · PNG · JPG · MP4 — 500 Mo max (Plan Pro)</div>
+        {uploading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Paperclip className="w-6 h-6" />}
+        <div className="text-sm font-medium">
+          {uploading ? 'Téléversement en cours…' : 'Glissez vos fichiers ici ou cliquez pour ajouter'}
+        </div>
+        <div className="text-2xs">PDF · DOCX · XLSX · PNG · JPG — 50 Mo max</div>
       </button>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {attachments.map((a) => (
-          <FileCard key={a.id} attachment={a} onDelete={() => removeAttachment(a.id)} />
+          <FileCard key={a.id} attachment={a} onDelete={() => void handleDelete(a)} />
         ))}
         {attachments.length === 0 && (
           <div className="col-span-full text-center text-sm text-atlas-fg-3 italic py-8">
@@ -1087,6 +1150,19 @@ function FileCard({ attachment, onDelete }: { attachment: Attachment; onDelete: 
   };
   const cfg = map[attachment.kind];
   const Icon = cfg.icon;
+  const [opening, setOpening] = useState(false);
+
+  const openFile = async () => {
+    if (!attachment.path) return;
+    setOpening(true);
+    try {
+      const url = await signedAttachmentUrl(attachment.path);
+      if (url) window.open(url, '_blank', 'noopener');
+    } finally {
+      setOpening(false);
+    }
+  };
+
   return (
     <div className="group flex items-center gap-3 px-3 py-3 rounded-xl bg-white border border-atlas-line hover:border-atlas-line-2 transition-colors">
       <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center border', cfg.cls)}>
@@ -1099,9 +1175,20 @@ function FileCard({ attachment, onDelete }: { attachment: Attachment; onDelete: 
         </div>
       </div>
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button title="Télécharger" className="btn-ghost !p-1.5">
-          <Download className="w-3.5 h-3.5" />
-        </button>
+        {attachment.path && (
+          <button
+            onClick={openFile}
+            disabled={opening}
+            title="Ouvrir / télécharger"
+            className="btn-ghost !p-1.5"
+          >
+            {opening ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Download className="w-3.5 h-3.5" />
+            )}
+          </button>
+        )}
         <button onClick={onDelete} title="Supprimer" className="btn-ghost !p-1.5 hover:text-signal-red">
           <Trash2 className="w-3.5 h-3.5" />
         </button>
