@@ -21,6 +21,16 @@ if (typeof window !== 'undefined') {
     console.error('[CockpitJourney] unhandled promise:', e.reason);
     captureException(e.reason instanceof Error ? e.reason : new Error(String(e.reason)));
   });
+  // After a deploy, an in-flight tab still references the old hashed
+  // chunks. If a lazy import fails to fetch them (Vercel only serves the
+  // newest build, the old asset cache may have been purged on SW v->next
+  // transition), force a single full reload to pick up the new index.html.
+  // Guarded so we don't reload-loop if it fails again immediately.
+  window.addEventListener('vite:preloadError', () => {
+    if (sessionStorage.getItem('cj-chunk-reload') === '1') return;
+    sessionStorage.setItem('cj-chunk-reload', '1');
+    window.location.reload();
+  });
 }
 
 // PWA Service Worker registration.

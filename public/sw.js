@@ -65,10 +65,15 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
-      // Drop every cache that isn't tagged with the current version.
+      // Drop stale caches but KEEP previous `-assets` caches: those hold
+      // content-hashed Vite chunks that a still-open tab on the old
+      // index.html may need to load before the user reloads to the new
+      // build. Otherwise the user gets a white screen on next click.
       const keys = await caches.keys();
       await Promise.all(
-        keys.filter((k) => !k.startsWith(CACHE_VERSION)).map((k) => caches.delete(k))
+        keys
+          .filter((k) => !k.startsWith(CACHE_VERSION) && !k.endsWith('-assets'))
+          .map((k) => caches.delete(k))
       );
       await self.clients.claim();
     })()

@@ -44,6 +44,13 @@ import type {
 // second invocation literally cannot start.
 let bootstrapStarted = false;
 
+// Module-level set of goalIds currently scheduled for a microtask-deferred
+// recompute. Used by `recomputeGoalFromTasks` to coalesce bursts of updates
+// on the same goal (e.g. toggling multiple subtasks at once) into a single
+// `updateGoal` write — otherwise concurrent upserts on the same row would
+// race and the goal value persisted to Supabase could lag behind memory.
+const _pendingGoalRecomputes = new Set<string>();
+
 // Reset the guard on Vite HMR so a hot-reloaded store module re-subscribes
 // to auth changes — otherwise dev iteration freezes on the splash forever.
 // `import.meta.hot` is undefined in prod, so this branch tree-shakes away.
@@ -845,6 +852,22 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     }, 6000);
 
     // Subscribe to auth state changes (single subscription per app lifecycle).
+    // Cross-tab signOut propagation: a sibling tab signing out posts on
+    // this channel; we mirror the signOut locally so the user isn't left
+    // with a stale "signed in" UI that keeps writing under a dead token.
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const ch = new BroadcastChannel('cj-auth');
+        ch.addEventListener('message', (e) => {
+          if (e.data?.type === 'signout' && get().authStatus !== 'signed_out') {
+            supabase.auth.signOut().catch(() => {});
+          }
+        });
+      }
+    } catch {
+      /* BroadcastChannel not supported — fall back to per-tab signOut only */
+    }
+
     // INITIAL_SESSION fires once on subscribe with the cached session (if any),
     // SIGNED_IN / SIGNED_OUT / TOKEN_REFRESHED fire on subsequent changes.
     supabase.auth.onAuthStateChange(async (event, session) => {
@@ -1029,6 +1052,17 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     const t = get().tasks.find((x) => x.id === id);
     if (!t) return;
     const isDone = t.status === 'done';
+    // Approval gate: a task flagged as needing approval can only be moved
+    // to "done" once it has been explicitly approved. Reopening (done→todo)
+    // is always allowed.
+    if (!isDone && t.requiresApproval && t.approvalStatus !== 'approved') {
+      get().pushToast({
+        kind: 'warning',
+        title: 'Approbation requise',
+        body: 'Cette tâche doit être approuvée avant clôture (onglet Détails).',
+      });
+      return;
+    }
     get().updateTask(id, {
       status: isDone ? 'todo' : 'done',
       completionDate: isDone ? undefined : new Date().toISOString(),
@@ -1080,6 +1114,19 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       else status = 'todo';
     }
     const t = get().tasks.find((x) => x.id === id);
+    // Approval gate: dropping a non-approved task into a "Terminé"-ish
+    // column would silently bypass the approval flow. Move the card but
+    // do NOT flip the status to 'done' — surface a clear toast so the
+    // user knows to approve it first.
+    if (status === 'done' && t?.requiresApproval && t.approvalStatus !== 'approved' && t.status !== 'done') {
+      get().updateTask(id, { sectionId });
+      get().pushToast({
+        kind: 'warning',
+        title: 'Approbation requise',
+        body: 'La tâche a été déplacée mais reste à approuver avant clôture.',
+      });
+      return;
+    }
     get().updateTask(id, { sectionId, ...(status ? { status } : {}) });
     if (t && sec)
       get().logActivity({
@@ -1163,6 +1210,22 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     if (updated) dbPersist.put('goals', updated);
   },
   deleteGoal: (id) => {
+    // Null out the link on any task that contributed to this goal — otherwise
+    // those tasks would carry a dangling goalId that the drawer "Contribue à"
+    // panel would try to look up.
+    const affectedTaskIds = get()
+      .tasks.filter((t) => t.goalId === id)
+      .map((t) => t.id);
+    if (affectedTaskIds.length) {
+      set((s) => ({
+        tasks: s.tasks.map((t) => (t.goalId === id ? { ...t, goalId: undefined } : t)),
+      }));
+      const after = get().tasks;
+      for (const tid of affectedTaskIds) {
+        const t = after.find((x) => x.id === tid);
+        if (t) dbPersist.put('tasks', t);
+      }
+    }
     set((s) => ({ goals: s.goals.filter((g) => g.id !== id) }));
     dbPersist.delete('goals', id);
     get().pushToast({ kind: 'info', title: 'Goal supprimé' });
@@ -1174,27 +1237,37 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     get().updateGoal(id, { currentValue: next });
   },
   recomputeGoalFromTasks: (goalId) => {
-    const goal = get().goals.find((g) => g.id === goalId);
-    if (!goal) return;
-    // Currency / number goals stay manual — the execution ratio is shown
-    // alongside the metric in the UI rather than overwriting it.
-    if (goal.metricType !== 'percentage' && goal.metricType !== 'boolean') return;
-    const contributing = get().tasks.filter((t) => t.goalId === goalId);
-    const total = contributing.length;
-    const done = contributing.filter((t) => t.status === 'done').length;
-    const currentValue =
-      goal.metricType === 'percentage'
-        ? total
-          ? Math.round((done / total) * 100)
-          : 0
-        : total > 0 && done === total
-          ? goal.targetValue
-          : 0;
-    const pct = (currentValue / Math.max(1, goal.targetValue)) * 100;
-    get().updateGoal(goalId, {
-      currentValue,
-      health: pct >= 60 ? 'green' : pct >= 35 ? 'yellow' : 'red',
-      status: pct >= 100 ? 'achieved' : pct >= 60 ? 'on_track' : pct >= 35 ? 'at_risk' : 'off_track',
+    // Coalesce bursts of recomputes on the same goal (e.g. cocher 5
+    // sous-tâches d'affilée) into a single microtask-deferred run. Without
+    // this, each toggle fires its own updateGoal → 5 concurrent upserts
+    // on the same row, and the last one to land on the server wins —
+    // which may not be the latest in-memory value.
+    if (_pendingGoalRecomputes.has(goalId)) return;
+    _pendingGoalRecomputes.add(goalId);
+    queueMicrotask(() => {
+      _pendingGoalRecomputes.delete(goalId);
+      const goal = get().goals.find((g) => g.id === goalId);
+      if (!goal) return;
+      // Currency / number goals stay manual — the execution ratio is shown
+      // alongside the metric in the UI rather than overwriting it.
+      if (goal.metricType !== 'percentage' && goal.metricType !== 'boolean') return;
+      const contributing = get().tasks.filter((t) => t.goalId === goalId);
+      const total = contributing.length;
+      const done = contributing.filter((t) => t.status === 'done').length;
+      const currentValue =
+        goal.metricType === 'percentage'
+          ? total
+            ? Math.round((done / total) * 100)
+            : 0
+          : total > 0 && done === total
+            ? goal.targetValue
+            : 0;
+      const pct = (currentValue / Math.max(1, goal.targetValue)) * 100;
+      get().updateGoal(goalId, {
+        currentValue,
+        health: pct >= 60 ? 'green' : pct >= 35 ? 'yellow' : 'red',
+        status: pct >= 100 ? 'achieved' : pct >= 60 ? 'on_track' : pct >= 35 ? 'at_risk' : 'off_track',
+      });
     });
   },
 
@@ -1277,30 +1350,118 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     }
   },
   deleteProject: (id) => {
-    const taskIds = get()
-      .tasks.filter((t) => t.projectId === id)
+    const beforeTasks = get().tasks;
+    const allSections = get().sections;
+
+    // Pass 1: primary-project tasks. If a task is also shared into another
+    // project (alsoInProjectIds), promote it there instead of deleting it
+    // outright — otherwise the user would see it silently vanish from the
+    // secondary project where it was visible.
+    const tasksOfPrimary = beforeTasks.filter((t) => t.projectId === id);
+    const promotions: { taskId: string; toProjectId: string; toSectionId: string }[] = [];
+    const tasksToDelete: string[] = [];
+    for (const t of tasksOfPrimary) {
+      const candidates = (t.alsoInProjectIds ?? []).filter((pid) => pid !== id);
+      let promoted = false;
+      for (const target of candidates) {
+        const sec = allSections
+          .filter((s) => s.projectId === target)
+          .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0];
+        if (sec) {
+          promotions.push({ taskId: t.id, toProjectId: target, toSectionId: sec.id });
+          promoted = true;
+          break;
+        }
+      }
+      if (!promoted) tasksToDelete.push(t.id);
+    }
+
+    // Tasks that referenced the deleted project via alsoInProjectIds (not
+    // primary). We strip the dead reference and persist them.
+    const stripTaskIds = beforeTasks
+      .filter((t) => t.projectId !== id && t.alsoInProjectIds?.includes(id))
       .map((t) => t.id);
-    const sectionIds = get()
-      .sections.filter((s) => s.projectId === id)
+
+    // Cascade indexes for everything that points at the truly-deleted tasks.
+    const sectionIds = allSections.filter((s) => s.projectId === id).map((s) => s.id);
+    const formIds = get()
+      .forms.filter((f) => f.projectId === id)
+      .map((f) => f.id);
+    const commentIds = get()
+      .comments.filter((c) => tasksToDelete.includes(c.taskId))
+      .map((c) => c.id);
+    const subtaskIds = get()
+      .subtasks.filter((s) => tasksToDelete.includes(s.taskId))
       .map((s) => s.id);
+    const attachmentIds = get()
+      .attachments.filter((a) => tasksToDelete.includes(a.taskId))
+      .map((a) => a.id);
+    const dependencyIds = get()
+      .dependencies.filter((d) => tasksToDelete.includes(d.taskId) || tasksToDelete.includes(d.relatedTaskId))
+      .map((d) => d.id);
+    const activityIds = get()
+      .activity.filter((a) => (a.taskId && tasksToDelete.includes(a.taskId)) || a.projectId === id)
+      .map((a) => a.id);
+    const noteTaskIds = get()
+      .notes.filter((n) => tasksToDelete.includes(n.taskId))
+      .map((n) => n.taskId);
+
     set((s) => ({
       projects: s.projects.filter((p) => p.id !== id),
-      tasks: s.tasks.filter((t) => t.projectId !== id),
       sections: s.sections.filter((sec) => sec.projectId !== id),
-      // Also strip this project id from any folder that listed it.
+      forms: s.forms.filter((f) => f.projectId !== id),
+      comments: s.comments.filter((c) => !commentIds.includes(c.id)),
+      subtasks: s.subtasks.filter((sub) => !subtaskIds.includes(sub.id)),
+      attachments: s.attachments.filter((a) => !attachmentIds.includes(a.id)),
+      dependencies: s.dependencies.filter((d) => !dependencyIds.includes(d.id)),
+      activity: s.activity.filter((a) => !activityIds.includes(a.id)),
+      notes: s.notes.filter((n) => !noteTaskIds.includes(n.taskId)),
+      tasks: s.tasks
+        .filter((t) => !tasksToDelete.includes(t.id))
+        .map((t) => {
+          const promo = promotions.find((p) => p.taskId === t.id);
+          if (promo) {
+            const remaining = (t.alsoInProjectIds ?? []).filter(
+              (pid) => pid !== id && pid !== promo.toProjectId
+            );
+            return {
+              ...t,
+              projectId: promo.toProjectId,
+              sectionId: promo.toSectionId,
+              alsoInProjectIds: remaining.length ? remaining : undefined,
+            };
+          }
+          if (t.alsoInProjectIds?.includes(id)) {
+            const filtered = t.alsoInProjectIds.filter((pid) => pid !== id);
+            return { ...t, alsoInProjectIds: filtered.length ? filtered : undefined };
+          }
+          return t;
+        }),
       folders: s.folders.map((f) =>
         f.projectIds?.includes(id) ? { ...f, projectIds: f.projectIds.filter((pid) => pid !== id) } : f
       ),
     }));
+
+    // Persist: deletions are bulk; updated tasks (promotions + alsoIn strips)
+    // are persisted individually with their fresh state.
     dbPersist.delete('projects', id);
-    dbPersist.bulkDelete('tasks', taskIds);
+    dbPersist.bulkDelete('tasks', tasksToDelete);
     dbPersist.bulkDelete('sections', sectionIds);
-    // Persist folder updates that lost this project id.
+    dbPersist.bulkDelete('forms', formIds);
+    if (commentIds.length) dbPersist.bulkDelete('comments', commentIds);
+    if (subtaskIds.length) dbPersist.bulkDelete('subtasks', subtaskIds);
+    if (attachmentIds.length) dbPersist.bulkDelete('attachments', attachmentIds);
+    if (dependencyIds.length) dbPersist.bulkDelete('dependencies', dependencyIds);
+    if (activityIds.length) dbPersist.bulkDelete('activity', activityIds);
+    if (noteTaskIds.length) dbPersist.bulkDelete('notes', noteTaskIds);
+    const after = get().tasks;
+    const idsToRepersist = new Set<string>([...promotions.map((p) => p.taskId), ...stripTaskIds]);
+    for (const tid of idsToRepersist) {
+      const t = after.find((x) => x.id === tid);
+      if (t) dbPersist.put('tasks', t);
+    }
     for (const folder of get().folders) {
-      if (folder.projectIds && !folder.projectIds.includes(id)) {
-        // (already filtered out above — refresh DB row)
-        dbPersist.put('folders', folder);
-      }
+      if (folder.projectIds && !folder.projectIds.includes(id)) dbPersist.put('folders', folder);
     }
     get().pushToast({ kind: 'info', title: 'Projet supprimé' });
   },
@@ -2543,6 +2704,17 @@ Reste sous 400 mots, ton factuel et engagé.`,
 
   signOut: async () => {
     await supabase.auth.signOut();
+    // Notify other tabs so they reset their state too (BroadcastChannel
+    // listener installed in bootstrap mirrors the signOut locally).
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const ch = new BroadcastChannel('cj-auth');
+        ch.postMessage({ type: 'signout' });
+        ch.close();
+      }
+    } catch {
+      /* BroadcastChannel not supported — single-tab signOut is best-effort */
+    }
     // onAuthStateChange will reset the in-memory state
   },
 

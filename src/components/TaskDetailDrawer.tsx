@@ -494,7 +494,9 @@ function DetailsTab({ task }: { task: Task }) {
                 <button>
                   {task.assignees.length > 0 ? (
                     <AvatarGroup
-                      users={task.assignees.map((id) => users.find((u) => u.id === id) || users[0])}
+                      users={task.assignees
+                        .map((id) => users.find((u) => u.id === id))
+                        .filter((u): u is NonNullable<typeof u> => Boolean(u))}
                       max={3}
                     />
                   ) : (
@@ -528,7 +530,9 @@ function DetailsTab({ task }: { task: Task }) {
                 <button>
                   {(task.watchers || []).length > 0 ? (
                     <AvatarGroup
-                      users={(task.watchers || []).map((id) => users.find((u) => u.id === id) || users[0])}
+                      users={(task.watchers || [])
+                        .map((id) => users.find((u) => u.id === id))
+                        .filter((u): u is NonNullable<typeof u> => Boolean(u))}
                       max={3}
                     />
                   ) : (
