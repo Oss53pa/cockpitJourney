@@ -706,7 +706,9 @@ function PriorityRow({ task, onClick }: { task: Task; onClick: () => void }) {
   const users = useApp((s) => s.users);
   const toggleDone = useApp((s) => s.toggleTaskDone);
   const project = projects.find((p) => p.id === task.projectId);
-  const assignees = task.assignees.map((id) => users.find((u) => u.id === id) || users[0]);
+  const assignees = task.assignees
+    .map((id) => users.find((u) => u.id === id))
+    .filter((u): u is NonNullable<typeof u> => Boolean(u));
   const SourceIcon = task.source ? sourceIcons[task.source] : null;
   return (
     <div className="group flex items-start gap-3 px-3 py-2.5 rounded-xl bg-white border border-atlas-line hover:border-atlas-amber/40 transition-colors">

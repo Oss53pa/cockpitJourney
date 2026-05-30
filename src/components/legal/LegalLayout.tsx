@@ -113,8 +113,10 @@ export function LegalUL({ children }: { children: ReactNode }) {
   );
 }
 
-/** Placeholder yellow box — wraps a "TODO: à remplir par Pamela" zone. */
+/** Placeholder yellow box — wraps a "TODO: à remplir par Pamela" zone.
+ *  Hidden in production so visitors never see "À COMPLÉTER" stubs. */
 export function LegalTODO({ children }: { children: ReactNode }) {
+  if (import.meta.env.PROD) return null;
   return (
     <div className="my-4 px-4 py-3 rounded-lg bg-signal-yellow/10 border border-signal-yellow/30 text-xs font-light text-atlas-fg-2">
       <strong className="text-signal-yellow">À COMPLÉTER : </strong>

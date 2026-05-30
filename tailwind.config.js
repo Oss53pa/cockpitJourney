@@ -1,6 +1,19 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  // Classes built dynamically as template literals (e.g. `text-${color}` in
+  // the Glance KPI cards) aren't seen by the Tailwind JIT scanner — they
+  // would be purged in production and the chiffres KPI s'afficheraient en
+  // gris. Lock them down explicitly.
+  safelist: [
+    'text-signal-green',
+    'text-signal-yellow',
+    'text-signal-red',
+    'text-signal-blue',
+    'text-signal-violet',
+    'text-atlas-amber',
+    'text-atlas-amber-deep',
+  ],
   darkMode: 'class',
   theme: {
     extend: {

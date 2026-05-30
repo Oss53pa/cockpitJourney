@@ -69,15 +69,21 @@ export function Switch({
   checked,
   onChange,
   label,
+  ariaLabel,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label?: string;
+  /** Override for the accessible name when there's no visible label. */
+  ariaLabel?: string;
 }) {
   return (
     <label className="inline-flex items-center gap-2.5 cursor-pointer select-none">
       <button
         type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={ariaLabel ?? label}
         onClick={() => onChange(!checked)}
         className={cn(
           'relative inline-flex w-9 h-5 rounded-full border transition-colors',

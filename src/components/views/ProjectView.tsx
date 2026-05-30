@@ -718,7 +718,9 @@ function KanbanCard({
   const toggleDone = useApp((s) => s.toggleTaskDone);
   const openModal = useApp((s) => s.openModal);
   const deleteTask = useApp((s) => s.deleteTask);
-  const assignees = task.assignees.map((id) => users.find((u) => u.id === id) || users[0]);
+  const assignees = task.assignees
+    .map((id) => users.find((u) => u.id === id))
+    .filter((u): u is NonNullable<typeof u> => Boolean(u));
   const subtasksDone = subtasks.filter((s) => s.done).length;
   const subtaskPct = subtasks.length ? (subtasksDone / subtasks.length) * 100 : 0;
 
@@ -1003,7 +1005,9 @@ function ListRow({
       <StatusBadge status={t.status} size="xs" />
       <ProgressBar value={subPct} showLabel />
       <AvatarGroup
-        users={t.assignees.map((id) => users.find((u) => u.id === id) || users[0])}
+        users={t.assignees
+          .map((id) => users.find((u) => u.id === id))
+          .filter((u): u is NonNullable<typeof u> => Boolean(u))}
         size="xs"
         max={3}
       />
@@ -1276,7 +1280,9 @@ function TableBoard({ tasks, onOpenTask }: { tasks: Task[]; onOpenTask: (t: Task
             </span>
             <PriorityBadge priority={t.priority} />
             <AvatarGroup
-              users={t.assignees.map((id) => users.find((u) => u.id === id) || users[0])}
+              users={t.assignees
+                .map((id) => users.find((u) => u.id === id))
+                .filter((u): u is NonNullable<typeof u> => Boolean(u))}
               size="xs"
               max={3}
             />
