@@ -1163,6 +1163,22 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     if (updated) dbPersist.put('goals', updated);
   },
   deleteGoal: (id) => {
+    // Null out the link on any task that contributed to this goal — otherwise
+    // those tasks would carry a dangling goalId that the drawer "Contribue à"
+    // panel would try to look up.
+    const affectedTaskIds = get()
+      .tasks.filter((t) => t.goalId === id)
+      .map((t) => t.id);
+    if (affectedTaskIds.length) {
+      set((s) => ({
+        tasks: s.tasks.map((t) => (t.goalId === id ? { ...t, goalId: undefined } : t)),
+      }));
+      const after = get().tasks;
+      for (const tid of affectedTaskIds) {
+        const t = after.find((x) => x.id === tid);
+        if (t) dbPersist.put('tasks', t);
+      }
+    }
     set((s) => ({ goals: s.goals.filter((g) => g.id !== id) }));
     dbPersist.delete('goals', id);
     get().pushToast({ kind: 'info', title: 'Goal supprimé' });
@@ -1277,30 +1293,118 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     }
   },
   deleteProject: (id) => {
-    const taskIds = get()
-      .tasks.filter((t) => t.projectId === id)
+    const beforeTasks = get().tasks;
+    const allSections = get().sections;
+
+    // Pass 1: primary-project tasks. If a task is also shared into another
+    // project (alsoInProjectIds), promote it there instead of deleting it
+    // outright — otherwise the user would see it silently vanish from the
+    // secondary project where it was visible.
+    const tasksOfPrimary = beforeTasks.filter((t) => t.projectId === id);
+    const promotions: { taskId: string; toProjectId: string; toSectionId: string }[] = [];
+    const tasksToDelete: string[] = [];
+    for (const t of tasksOfPrimary) {
+      const candidates = (t.alsoInProjectIds ?? []).filter((pid) => pid !== id);
+      let promoted = false;
+      for (const target of candidates) {
+        const sec = allSections
+          .filter((s) => s.projectId === target)
+          .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0];
+        if (sec) {
+          promotions.push({ taskId: t.id, toProjectId: target, toSectionId: sec.id });
+          promoted = true;
+          break;
+        }
+      }
+      if (!promoted) tasksToDelete.push(t.id);
+    }
+
+    // Tasks that referenced the deleted project via alsoInProjectIds (not
+    // primary). We strip the dead reference and persist them.
+    const stripTaskIds = beforeTasks
+      .filter((t) => t.projectId !== id && t.alsoInProjectIds?.includes(id))
       .map((t) => t.id);
-    const sectionIds = get()
-      .sections.filter((s) => s.projectId === id)
+
+    // Cascade indexes for everything that points at the truly-deleted tasks.
+    const sectionIds = allSections.filter((s) => s.projectId === id).map((s) => s.id);
+    const formIds = get()
+      .forms.filter((f) => f.projectId === id)
+      .map((f) => f.id);
+    const commentIds = get()
+      .comments.filter((c) => tasksToDelete.includes(c.taskId))
+      .map((c) => c.id);
+    const subtaskIds = get()
+      .subtasks.filter((s) => tasksToDelete.includes(s.taskId))
       .map((s) => s.id);
+    const attachmentIds = get()
+      .attachments.filter((a) => tasksToDelete.includes(a.taskId))
+      .map((a) => a.id);
+    const dependencyIds = get()
+      .dependencies.filter((d) => tasksToDelete.includes(d.taskId) || tasksToDelete.includes(d.relatedTaskId))
+      .map((d) => d.id);
+    const activityIds = get()
+      .activity.filter((a) => (a.taskId && tasksToDelete.includes(a.taskId)) || a.projectId === id)
+      .map((a) => a.id);
+    const noteTaskIds = get()
+      .notes.filter((n) => tasksToDelete.includes(n.taskId))
+      .map((n) => n.taskId);
+
     set((s) => ({
       projects: s.projects.filter((p) => p.id !== id),
-      tasks: s.tasks.filter((t) => t.projectId !== id),
       sections: s.sections.filter((sec) => sec.projectId !== id),
-      // Also strip this project id from any folder that listed it.
+      forms: s.forms.filter((f) => f.projectId !== id),
+      comments: s.comments.filter((c) => !commentIds.includes(c.id)),
+      subtasks: s.subtasks.filter((sub) => !subtaskIds.includes(sub.id)),
+      attachments: s.attachments.filter((a) => !attachmentIds.includes(a.id)),
+      dependencies: s.dependencies.filter((d) => !dependencyIds.includes(d.id)),
+      activity: s.activity.filter((a) => !activityIds.includes(a.id)),
+      notes: s.notes.filter((n) => !noteTaskIds.includes(n.taskId)),
+      tasks: s.tasks
+        .filter((t) => !tasksToDelete.includes(t.id))
+        .map((t) => {
+          const promo = promotions.find((p) => p.taskId === t.id);
+          if (promo) {
+            const remaining = (t.alsoInProjectIds ?? []).filter(
+              (pid) => pid !== id && pid !== promo.toProjectId
+            );
+            return {
+              ...t,
+              projectId: promo.toProjectId,
+              sectionId: promo.toSectionId,
+              alsoInProjectIds: remaining.length ? remaining : undefined,
+            };
+          }
+          if (t.alsoInProjectIds?.includes(id)) {
+            const filtered = t.alsoInProjectIds.filter((pid) => pid !== id);
+            return { ...t, alsoInProjectIds: filtered.length ? filtered : undefined };
+          }
+          return t;
+        }),
       folders: s.folders.map((f) =>
         f.projectIds?.includes(id) ? { ...f, projectIds: f.projectIds.filter((pid) => pid !== id) } : f
       ),
     }));
+
+    // Persist: deletions are bulk; updated tasks (promotions + alsoIn strips)
+    // are persisted individually with their fresh state.
     dbPersist.delete('projects', id);
-    dbPersist.bulkDelete('tasks', taskIds);
+    dbPersist.bulkDelete('tasks', tasksToDelete);
     dbPersist.bulkDelete('sections', sectionIds);
-    // Persist folder updates that lost this project id.
+    dbPersist.bulkDelete('forms', formIds);
+    if (commentIds.length) dbPersist.bulkDelete('comments', commentIds);
+    if (subtaskIds.length) dbPersist.bulkDelete('subtasks', subtaskIds);
+    if (attachmentIds.length) dbPersist.bulkDelete('attachments', attachmentIds);
+    if (dependencyIds.length) dbPersist.bulkDelete('dependencies', dependencyIds);
+    if (activityIds.length) dbPersist.bulkDelete('activity', activityIds);
+    if (noteTaskIds.length) dbPersist.bulkDelete('notes', noteTaskIds);
+    const after = get().tasks;
+    const idsToRepersist = new Set<string>([...promotions.map((p) => p.taskId), ...stripTaskIds]);
+    for (const tid of idsToRepersist) {
+      const t = after.find((x) => x.id === tid);
+      if (t) dbPersist.put('tasks', t);
+    }
     for (const folder of get().folders) {
-      if (folder.projectIds && !folder.projectIds.includes(id)) {
-        // (already filtered out above — refresh DB row)
-        dbPersist.put('folders', folder);
-      }
+      if (folder.projectIds && !folder.projectIds.includes(id)) dbPersist.put('folders', folder);
     }
     get().pushToast({ kind: 'info', title: 'Projet supprimé' });
   },
