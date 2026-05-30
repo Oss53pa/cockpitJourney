@@ -1,14 +1,54 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { FieldLabel, NativeSelect, TextInput } from '../ui/Field';
 import { useApp } from '../../stores/appStore';
 import { supabase } from '../../lib/supabase';
+
+// Roles allowed to invite others — kept aligned with the server-side
+// `invite-user` edge function. Defense in depth: the edge re-validates,
+// but hiding the action client-side prevents pointless API calls and a
+// confusing error toast for reader/commenter accounts.
+const CAN_INVITE = new Set(['owner', 'admin', 'app_super_admin', 'app_admin']);
 
 export function InviteTeamModal({ onClose }: { onClose: () => void }) {
   const pushToast = useApp((s) => s.pushToast);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('editor');
   const [sending, setSending] = useState(false);
+  const [seatRole, setSeatRole] = useState<string | null>(null);
+  const [checkingRole, setCheckingRole] = useState(true);
+  const canInvite = seatRole !== null && CAN_INVITE.has(seatRole);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) {
+          if (!cancelled) setSeatRole('');
+          return;
+        }
+        const { data: seat } = await supabase
+          .from('licence_seats')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!cancelled) setSeatRole((seat?.role as string) ?? '');
+      } catch {
+        if (!cancelled) setSeatRole('');
+      } finally {
+        if (!cancelled) setCheckingRole(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const submit = async () => {
     if (!email.trim() || sending) return;
@@ -76,7 +116,7 @@ export function InviteTeamModal({ onClose }: { onClose: () => void }) {
             Fermer
           </button>
           <button
-            disabled={!email.trim() || sending}
+            disabled={!email.trim() || sending || !canInvite}
             onClick={submit}
             className="btn-primary text-sm px-3.5 py-1.5"
           >
@@ -85,27 +125,40 @@ export function InviteTeamModal({ onClose }: { onClose: () => void }) {
         </>
       }
     >
-      <div className="space-y-3">
-        <div>
-          <FieldLabel>Email</FieldLabel>
-          <TextInput
-            autoFocus
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="prenom@entreprise.com"
-          />
+      {checkingRole ? (
+        <div className="text-sm text-atlas-fg-3 py-6 text-center">Vérification des droits…</div>
+      ) : !canInvite ? (
+        <div className="text-sm text-atlas-fg-2 py-4">
+          Seuls les propriétaires et administrateurs peuvent inviter de nouveaux membres.
+          {seatRole && (
+            <span className="block text-2xs text-atlas-fg-3 mt-1">
+              Votre rôle actuel : <strong>{seatRole}</strong>
+            </span>
+          )}
         </div>
-        <div>
-          <FieldLabel>Rôle</FieldLabel>
-          <NativeSelect value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="owner">Propriétaire</option>
-            <option value="editor">Éditeur</option>
-            <option value="commenter">Commentateur</option>
-            <option value="reader">Lecteur</option>
-          </NativeSelect>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <FieldLabel>Email</FieldLabel>
+            <TextInput
+              autoFocus
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="prenom@entreprise.com"
+            />
+          </div>
+          <div>
+            <FieldLabel>Rôle</FieldLabel>
+            <NativeSelect value={role} onChange={(e) => setRole(e.target.value)}>
+              <option value="owner">Propriétaire</option>
+              <option value="editor">Éditeur</option>
+              <option value="commenter">Commentateur</option>
+              <option value="reader">Lecteur</option>
+            </NativeSelect>
+          </div>
         </div>
-      </div>
+      )}
     </Modal>
   );
 }

@@ -922,8 +922,8 @@ function ListBoard({
                 <Plus className="w-3 h-3" /> Ajouter
               </button>
             </div>
-            <div className="rounded-xl overflow-hidden border border-atlas-line">
-              <div className="grid grid-cols-[24px_1fr_110px_140px_180px_110px_120px_140px] px-3 py-2 text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium bg-black/[0.02]">
+            <div className="rounded-xl overflow-x-auto border border-atlas-line">
+              <div className="grid grid-cols-[24px_1fr_110px_140px_180px_110px_120px_140px] min-w-[960px] px-3 py-2 text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium bg-black/[0.02]">
                 <span></span>
                 <span>Titre</span>
                 <span>Statut</span>
@@ -974,7 +974,7 @@ function ListRow({
   const checked = t.status === 'done';
   return (
     <div
-      className="group grid grid-cols-[24px_1fr_110px_140px_180px_110px_120px_140px] items-center gap-3 px-3 py-2.5 hover:bg-black/[0.02] cursor-pointer"
+      className="group grid grid-cols-[24px_1fr_110px_140px_180px_110px_120px_140px] min-w-[960px] items-center gap-3 px-3 py-2.5 hover:bg-black/[0.02] cursor-pointer"
       onClick={() => onOpenTask(t)}
     >
       <button
@@ -1237,8 +1237,8 @@ function GanttBoard({ sections, tasks }: { sections: Section[]; tasks: Task[] })
 function TableBoard({ tasks, onOpenTask }: { tasks: Task[]; onOpenTask: (t: Task) => void }) {
   const users = useApp((s) => s.users);
   return (
-    <div className="panel overflow-hidden">
-      <div className="grid grid-cols-[28px_2fr_120px_120px_140px_140px_120px_100px_100px] px-4 py-2.5 text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium bg-black/[0.02] border-b border-black/[0.04]">
+    <div className="panel overflow-x-auto">
+      <div className="grid grid-cols-[28px_2fr_120px_120px_140px_140px_120px_100px_100px] min-w-[1100px] px-4 py-2.5 text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium bg-black/[0.02] border-b border-black/[0.04]">
         <span></span>
         <span>Tâche</span>
         <span>Statut</span>
@@ -1254,7 +1254,7 @@ function TableBoard({ tasks, onOpenTask }: { tasks: Task[]; onOpenTask: (t: Task
           <button
             key={t.id}
             onClick={() => onOpenTask(t)}
-            className="group w-full grid grid-cols-[28px_2fr_120px_120px_140px_140px_120px_100px_100px] items-center px-4 py-2.5 text-left hover:bg-black/[0.02]"
+            className="group w-full grid grid-cols-[28px_2fr_120px_120px_140px_140px_120px_100px_100px] min-w-[1100px] items-center px-4 py-2.5 text-left hover:bg-black/[0.02]"
           >
             <span
               className={cn(
