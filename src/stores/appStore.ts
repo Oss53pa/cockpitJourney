@@ -1029,6 +1029,17 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     const t = get().tasks.find((x) => x.id === id);
     if (!t) return;
     const isDone = t.status === 'done';
+    // Approval gate: a task flagged as needing approval can only be moved
+    // to "done" once it has been explicitly approved. Reopening (done→todo)
+    // is always allowed.
+    if (!isDone && t.requiresApproval && t.approvalStatus !== 'approved') {
+      get().pushToast({
+        kind: 'warning',
+        title: 'Approbation requise',
+        body: 'Cette tâche doit être approuvée avant clôture (onglet Détails).',
+      });
+      return;
+    }
     get().updateTask(id, {
       status: isDone ? 'todo' : 'done',
       completionDate: isDone ? undefined : new Date().toISOString(),
@@ -1080,6 +1091,19 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       else status = 'todo';
     }
     const t = get().tasks.find((x) => x.id === id);
+    // Approval gate: dropping a non-approved task into a "Terminé"-ish
+    // column would silently bypass the approval flow. Move the card but
+    // do NOT flip the status to 'done' — surface a clear toast so the
+    // user knows to approve it first.
+    if (status === 'done' && t?.requiresApproval && t.approvalStatus !== 'approved' && t.status !== 'done') {
+      get().updateTask(id, { sectionId });
+      get().pushToast({
+        kind: 'warning',
+        title: 'Approbation requise',
+        body: 'La tâche a été déplacée mais reste à approuver avant clôture.',
+      });
+      return;
+    }
     get().updateTask(id, { sectionId, ...(status ? { status } : {}) });
     if (t && sec)
       get().logActivity({
