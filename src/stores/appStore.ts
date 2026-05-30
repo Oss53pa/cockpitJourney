@@ -44,6 +44,13 @@ import type {
 // second invocation literally cannot start.
 let bootstrapStarted = false;
 
+// Module-level set of goalIds currently scheduled for a microtask-deferred
+// recompute. Used by `recomputeGoalFromTasks` to coalesce bursts of updates
+// on the same goal (e.g. toggling multiple subtasks at once) into a single
+// `updateGoal` write — otherwise concurrent upserts on the same row would
+// race and the goal value persisted to Supabase could lag behind memory.
+const _pendingGoalRecomputes = new Set<string>();
+
 // Reset the guard on Vite HMR so a hot-reloaded store module re-subscribes
 // to auth changes — otherwise dev iteration freezes on the splash forever.
 // `import.meta.hot` is undefined in prod, so this branch tree-shakes away.
@@ -845,6 +852,22 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     }, 6000);
 
     // Subscribe to auth state changes (single subscription per app lifecycle).
+    // Cross-tab signOut propagation: a sibling tab signing out posts on
+    // this channel; we mirror the signOut locally so the user isn't left
+    // with a stale "signed in" UI that keeps writing under a dead token.
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const ch = new BroadcastChannel('cj-auth');
+        ch.addEventListener('message', (e) => {
+          if (e.data?.type === 'signout' && get().authStatus !== 'signed_out') {
+            supabase.auth.signOut().catch(() => {});
+          }
+        });
+      }
+    } catch {
+      /* BroadcastChannel not supported — fall back to per-tab signOut only */
+    }
+
     // INITIAL_SESSION fires once on subscribe with the cached session (if any),
     // SIGNED_IN / SIGNED_OUT / TOKEN_REFRESHED fire on subsequent changes.
     supabase.auth.onAuthStateChange(async (event, session) => {
@@ -1214,27 +1237,37 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     get().updateGoal(id, { currentValue: next });
   },
   recomputeGoalFromTasks: (goalId) => {
-    const goal = get().goals.find((g) => g.id === goalId);
-    if (!goal) return;
-    // Currency / number goals stay manual — the execution ratio is shown
-    // alongside the metric in the UI rather than overwriting it.
-    if (goal.metricType !== 'percentage' && goal.metricType !== 'boolean') return;
-    const contributing = get().tasks.filter((t) => t.goalId === goalId);
-    const total = contributing.length;
-    const done = contributing.filter((t) => t.status === 'done').length;
-    const currentValue =
-      goal.metricType === 'percentage'
-        ? total
-          ? Math.round((done / total) * 100)
-          : 0
-        : total > 0 && done === total
-          ? goal.targetValue
-          : 0;
-    const pct = (currentValue / Math.max(1, goal.targetValue)) * 100;
-    get().updateGoal(goalId, {
-      currentValue,
-      health: pct >= 60 ? 'green' : pct >= 35 ? 'yellow' : 'red',
-      status: pct >= 100 ? 'achieved' : pct >= 60 ? 'on_track' : pct >= 35 ? 'at_risk' : 'off_track',
+    // Coalesce bursts of recomputes on the same goal (e.g. cocher 5
+    // sous-tâches d'affilée) into a single microtask-deferred run. Without
+    // this, each toggle fires its own updateGoal → 5 concurrent upserts
+    // on the same row, and the last one to land on the server wins —
+    // which may not be the latest in-memory value.
+    if (_pendingGoalRecomputes.has(goalId)) return;
+    _pendingGoalRecomputes.add(goalId);
+    queueMicrotask(() => {
+      _pendingGoalRecomputes.delete(goalId);
+      const goal = get().goals.find((g) => g.id === goalId);
+      if (!goal) return;
+      // Currency / number goals stay manual — the execution ratio is shown
+      // alongside the metric in the UI rather than overwriting it.
+      if (goal.metricType !== 'percentage' && goal.metricType !== 'boolean') return;
+      const contributing = get().tasks.filter((t) => t.goalId === goalId);
+      const total = contributing.length;
+      const done = contributing.filter((t) => t.status === 'done').length;
+      const currentValue =
+        goal.metricType === 'percentage'
+          ? total
+            ? Math.round((done / total) * 100)
+            : 0
+          : total > 0 && done === total
+            ? goal.targetValue
+            : 0;
+      const pct = (currentValue / Math.max(1, goal.targetValue)) * 100;
+      get().updateGoal(goalId, {
+        currentValue,
+        health: pct >= 60 ? 'green' : pct >= 35 ? 'yellow' : 'red',
+        status: pct >= 100 ? 'achieved' : pct >= 60 ? 'on_track' : pct >= 35 ? 'at_risk' : 'off_track',
+      });
     });
   },
 
@@ -2671,6 +2704,17 @@ Reste sous 400 mots, ton factuel et engagé.`,
 
   signOut: async () => {
     await supabase.auth.signOut();
+    // Notify other tabs so they reset their state too (BroadcastChannel
+    // listener installed in bootstrap mirrors the signOut locally).
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const ch = new BroadcastChannel('cj-auth');
+        ch.postMessage({ type: 'signout' });
+        ch.close();
+      }
+    } catch {
+      /* BroadcastChannel not supported — single-tab signOut is best-effort */
+    }
     // onAuthStateChange will reset the in-memory state
   },
 
