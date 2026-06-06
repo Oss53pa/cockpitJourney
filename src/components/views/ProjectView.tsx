@@ -7,6 +7,8 @@ import {
   Table2,
   Activity,
   Users,
+  Share2,
+  Upload,
   MoreHorizontal,
   Plus,
   Filter,
@@ -240,6 +242,30 @@ export function ProjectView({ project, onOpenTask }: Props) {
             </button>
             <button onClick={() => openModal('invite-team')} className="btn-secondary text-sm px-3 py-1.5">
               <Users className="w-3.5 h-3.5" /> Inviter
+            </button>
+            <button
+              onClick={() =>
+                openModal('share', {
+                  resourceType: 'project',
+                  resourceId: project.id,
+                  resourceName: project.name,
+                })
+              }
+              className="btn-secondary text-sm px-3 py-1.5"
+            >
+              <Share2 className="w-3.5 h-3.5" /> Partager
+            </button>
+            <button
+              onClick={() => openModal('retroplan', { projectId: project.id })}
+              className="btn-secondary text-sm px-3 py-1.5"
+            >
+              <GanttChartSquare className="w-3.5 h-3.5" /> Rétroplanning
+            </button>
+            <button
+              onClick={() => openModal('import-tasks', { projectId: project.id })}
+              className="btn-secondary text-sm px-3 py-1.5"
+            >
+              <Upload className="w-3.5 h-3.5" /> Importer
             </button>
             <button
               onClick={() => openModal('task-create', { projectId: project.id, sectionId: sections[0]?.id })}
