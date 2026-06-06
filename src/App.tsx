@@ -29,6 +29,7 @@ const MentionsPage = lazyWithReload(() =>
 );
 const AcceptInvite = lazyWithReload(() => import('./pages/auth/AcceptInvite'));
 const PublicFormPage = lazyWithReload(() => import('./pages/public/PublicFormPage'));
+const ParticipantView = lazyWithReload(() => import('./pages/participant/ParticipantView'));
 import { ModalRoot } from './components/modals/ModalRoot';
 import { OnboardingModal } from './components/modals/OnboardingModal';
 import { InstallPromptBanner } from './components/pwa/InstallPromptBanner';
@@ -519,6 +520,16 @@ function App() {
           element={
             <Suspense fallback={<div />}>
               <PublicFormPage />
+            </Suspense>
+          }
+        />
+
+        {/* Participant share link — no auth required (scoped via cj-share token) */}
+        <Route
+          path="/p/:token"
+          element={
+            <Suspense fallback={<div />}>
+              <ParticipantView />
             </Suspense>
           }
         />

@@ -9,6 +9,9 @@ import { AutomationFormModal } from './AutomationFormModal';
 import { BriefModal } from './BriefModal';
 import { ShortcutsModal } from './ShortcutsModal';
 import { InviteTeamModal } from './InviteTeamModal';
+import { ShareModal } from '../share/ShareModal';
+import { RetroPlanModal } from '../retro/RetroPlanModal';
+import { ImportTasksModal } from './ImportTasksModal';
 import { FormCreateModal } from './FormCreateModal';
 
 export function ModalRoot() {
@@ -63,6 +66,12 @@ export function ModalRoot() {
       return <SettingsModal onClose={close} />;
     case 'invite-team':
       return <InviteTeamModal onClose={close} />;
+    case 'share':
+      return <ShareModal payload={modal.payload} onClose={close} />;
+    case 'retroplan':
+      return <RetroPlanModal payload={modal.payload} onClose={close} />;
+    case 'import-tasks':
+      return <ImportTasksModal payload={modal.payload} onClose={close} />;
     case 'proph3t-brief':
       return <BriefModal onClose={close} />;
     case 'shortcuts':

@@ -52,6 +52,8 @@ export interface Project {
   progress: number;
   taskCount: number;
   membersIds: string[];
+  /** Rétroplanning (jalons planifiés à rebours) embarqué dans le projet. */
+  retroplan?: RetroPlan;
 }
 
 export interface Section {
@@ -66,7 +68,12 @@ export interface Section {
 export interface Comment {
   id: string;
   taskId: string;
-  authorId: string;
+  authorId: string | null;
+  /**
+   * Display name when the author isn't a workspace profile — e.g. a comment
+   * posted by an external participant via a share link (`authorId` is null).
+   */
+  authorName?: string;
   body: string;
   createdAt: string;
   reactions?: { emoji: string; count: number }[];
@@ -105,6 +112,34 @@ export interface Task {
   alsoInProjectIds?: string[];
   /** ISO timestamp — set at creation; used by the activity trajectory charts. */
   createdAt?: string;
+  /** Rétroplanning (jalons planifiés à rebours) embarqué dans la tâche. */
+  retroplan?: RetroPlan;
+  /** Règle de récurrence simple (régénère la tâche à l'échéance). */
+  recurrence?: 'daily' | 'weekly' | 'monthly';
+}
+
+/* ─────────── Rétroplanning (jalons / planning à rebours) ─────────── */
+
+/** Un jalon du rétroplanning — une étape datée, à cocher une fois faite. */
+export interface RetroStep {
+  id: string;
+  title: string;
+  /** Date cible du jalon (ISO, ou YYYY-MM-DD). Optionnelle tant que non placée. */
+  date?: string;
+  done: boolean;
+  sortOrder: number;
+  note?: string;
+}
+
+/**
+ * Rétroplanning attaché à une tâche OU un projet. Stocké dans le `data` jsonb
+ * de l'entité (round-trip automatique via updateTask / updateProject) — pas de
+ * table dédiée : les jalons sont peu nombreux et appartiennent à leur entité.
+ */
+export interface RetroPlan {
+  /** Échéance depuis laquelle on planifie à rebours. */
+  targetDate?: string;
+  steps: RetroStep[];
 }
 
 /** Reusable task template (personal library, stored in settings). */

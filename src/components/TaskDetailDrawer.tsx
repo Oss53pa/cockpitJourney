@@ -36,7 +36,10 @@ import {
   Maximize2,
   Target,
   Loader2,
+  Share2,
+  CalendarClock,
 } from 'lucide-react';
+import { RetroPlanPanel } from './retro/RetroPlanPanel';
 import type { Task, Priority } from '../types';
 import { useApp, useCurrentUser, type Attachment } from '../stores/appStore';
 import { Avatar, AvatarGroup } from './ui/Avatar';
@@ -51,7 +54,7 @@ interface Props {
   onClose: () => void;
 }
 
-type TabKey = 'details' | 'notes' | 'subtasks' | 'files' | 'discussion' | 'activity' | 'links';
+type TabKey = 'details' | 'notes' | 'subtasks' | 'retroplan' | 'files' | 'discussion' | 'activity' | 'links';
 
 export function TaskDetailDrawer({ task: liveTaskRef, onClose }: Props) {
   // ALL hooks at the top — no early return before hooks (rules of hooks)
@@ -114,6 +117,12 @@ export function TaskDetailDrawer({ task: liveTaskRef, onClose }: Props) {
     { key: 'details', label: 'Détails', icon: ListChecks },
     { key: 'notes', label: 'Notes', icon: FileText },
     { key: 'subtasks', label: 'Sous-tâches', icon: CheckCircle2 },
+    {
+      key: 'retroplan',
+      label: 'Rétroplanning',
+      icon: CalendarClock,
+      count: task.retroplan?.steps?.length,
+    },
     { key: 'files', label: 'Pièces jointes', icon: Paperclip, count: attachments.length },
     { key: 'discussion', label: 'Discussion', icon: MessageSquare, count: taskComments.length },
     { key: 'activity', label: 'Activité', icon: Activity, count: activity.length },
@@ -163,6 +172,15 @@ export function TaskDetailDrawer({ task: liveTaskRef, onClose }: Props) {
             <button onClick={copyLink} className="btn-ghost !p-2" title="Copier le lien">
               <LinkIcon className="w-4 h-4" />
             </button>
+            <button
+              onClick={() =>
+                openModal('share', { resourceType: 'task', resourceId: task.id, resourceName: task.title })
+              }
+              className="btn-ghost !p-2"
+              title="Partager / inviter un participant"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
             <button onClick={() => openModal('task-edit', task)} className="btn-ghost !p-2" title="Modifier">
               <Edit3 className="w-4 h-4" />
             </button>
@@ -209,8 +227,14 @@ export function TaskDetailDrawer({ task: liveTaskRef, onClose }: Props) {
                     icon={Sparkles}
                     onClick={() => {
                       close();
-                      pushToast({ kind: 'info', title: 'Auto-priorisation Eisenhower' });
-                      setTimeout(() => updateTask(task.id, { priority: 4 }), 600);
+                      const next = eisenhowerPriority(task);
+                      updateTask(task.id, { priority: next });
+                      const labels = ['Faible', 'Normale', 'Haute', 'Critique'];
+                      pushToast({
+                        kind: 'success',
+                        title: 'Priorité recalculée (Eisenhower)',
+                        body: `${labels[next - 1]} — ${eisenhowerRationale(task)}`,
+                      });
                     }}
                   >
                     Recalculer la priorité
@@ -219,11 +243,21 @@ export function TaskDetailDrawer({ task: liveTaskRef, onClose }: Props) {
                     icon={Sparkles}
                     onClick={() => {
                       close();
-                      pushToast({
-                        kind: 'info',
-                        title: 'Recherche sémantique',
-                        body: 'Recherche dans le store local',
-                      });
+                      const all = useApp.getState().tasks;
+                      const similar = findSimilarTasks(task, all);
+                      pushToast(
+                        similar.length
+                          ? {
+                              kind: 'info',
+                              title: `${similar.length} tâche${similar.length > 1 ? 's' : ''} similaire${similar.length > 1 ? 's' : ''}`,
+                              body: similar
+                                .slice(0, 3)
+                                .map((t) => `• ${t.title}`)
+                                .join('\n'),
+                              duration: 6000,
+                            }
+                          : { kind: 'info', title: 'Aucune tâche similaire trouvée' }
+                      );
                     }}
                   >
                     Trouver des tâches similaires
@@ -326,6 +360,13 @@ export function TaskDetailDrawer({ task: liveTaskRef, onClose }: Props) {
           {tab === 'details' && <DetailsTab task={task} />}
           {tab === 'notes' && <NotesTab task={task} />}
           {tab === 'subtasks' && <SubtasksTab task={task} />}
+          {tab === 'retroplan' && (
+            <RetroPlanPanel
+              plan={task.retroplan}
+              defaultTarget={task.dueDate}
+              onChange={(plan) => updateTask(task.id, { retroplan: plan })}
+            />
+          )}
           {tab === 'files' && <FilesTab task={task} attachments={attachments} />}
           {tab === 'discussion' && <DiscussionTab task={task} />}
           {tab === 'activity' && <ActivityTab activity={activity} />}
@@ -609,40 +650,42 @@ function DetailsTab({ task }: { task: Task }) {
             <Menu
               trigger={
                 <button className="text-2xs text-atlas-fg-3 hover:text-atlas-fg-1">
-                  {(task as any).recurrence_rule ? 'Configurée' : '+ Configurer'}
+                  {RECURRENCE_LABELS[task.recurrence ?? 'none']}
                 </button>
               }
               width={180}
             >
-              {(close) => (
-                <>
-                  <MenuItem
-                    onClick={() => {
-                      close();
-                      updateTask(task.id, {} as any);
-                      useApp.getState().pushToast({ kind: 'success', title: 'Récurrence : tous les jours' });
-                    }}
-                  >
-                    Tous les jours
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      close();
-                      useApp.getState().pushToast({ kind: 'success', title: 'Récurrence : chaque semaine' });
-                    }}
-                  >
-                    Chaque semaine
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      close();
-                      useApp.getState().pushToast({ kind: 'success', title: 'Récurrence : chaque mois' });
-                    }}
-                  >
-                    Chaque mois
-                  </MenuItem>
-                </>
-              )}
+              {(close) => {
+                const set = (recurrence: Task['recurrence']) => {
+                  close();
+                  updateTask(task.id, { recurrence });
+                  useApp.getState().pushToast({
+                    kind: 'success',
+                    title: `Récurrence : ${RECURRENCE_LABELS[recurrence ?? 'none'].toLowerCase()}`,
+                  });
+                };
+                return (
+                  <>
+                    <MenuItem onClick={() => set('daily')}>
+                      Tous les jours
+                      {task.recurrence === 'daily' && <span className="text-atlas-amber ml-2">✓</span>}
+                    </MenuItem>
+                    <MenuItem onClick={() => set('weekly')}>
+                      Chaque semaine
+                      {task.recurrence === 'weekly' && <span className="text-atlas-amber ml-2">✓</span>}
+                    </MenuItem>
+                    <MenuItem onClick={() => set('monthly')}>
+                      Chaque mois
+                      {task.recurrence === 'monthly' && <span className="text-atlas-amber ml-2">✓</span>}
+                    </MenuItem>
+                    {task.recurrence && (
+                      <MenuItem onClick={() => set(undefined)}>
+                        <span className="text-atlas-fg-3">Désactiver</span>
+                      </MenuItem>
+                    )}
+                  </>
+                );
+              }}
             </Menu>
           </Field>
         </div>
@@ -1222,7 +1265,14 @@ function DiscussionTab({ task }: { task: Task }) {
     <div className="px-6 py-5 flex flex-col h-full">
       <div className="flex-1 space-y-4">
         {taskComments.map((c) => {
-          const author = users.find((u) => u.id === c.authorId) || users[0];
+          // Comments from external participants (share links) have no profile
+          // (authorId null) — fall back to the name the edge function stored.
+          const knownAuthor = c.authorId ? users.find((u) => u.id === c.authorId) : undefined;
+          const author = knownAuthor || {
+            ...users[0],
+            name: c.authorName || 'Participant',
+            initials: (c.authorName || 'P').slice(0, 2).toUpperCase(),
+          };
           return (
             <div key={c.id} className="group flex items-start gap-3">
               <Avatar user={author} size="md" />
@@ -1302,15 +1352,61 @@ function DiscussionTab({ task }: { task: Task }) {
               className="w-full bg-transparent resize-none text-sm placeholder:text-atlas-fg-3 outline-none"
             />
             <div className="mt-2 flex items-center gap-1">
-              <button className="btn-ghost !p-1.5" title="Mention">
-                <AtSign className="w-3.5 h-3.5" />
-              </button>
+              <Menu
+                trigger={
+                  <button className="btn-ghost !p-1.5" title="Mentionner quelqu'un">
+                    <AtSign className="w-3.5 h-3.5" />
+                  </button>
+                }
+                width={200}
+              >
+                {(close) => (
+                  <>
+                    <MenuLabel>Mentionner</MenuLabel>
+                    {users.map((u) => (
+                      <MenuItem
+                        key={u.id}
+                        onClick={() => {
+                          close();
+                          setDraft((d) => `${d}${d && !d.endsWith(' ') ? ' ' : ''}@${u.name} `);
+                        }}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <Avatar user={u} size="xs" /> {u.name}
+                        </span>
+                      </MenuItem>
+                    ))}
+                  </>
+                )}
+              </Menu>
               <button className="btn-ghost !p-1.5" title="Pièce jointe">
                 <Paperclip className="w-3.5 h-3.5" />
               </button>
-              <button className="btn-ghost !p-1.5" title="Emoji">
-                <Smile className="w-3.5 h-3.5" />
-              </button>
+              <Menu
+                trigger={
+                  <button className="btn-ghost !p-1.5" title="Emoji">
+                    <Smile className="w-3.5 h-3.5" />
+                  </button>
+                }
+                width={150}
+              >
+                {(close) => (
+                  <div className="grid grid-cols-6 gap-1 p-1">
+                    {['👍', '🔥', '👏', '🎉', '✅', '❤️', '🙏', '💡', '⚡', '😀', '🤝', '📌'].map((e) => (
+                      <button
+                        key={e}
+                        onClick={() => {
+                          close();
+                          setDraft((d) => `${d}${e}`);
+                        }}
+                        className="w-7 h-7 rounded hover:bg-black/[0.05] text-base"
+                      >
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Menu>
               <button
                 className="ml-auto btn-primary text-xs px-3 py-1.5"
                 onClick={submit}
@@ -1518,4 +1614,92 @@ function SectionTitle({ icon: Icon, children }: { icon: any; children: React.Rea
       <Icon className="w-3.5 h-3.5" /> {children}
     </h3>
   );
+}
+
+const RECURRENCE_LABELS: Record<'none' | 'daily' | 'weekly' | 'monthly', string> = {
+  none: '+ Configurer',
+  daily: 'Tous les jours',
+  weekly: 'Chaque semaine',
+  monthly: 'Chaque mois',
+};
+
+/* ───────────────────────── PROPH3T helpers ───────────────────────── */
+
+/** True si la tâche est urgente : échéance dépassée ou dans ≤ 2 jours. */
+function isUrgent(task: Task): boolean {
+  if (!task.dueDate) return false;
+  const due = new Date(task.dueDate).getTime();
+  if (Number.isNaN(due)) return false;
+  return due - Date.now() <= 2 * 86_400_000; // overdue OR within 2 days
+}
+
+const IMPORTANCE_TAGS = ['important', 'importante', 'strateg', 'critique', 'cle', 'clé', 'priorite'];
+
+/** Importance intrinsèque (indépendante de la priorité actuelle, pour éviter la boucle). */
+function isImportant(task: Task): boolean {
+  if (task.goalId) return true;
+  if (task.attentionPoint) return true;
+  if (task.requiresApproval) return true;
+  return task.tags.some((t) => IMPORTANCE_TAGS.some((k) => t.toLowerCase().includes(k)));
+}
+
+/** Matrice d'Eisenhower → priorité 1..4. */
+function eisenhowerPriority(task: Task): Priority {
+  const u = isUrgent(task);
+  const i = isImportant(task);
+  if (u && i) return 4; // faire maintenant
+  if (i) return 3; // planifier
+  if (u) return 2; // déléguer / traiter vite
+  return 1; // éliminer / plus tard
+}
+
+function eisenhowerRationale(task: Task): string {
+  const u = isUrgent(task);
+  const i = isImportant(task);
+  return `${u ? 'urgent' : 'non urgent'} · ${i ? 'important' : 'peu important'}`;
+}
+
+const STOPWORDS = new Set([
+  'pour',
+  'avec',
+  'dans',
+  'des',
+  'les',
+  'une',
+  'que',
+  'qui',
+  'sur',
+  'aux',
+  'par',
+  'plus',
+  'this',
+  'that',
+  'from',
+  'with',
+]);
+
+function titleWords(s: string): string[] {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 3 && !STOPWORDS.has(w));
+}
+
+/** Tâches similaires : score = tags partagés (×2) + mots de titre communs. */
+function findSimilarTasks(task: Task, all: Task[]): Task[] {
+  const myTags = new Set(task.tags.map((t) => t.toLowerCase()));
+  const myWords = new Set(titleWords(task.title));
+  return all
+    .filter((t) => t.id !== task.id)
+    .map((t) => {
+      const tagOverlap = t.tags.filter((x) => myTags.has(x.toLowerCase())).length;
+      const wordOverlap = titleWords(t.title).filter((w) => myWords.has(w)).length;
+      return { t, score: tagOverlap * 2 + wordOverlap };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map((x) => x.t);
 }
