@@ -183,6 +183,8 @@ export interface Notification {
   read: boolean;
   actorId?: string;
   taskId?: string;
+  /** Profil destinataire (routé vers la colonne indexée user_id). */
+  userId?: string;
 }
 
 export interface PropheticInsight {

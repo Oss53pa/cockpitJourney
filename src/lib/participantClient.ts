@@ -42,7 +42,19 @@ export interface ParticipantSnapshot {
   subtasks: any[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   comments: any[];
+  /** Pièces jointes des tâches, avec URL signée (1h) générée côté serveur. */
+  attachments: ParticipantAttachment[];
   profiles: ParticipantProfile[];
+}
+
+export interface ParticipantAttachment {
+  id: string;
+  taskId: string;
+  name: string;
+  kind: 'pdf' | 'img' | 'doc' | 'csv' | 'link';
+  size?: string;
+  uploadedAt?: string;
+  url: string | null;
 }
 
 export type ParticipantOp =

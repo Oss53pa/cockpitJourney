@@ -111,6 +111,21 @@ export async function revokeShare(id: string): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Envoie (ou renvoie) le lien d'un share par e-mail via l'edge function
+ * authentifiée `cj-share-email`. L'appartenance du lien est vérifiée côté
+ * serveur (auth.uid() = propriétaire).
+ */
+export async function sendShareEmail(shareId: string, email?: string): Promise<boolean> {
+  const { data, error } = await supabase.functions.invoke('cj-share-email', {
+    body: { shareId, email, appUrl: window.location.origin },
+  });
+  if (error) throw error;
+  const d = (data ?? {}) as { success?: boolean; emailSent?: boolean; error?: string };
+  if (d.success === false) throw new Error(d.error || 'Échec de l’envoi');
+  return !!d.emailSent;
+}
+
 export function isShareActive(s: Share): boolean {
   if (s.revokedAt) return false;
   if (s.expiresAt && new Date(s.expiresAt).getTime() < Date.now()) return false;

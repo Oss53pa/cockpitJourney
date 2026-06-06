@@ -59,7 +59,71 @@ if (hmr) {
   hmr.dispose(() => {
     bootstrapStarted = false;
     hydrateInFlight = null;
+    teardownRealtime();
   });
+}
+
+// ─── Supabase Realtime ───
+// Un seul canal par utilisateur, abonné aux changements de SON namespace
+// (auth_user_id = soi). Sert à refléter en direct les contributions des
+// participants externes (edge function cj-share) sans rechargement.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let realtimeChannel: any = null;
+type RealtimeKey = 'tasks' | 'comments' | 'subtasks' | 'activity' | 'notifications';
+const RT_TABLES: { table: string; key: RealtimeKey }[] = [
+  { table: 'cj_tasks', key: 'tasks' },
+  { table: 'cj_comments', key: 'comments' },
+  { table: 'cj_subtasks', key: 'subtasks' },
+  { table: 'cj_activity', key: 'activity' },
+  { table: 'cj_notifications', key: 'notifications' },
+];
+
+function teardownRealtime() {
+  if (realtimeChannel) {
+    try {
+      supabase.removeChannel(realtimeChannel);
+    } catch {
+      /* ignore */
+    }
+    realtimeChannel = null;
+  }
+}
+
+function setupRealtime(authUserId: string, set: SetFn, get: GetFn) {
+  if (!SUPABASE_CONFIGURED) return;
+  teardownRealtime();
+  let ch = supabase.channel(`cj-rt-${authUserId}`);
+  for (const { table, key } of RT_TABLES) {
+    ch = ch.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table, filter: `auth_user_id=eq.${authUserId}` },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (payload: any) => applyRealtime(key, payload, set, get)
+    );
+  }
+  ch.subscribe();
+  realtimeChannel = ch;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyRealtime(key: RealtimeKey, payload: any, set: SetFn, get: GetFn) {
+  if (payload.eventType === 'DELETE') {
+    const id = payload.old?.id;
+    if (!id) return;
+    set({ [key]: (get()[key] as { id: string }[]).filter((x) => x.id !== id) } as Partial<State>);
+    return;
+  }
+  const entity = payload.new?.data;
+  if (!entity || !entity.id) return;
+  const arr = get()[key] as { id: string }[];
+  const i = arr.findIndex((x) => x.id === entity.id);
+  if (i >= 0) {
+    const copy = arr.slice();
+    copy[i] = entity;
+    set({ [key]: copy } as Partial<State>);
+  } else {
+    set({ [key]: [entity, ...arr] } as Partial<State>);
+  }
 }
 
 /** Derive the current sprint label from non-done tasks' customFields.Sprint */
@@ -555,6 +619,9 @@ export type ModalKind =
 
 const uid = (prefix = 'id') => `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
 
+/** Escape a string for safe insertion into a RegExp (mention matching). */
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * Shared hydration: claim/create the user's profile, run seed if needed,
  * load the snapshot from Supabase into the Zustand cache.
@@ -706,6 +773,9 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
       });
       // Mirror to localStorage for instant-boot on the next page load.
       writeSnapshotCache(authUserId, snap, profileId);
+      // Subscribe to live changes in this user's namespace (participant
+      // contributions via cj-share land here without a manual reload).
+      setupRealtime(authUserId, set, get);
       console.info('[hydrate] DONE — ready=true');
     } catch (err) {
       clearTimeout(overallTimeout);
@@ -882,6 +952,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
           // someone else's data even momentarily.
           const prevUserId = getCurrentAuthUserId();
           if (prevUserId) clearSnapshotCache(prevUserId);
+          teardownRealtime();
           setCurrentAuthUserId(null);
           // Untag the Sentry scope so subsequent crashes don't get
           // attributed to the previous user.
@@ -1161,6 +1232,28 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     get().updateTask(taskId, {
       commentCount: (get().tasks.find((t) => t.id === taskId)?.commentCount || 0) + 1,
     });
+    // @mentions → notifications. On cible chaque membre dont le nom apparaît
+    // précédé d'un « @ » dans le commentaire (hors l'auteur).
+    const author = get().users.find((u) => u.id === authorId);
+    const task = get().tasks.find((t) => t.id === taskId);
+    const mentioned = get().users.filter(
+      (u) => u.id !== authorId && new RegExp(`@${escapeRegExp(u.name)}\\b`, 'i').test(body)
+    );
+    for (const u of mentioned) {
+      const note: Notification = {
+        id: uid('n'),
+        type: 'mention',
+        title: `${author?.name ?? 'Quelqu’un'} vous a mentionné`,
+        body: `${task ? `« ${task.title} » — ` : ''}${body.slice(0, 120)}`,
+        createdAt: new Date().toISOString(),
+        read: false,
+        actorId: authorId,
+        taskId,
+        userId: u.id,
+      };
+      set((s) => ({ notifications: [note, ...s.notifications] }));
+      dbPersist.put('notifications', note);
+    }
   },
   deleteComment: (id) => {
     const c = get().comments.find((x) => x.id === id);

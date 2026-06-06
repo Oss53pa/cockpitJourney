@@ -101,6 +101,38 @@ async function fetchDataRows<T = Record<string, unknown>>(
   return (data ?? []).map((r) => (r as { data: T }).data);
 }
 
+/** Charge les pièces jointes des tâches + génère des URLs signées (1h). */
+async function loadAttachments(
+  sb: SupabaseClient,
+  owner: string,
+  taskIds: string[]
+): Promise<Record<string, unknown>[]> {
+  if (!taskIds.length) return [];
+  const rows = await fetchDataRows(sb, 'cj_attachments', 'task_id', taskIds, owner).catch(
+    () => [] as Record<string, unknown>[]
+  );
+  const out: Record<string, unknown>[] = [];
+  for (const a of rows) {
+    let url: string | null = null;
+    if (a.path) {
+      const { data } = await sb.storage
+        .from('cj-attachments')
+        .createSignedUrl(String(a.path), 3600);
+      url = data?.signedUrl ?? null;
+    }
+    out.push({
+      id: a.id,
+      taskId: a.taskId,
+      name: a.name,
+      kind: a.kind,
+      size: a.size,
+      uploadedAt: a.uploadedAt,
+      url,
+    });
+  }
+  return out;
+}
+
 /* ───────────── GET — scoped snapshot ───────────── */
 
 async function handleGet(sb: SupabaseClient, share: ShareRow) {
@@ -138,6 +170,7 @@ async function handleGet(sb: SupabaseClient, share: ShareRow) {
     const comments = taskIds.length
       ? await fetchDataRows(sb, 'cj_comments', 'task_id', taskIds, owner)
       : [];
+    const attachments = await loadAttachments(sb, owner, taskIds);
 
     return json(200, {
       meta: { ...meta, projectName: project.name ?? 'Projet' },
@@ -146,6 +179,7 @@ async function handleGet(sb: SupabaseClient, share: ShareRow) {
       tasks,
       subtasks,
       comments,
+      attachments,
       profiles,
     });
   }
@@ -170,6 +204,7 @@ async function handleGet(sb: SupabaseClient, share: ShareRow) {
     : [];
   const subtasks = await fetchDataRows(sb, 'cj_subtasks', 'task_id', share.resource_id, owner);
   const comments = await fetchDataRows(sb, 'cj_comments', 'task_id', share.resource_id, owner);
+  const attachments = await loadAttachments(sb, owner, [share.resource_id]);
 
   return json(200, {
     meta: { ...meta, projectName: project?.name ?? null },
@@ -178,6 +213,7 @@ async function handleGet(sb: SupabaseClient, share: ShareRow) {
     tasks: [task],
     subtasks,
     comments,
+    attachments,
     profiles,
   });
 }
