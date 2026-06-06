@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Link as LinkIcon, Copy, Check, Trash2, Eye, ExternalLink, Loader2, UserPlus } from 'lucide-react';
+import {
+  Link as LinkIcon,
+  Copy,
+  Check,
+  Trash2,
+  Eye,
+  ExternalLink,
+  Loader2,
+  UserPlus,
+  Mail,
+} from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { FieldLabel, TextInput } from '../ui/Field';
 import { useApp } from '../../stores/appStore';
@@ -8,6 +18,7 @@ import {
   createShare,
   listShares,
   revokeShare,
+  sendShareEmail,
   buildShareUrl,
   isShareActive,
   type Share,
@@ -54,15 +65,33 @@ export function ShareModal({ payload, onClose }: { payload: Payload; onClose: ()
     if (creating) return;
     setCreating(true);
     try {
-      const { url } = await createShare({
+      const trimmedEmail = email.trim();
+      const { share, url } = await createShare({
         resourceType,
         resourceId,
         permission,
         label: label.trim() || undefined,
-        email: email.trim() || undefined,
+        email: trimmedEmail || undefined,
       });
       await navigator.clipboard?.writeText(url).catch(() => {});
       pushToast({ kind: 'success', title: 'Lien créé et copié', body: url });
+      // Si un e-mail est renseigné, on l'envoie automatiquement.
+      if (trimmedEmail) {
+        try {
+          const sent = await sendShareEmail(share.id, trimmedEmail);
+          pushToast({
+            kind: sent ? 'success' : 'info',
+            title: sent ? 'Invitation envoyée par e-mail' : 'Lien prêt (envoi e-mail indisponible)',
+            body: trimmedEmail,
+          });
+        } catch (mailErr) {
+          pushToast({
+            kind: 'warning',
+            title: 'Lien créé, mais e-mail non envoyé',
+            body: (mailErr as Error).message,
+          });
+        }
+      }
       setLabel('');
       setEmail('');
       await refresh();
@@ -89,6 +118,26 @@ export function ShareModal({ payload, onClose }: { payload: Payload; onClose: ()
       await refresh();
     } catch (e) {
       pushToast({ kind: 'error', title: 'Révocation impossible', body: (e as Error).message });
+    }
+  };
+
+  const resend = async (s: Share) => {
+    let target = s.inviteeEmail || '';
+    if (!target) {
+      const input = prompt('Adresse e-mail du destinataire :')?.trim();
+      if (!input) return;
+      target = input;
+    }
+    try {
+      const sent = await sendShareEmail(s.id, target);
+      pushToast({
+        kind: sent ? 'success' : 'info',
+        title: sent ? 'E-mail envoyé' : 'Envoi e-mail indisponible',
+        body: target,
+      });
+      await refresh();
+    } catch (e) {
+      pushToast({ kind: 'error', title: 'Envoi impossible', body: (e as Error).message });
     }
   };
 
@@ -222,6 +271,13 @@ export function ShareModal({ payload, onClose }: { payload: Payload; onClose: ()
                     </div>
                     {active && (
                       <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => resend(s)}
+                          className="btn-ghost !p-1.5"
+                          title={s.inviteeEmail ? `Renvoyer à ${s.inviteeEmail}` : 'Envoyer par e-mail'}
+                        >
+                          <Mail className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => copy(s.token)}
                           className="btn-ghost !p-1.5"

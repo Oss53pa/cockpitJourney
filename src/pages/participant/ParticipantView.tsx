@@ -10,12 +10,16 @@ import {
   ChevronLeft,
   ShieldCheck,
   Eye,
+  Paperclip,
+  Download,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   loadShare,
   mutateShare,
   type ParticipantSnapshot,
   type ParticipantProfile,
+  type ParticipantAttachment,
 } from '../../lib/participantClient';
 
 /**
@@ -247,6 +251,7 @@ function TaskPanel({
   const comments = snap.comments
     .filter((c) => c.taskId === task.id)
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const attachments = snap.attachments.filter((a) => a.taskId === task.id);
   const doneCount = subtasks.filter((s) => s.done).length;
 
   const [newSub, setNewSub] = useState('');
@@ -276,6 +281,17 @@ function TaskPanel({
           <p className="text-sm text-atlas-fg-2 mt-2 whitespace-pre-line leading-relaxed">
             {task.description}
           </p>
+        )}
+
+        {task.attentionPoint && (
+          <div className="mt-3 rounded-xl border border-signal-yellow/40 bg-signal-yellow/[0.08] p-3">
+            <div className="text-2xs uppercase tracking-[0.18em] font-medium text-signal-yellow mb-1 inline-flex items-center gap-1.5">
+              <AlertTriangle className="w-3 h-3" /> Point d'attention
+            </div>
+            <p className="text-sm text-atlas-fg-1 leading-relaxed whitespace-pre-line">
+              {task.attentionPoint}
+            </p>
+          </div>
         )}
 
         {/* Statut / colonne */}
@@ -364,6 +380,21 @@ function TaskPanel({
           )}
         </div>
 
+        {/* Pièces jointes (lecture/téléchargement) */}
+        {attachments.length > 0 && (
+          <div className="mt-5">
+            <SectionLabel>
+              <Paperclip className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />
+              Pièces jointes · {attachments.length}
+            </SectionLabel>
+            <div className="space-y-1.5">
+              {attachments.map((a) => (
+                <AttachmentRow key={a.id} att={a} />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Discussion */}
         <div className="mt-5">
           <SectionLabel>
@@ -413,6 +444,31 @@ function TaskPanel({
       </div>
 
       <p className="text-2xs text-atlas-fg-3 text-center mt-4">Propulsé par CockpitJourney · Atlas Studio</p>
+    </div>
+  );
+}
+
+function AttachmentRow({ att }: { att: ParticipantAttachment }) {
+  return (
+    <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white border border-atlas-line">
+      <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-black/[0.04] text-atlas-fg-3 shrink-0">
+        <Paperclip className="w-4 h-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm text-atlas-fg-1 truncate">{att.name}</div>
+        {att.size && <div className="text-2xs text-atlas-fg-3">{att.size}</div>}
+      </div>
+      {att.url && (
+        <a
+          href={att.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-ghost !p-1.5 shrink-0"
+          title="Télécharger"
+        >
+          <Download className="w-4 h-4" />
+        </a>
+      )}
     </div>
   );
 }

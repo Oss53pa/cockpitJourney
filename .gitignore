@@ -36,3 +36,6 @@ stats.html
 # IDE / Claude local
 .claude/settings.local.json
 .claude/launch.json
+
+# Supabase CLI temp
+supabase/.temp/
