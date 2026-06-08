@@ -126,6 +126,59 @@ function applyRealtime(key: RealtimeKey, payload: any, set: SetFn, get: GetFn) {
   }
 }
 
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Après un boot dégradé (cache local servi car le REST était lent), on retente
+ * le snapshot en arrière-plan. En cas de succès on remplace par les données
+ * fraîches et on lève `degraded` ; sinon on reste sur le cache (la page peut
+ * toujours être rechargée). Quelques tentatives espacées, puis on abandonne.
+ */
+async function revalidateSnapshotInBackground(authUserId: string, set: SetFn, get: GetFn) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await wait(15_000);
+    // L'utilisateur a changé / s'est reconnecté / a déjà récupéré → on stoppe.
+    if (getCurrentAuthUserId() !== authUserId || !get().degraded) return;
+    try {
+      const snap = await loadSnapshot();
+      if (snap.users.length === 0 && snap.projects.length === 0 && snap.tasks.length === 0) continue;
+      if (getCurrentAuthUserId() !== authUserId) return;
+      set({
+        users: snap.users,
+        folders: snap.folders,
+        projects: snap.projects,
+        sections: snap.sections,
+        tasks: snap.tasks,
+        goals: snap.goals,
+        comments: snap.comments,
+        notifications: snap.notifications,
+        insights: snap.insights,
+        automations: snap.automations,
+        forms: snap.forms,
+        reports: snap.reports,
+        attachments: snap.attachments,
+        dependencies: snap.dependencies,
+        activity: snap.activity,
+        subtasks: snap.subtasks,
+        notes: snap.notes,
+        budgetLines: snap.budgetLines,
+        expenses: snap.expenses,
+        settings: { ...get().settings, ...(snap.settings as Partial<State['settings']>) },
+        ready: true,
+        degraded: false,
+        revalidating: false,
+      });
+      const profileId = get().currentProfileId;
+      if (profileId) writeSnapshotCache(authUserId, snap, profileId);
+      setupRealtime(authUserId, set, get);
+      console.info('[hydrate] revalidation en arrière-plan réussie — mode dégradé levé');
+      return;
+    } catch (e) {
+      console.warn('[hydrate] revalidation arrière-plan, tentative', attempt, 'échouée', e);
+    }
+  }
+}
+
 /** Derive the current sprint label from non-done tasks' customFields.Sprint */
 export function getCurrentSprint(tasks: Task[]): string {
   const counts: Record<string, number> = {};
@@ -646,10 +699,51 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
   // Instead, we sign the user out and let them retry via the login flow.
   const goOffline = async (reason: string) => {
     if (!import.meta.env.DEV) {
+      // ── Première ligne de défense : le cache local ──
+      // Le projet Supabase est mutualisé entre plusieurs apps et peut être
+      // transitoirement lent. Plutôt que de déconnecter brutalement un
+      // utilisateur de retour (qui a déjà ses vraies données en cache local),
+      // on RESTE sur ce cache en mode dégradé et on retente en arrière-plan.
+      const cached = readSnapshotCache(authUserId);
+      if (cached && cached.users.length > 0) {
+        console.warn('[hydrate] REST lent/injoignable — on garde le snapshot en cache (dégradé).', reason);
+        captureException(new Error(`hydrate-degraded-cache: ${reason}`));
+        setCurrentAuthUserId(authUserId);
+        set({
+          users: cached.users,
+          folders: cached.folders,
+          projects: cached.projects,
+          sections: cached.sections,
+          tasks: cached.tasks,
+          goals: cached.goals,
+          comments: cached.comments,
+          notifications: cached.notifications,
+          insights: cached.insights,
+          automations: cached.automations,
+          forms: cached.forms,
+          reports: cached.reports,
+          attachments: cached.attachments,
+          dependencies: cached.dependencies,
+          activity: cached.activity,
+          subtasks: cached.subtasks,
+          notes: cached.notes,
+          budgetLines: cached.budgetLines ?? [],
+          expenses: cached.expenses ?? [],
+          settings: { ...get().settings, ...(cached.settings as Partial<State['settings']>) },
+          currentProfileId: cached.profileId,
+          authStatus: 'signed_in',
+          authEmail: email,
+          ready: true,
+          degraded: true,
+          revalidating: true,
+        });
+        void revalidateSnapshotInBackground(authUserId, set, get);
+        return;
+      }
+      // Pas de cache → on ne peut pas montrer de vraies données : on déconnecte
+      // pour que l'utilisateur puisse réessayer via le flow de connexion.
       console.warn('[hydrate] Supabase unreachable in production —', reason);
-      console.warn('[hydrate] falling back to signed_out (NO offline mockData in prod).');
-      // Report the offline fallback to Sentry so we know when prod users
-      // hit this — could be transient (network) or systemic (RLS change).
+      console.warn('[hydrate] falling back to signed_out (no cache available).');
       captureException(new Error(`hydrate-offline-fallback: ${reason}`));
       setCurrentAuthUserId(null);
       setMonitoringUser(null);
@@ -695,13 +789,15 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
   };
 
   hydrateInFlight = (async () => {
-    // Hard 20s overall watchdog: regardless of where the cascade hangs
-    // (seed, link, snapshot), we never trap the user beyond ~20s.
+    // Hard 30s overall watchdog: regardless of where the cascade hangs
+    // (seed, link, snapshot), we never trap the user beyond ~30s. The shared
+    // Supabase project can be transiently slow, so the bound is generous; a
+    // warm local cache lets goOffline stay degraded rather than sign out.
     let bailed = false;
     const overallTimeout = setTimeout(() => {
       bailed = true;
-      void goOffline('hydrate exceeded 20s — Supabase REST unreachable');
-    }, 20_000);
+      void goOffline('hydrate exceeded 30s — Supabase REST slow/unreachable');
+    }, 30_000);
 
     try {
       console.info('[hydrate] start for user', authUserId.slice(0, 8));
