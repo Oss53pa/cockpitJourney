@@ -64,6 +64,8 @@ Deno.serve(async (req: Request) => {
 
   const now = new Date().toISOString();
   const linkToken = genToken();
+  const ownerName = (caller.user_metadata?.full_name as string) || null;
+  const ownerEmail = caller.email ?? null;
 
   // Upsert (clé owner + email). On régénère un token à chaque (ré)invitation.
   const { data: existing } = await sb
@@ -76,7 +78,15 @@ Deno.serve(async (req: Request) => {
   if (existing) {
     await sb
       .from('cj_workspace_members')
-      .update({ role, token: linkToken, status: 'pending', invited_by: caller.id, updated_at: now })
+      .update({
+        role,
+        token: linkToken,
+        status: 'pending',
+        invited_by: caller.id,
+        owner_name: ownerName,
+        owner_email: ownerEmail,
+        updated_at: now,
+      })
       .eq('id', (existing as { id: string }).id);
   } else {
     await sb.from('cj_workspace_members').insert({
@@ -86,6 +96,8 @@ Deno.serve(async (req: Request) => {
       status: 'pending',
       token: linkToken,
       invited_by: caller.id,
+      owner_name: ownerName,
+      owner_email: ownerEmail,
       created_at: now,
       updated_at: now,
     });

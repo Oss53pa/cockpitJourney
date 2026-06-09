@@ -116,6 +116,11 @@ export function ProjectView({ project, onOpenTask }: Props) {
   const users = useApp((s) => s.users);
   const openModal = useApp((s) => s.openModal);
   const updateProject = useApp((s) => s.updateProject);
+  // Rôle dans l'espace actif : un Lecteur ne crée/édite pas ; la gestion des
+  // membres et le partage restent réservés au propriétaire de l'espace.
+  const wsRole = useApp((s) => s.myWorkspaceRole);
+  const canEdit = wsRole !== 'viewer';
+  const isOwner = wsRole === 'owner';
   const deleteProject = useApp((s) => s.deleteProject);
 
   const sections = useMemo(
@@ -240,39 +245,49 @@ export function ProjectView({ project, onOpenTask }: Props) {
             <button onClick={() => openModal('proph3t-brief')} className="btn-secondary text-sm px-3 py-1.5">
               <Sparkles className="w-3.5 h-3.5" /> Brief PROPH3T
             </button>
-            <button onClick={() => openModal('members')} className="btn-secondary text-sm px-3 py-1.5">
-              <Users className="w-3.5 h-3.5" /> Membres
-            </button>
-            <button
-              onClick={() =>
-                openModal('share', {
-                  resourceType: 'project',
-                  resourceId: project.id,
-                  resourceName: project.name,
-                })
-              }
-              className="btn-secondary text-sm px-3 py-1.5"
-            >
-              <Share2 className="w-3.5 h-3.5" /> Partager
-            </button>
+            {isOwner && (
+              <button onClick={() => openModal('members')} className="btn-secondary text-sm px-3 py-1.5">
+                <Users className="w-3.5 h-3.5" /> Membres
+              </button>
+            )}
+            {isOwner && (
+              <button
+                onClick={() =>
+                  openModal('share', {
+                    resourceType: 'project',
+                    resourceId: project.id,
+                    resourceName: project.name,
+                  })
+                }
+                className="btn-secondary text-sm px-3 py-1.5"
+              >
+                <Share2 className="w-3.5 h-3.5" /> Partager
+              </button>
+            )}
             <button
               onClick={() => openModal('retroplan', { projectId: project.id })}
               className="btn-secondary text-sm px-3 py-1.5"
             >
               <GanttChartSquare className="w-3.5 h-3.5" /> Rétroplanning
             </button>
-            <button
-              onClick={() => openModal('import-tasks', { projectId: project.id })}
-              className="btn-secondary text-sm px-3 py-1.5"
-            >
-              <Upload className="w-3.5 h-3.5" /> Importer
-            </button>
-            <button
-              onClick={() => openModal('task-create', { projectId: project.id, sectionId: sections[0]?.id })}
-              className="btn-primary text-sm px-3 py-1.5"
-            >
-              <Plus className="w-3.5 h-3.5" /> Tâche
-            </button>
+            {canEdit && (
+              <button
+                onClick={() => openModal('import-tasks', { projectId: project.id })}
+                className="btn-secondary text-sm px-3 py-1.5"
+              >
+                <Upload className="w-3.5 h-3.5" /> Importer
+              </button>
+            )}
+            {canEdit && (
+              <button
+                onClick={() =>
+                  openModal('task-create', { projectId: project.id, sectionId: sections[0]?.id })
+                }
+                className="btn-primary text-sm px-3 py-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" /> Tâche
+              </button>
+            )}
             <Menu
               trigger={
                 <button className="btn-secondary !p-1.5">

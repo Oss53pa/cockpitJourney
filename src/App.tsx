@@ -335,6 +335,7 @@ function CockpitShell() {
     <ErrorBoundary>
       <div className="flex flex-col h-screen w-screen overflow-hidden text-atlas-fg-1 bg-atlas-black bg-noise">
         {degraded && <DegradedBanner />}
+        <SharedWorkspaceBanner />
         <div className="flex flex-1 overflow-hidden">
           {mobileSidebarOpen && (
             <div
@@ -420,6 +421,39 @@ function DegradedBanner() {
       >
         Réessayer
       </button>
+    </div>
+  );
+}
+
+/**
+ * Banner shown when the user is working inside a SHARED workspace (someone
+ * else's cockpit they were invited to), with a one-click way back to their
+ * own. Read-only (viewer) is surfaced too so silent write-blocks don't confuse.
+ */
+function SharedWorkspaceBanner() {
+  const workspaces = useApp((s) => s.workspaces);
+  const activeId = useApp((s) => s.activeWorkspaceId);
+  const role = useApp((s) => s.myWorkspaceRole);
+  const switchWorkspace = useApp((s) => s.switchWorkspace);
+  const own = workspaces.find((w) => w.isOwn);
+  const active = workspaces.find((w) => w.ownerId === activeId);
+  if (!active || active.isOwn) return null; // own cockpit → no banner
+  const isViewer = role === 'viewer';
+  return (
+    <div className="bg-atlas-sage-deep/15 border-b border-atlas-sage-deep/25 px-4 py-2 flex items-center justify-center gap-3 text-xs">
+      <span className="inline-flex items-center gap-1.5 text-atlas-sage-deeper font-medium tracking-wide uppercase text-2xs">
+        <Sparkles className="w-3 h-3" />
+        Cockpit partagé · {active.label}
+        {isViewer && ' · lecture seule'}
+      </span>
+      {own && (
+        <button
+          onClick={() => switchWorkspace(own.ownerId)}
+          className="text-2xs uppercase tracking-wider text-atlas-sage-deep hover:text-atlas-sage-deeper font-medium underline underline-offset-2"
+        >
+          Revenir à mon cockpit
+        </button>
+      )}
     </div>
   );
 }
