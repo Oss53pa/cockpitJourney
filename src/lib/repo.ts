@@ -188,20 +188,23 @@ function indexedColsFor(table: AppTable, entity: Record<string, unknown>): Index
  * For cj_settings the PK is (profile_id, key) — handled separately.
  */
 function buildRow(table: AppTable, entity: Record<string, unknown>) {
-  const authUserId = getCurrentAuthUserId();
-  if (!authUserId) {
+  if (!getCurrentAuthUserId()) {
     throw new Error(`[repo] cannot write to ${table}: no authenticated user. Sign in first.`);
   }
+  // Entities belong to the ACTIVE WORKSPACE (the owner's namespace), not the
+  // logged-in user — so a collaborator's writes land in the shared cockpit.
+  // RLS (cj_can_write_workspace) authorizes it.
+  const ownerId = getWorkspaceOwnerId();
   if (table === 'notes') {
     return {
       task_id: entity.taskId,
-      auth_user_id: authUserId,
+      auth_user_id: ownerId,
       data: entity,
     };
   }
   return {
     id: entity.id as string,
-    auth_user_id: authUserId,
+    auth_user_id: ownerId,
     ...indexedColsFor(table, entity),
     data: entity,
   };
@@ -239,11 +242,19 @@ export interface Snapshot {
 
 async function fetchData<T>(sqlTable: string): Promise<T[]> {
   // Fetch in pages of 1000 to bypass the default REST limit.
+  // Scope explicitly to the ACTIVE WORKSPACE owner: member-aware RLS now
+  // returns the UNION of every workspace the user can see, so without this
+  // filter a member would get a mix of namespaces.
+  const ownerId = getWorkspaceOwnerId();
   const PAGE = 1000;
   const out: T[] = [];
   for (let from = 0; ; from += PAGE) {
     const to = from + PAGE - 1;
-    const { data, error } = await supabase.from(sqlTable).select('data').range(from, to);
+    const { data, error } = await supabase
+      .from(sqlTable)
+      .select('data')
+      .eq('auth_user_id', ownerId)
+      .range(from, to);
     if (error) throw error;
     if (!data || data.length === 0) break;
     for (const row of data) out.push((row as { data: T }).data);
@@ -464,6 +475,22 @@ function emptySnapshot(): Snapshot {
 
 let currentProfileId: string | null = null;
 let currentAuthUserId: string | null = null;
+// The active workspace = whose namespace we read/write. Defaults to the
+// logged-in user (own cockpit); set to an owner's id when the user is acting
+// as a member of someone else's shared workspace.
+let activeWorkspaceOwnerId: string | null = null;
+
+/** Set the active workspace owner (null = own namespace). */
+export function setActiveWorkspaceOwnerId(id: string | null) {
+  activeWorkspaceOwnerId = id;
+}
+
+/** The namespace currently read/written = active workspace owner, else self. */
+export function getWorkspaceOwnerId(): string {
+  const id = activeWorkspaceOwnerId ?? currentAuthUserId;
+  if (!id) throw new Error('[repo] no active workspace / auth user.');
+  return id;
+}
 
 /** Set by the auth bootstrap once we know which profile is active. */
 export function setCurrentProfileId(id: string | null) {
@@ -626,10 +653,12 @@ const TABLE_ORDER_REVERSE: AppTable[] = [
 
 export async function wipeDatabase(): Promise<void> {
   if (!SUPABASE_CONFIGURED) return;
+  // Only ever wipe the ACTIVE workspace's rows (a member must not be able to
+  // nuke beyond it; RLS also gates deletes to workspace admins).
+  const ownerId = getWorkspaceOwnerId();
   for (const table of TABLE_ORDER_REVERSE) {
     const sqlTable = sqlTableFor[table];
-    const pk = pkColumn(table);
-    const { error } = await supabase.from(sqlTable).delete().not(pk, 'is', null);
+    const { error } = await supabase.from(sqlTable).delete().eq('auth_user_id', ownerId);
     if (error) {
       console.error(`[repo] wipe ${table} failed`, error);
     }

@@ -1,0 +1,102 @@
+// Espace partagé (multi-utilisateurs) — client.
+// ===================================================================
+// Le propriétaire gère ses membres directement via la table
+// cj_workspace_members (RLS owner). L'envoi d'e-mail et l'acceptation
+// passent par les edge functions authentifiées cj-workspace-invite /
+// cj-workspace-accept (qui valident la propriété / le token côté serveur).
+
+import { supabase } from './supabase';
+
+export type WorkspaceRole = 'admin' | 'editor' | 'viewer';
+
+export interface WorkspaceMember {
+  id: string;
+  email: string;
+  role: WorkspaceRole;
+  status: 'pending' | 'active' | 'revoked';
+  memberLinked: boolean;
+  createdAt: string;
+  acceptedAt: string | null;
+}
+
+function rowToMember(r: Record<string, unknown>): WorkspaceMember {
+  return {
+    id: String(r.id),
+    email: String(r.invitee_email),
+    role: r.role as WorkspaceRole,
+    status: r.status as WorkspaceMember['status'],
+    memberLinked: !!r.member_auth_user_id,
+    createdAt: String(r.created_at),
+    acceptedAt: (r.accepted_at as string) ?? null,
+  };
+}
+
+/** Membres de MON espace (je suis le propriétaire). */
+export async function listMembers(): Promise<WorkspaceMember[]> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error('Session expirée.');
+  const { data, error } = await supabase
+    .from('cj_workspace_members')
+    .select('*')
+    .eq('owner_auth_user_id', user.id)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((r) => rowToMember(r as Record<string, unknown>));
+}
+
+/** Inviter un collaborateur dans MON espace (e-mail via edge function). */
+export async function inviteMember(input: {
+  email: string;
+  fullName?: string;
+  role: WorkspaceRole;
+}): Promise<{ emailSent: boolean; link?: string }> {
+  const { data, error } = await supabase.functions.invoke('cj-workspace-invite', {
+    body: {
+      email: input.email,
+      full_name: input.fullName,
+      role: input.role,
+      appUrl: window.location.origin,
+    },
+  });
+  if (error) throw error;
+  const d = (data ?? {}) as { success?: boolean; emailSent?: boolean; link?: string; error?: string };
+  if (d.success === false) throw new Error(d.error || 'Échec de l’invitation');
+  return { emailSent: !!d.emailSent, link: d.link };
+}
+
+export async function changeMemberRole(id: string, role: WorkspaceRole): Promise<void> {
+  const { error } = await supabase
+    .from('cj_workspace_members')
+    .update({ role, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function revokeMember(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('cj_workspace_members')
+    .update({ status: 'revoked', updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function reactivateMember(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('cj_workspace_members')
+    .update({ status: 'active', updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+/** Accepter une invitation (l'invité connecté consomme le token). */
+export async function acceptWorkspaceInvite(token: string): Promise<{ ownerId: string }> {
+  const { data, error } = await supabase.functions.invoke('cj-workspace-accept', {
+    body: { token },
+  });
+  if (error) throw error;
+  const d = (data ?? {}) as { success?: boolean; ownerId?: string; error?: string };
+  if (!d.success || !d.ownerId) throw new Error(d.error || 'Acceptation impossible');
+  return { ownerId: d.ownerId };
+}
