@@ -5,7 +5,7 @@
 // reads happen through short-lived signed URLs.
 
 import { supabase } from './supabase';
-import { getCurrentAuthUserId } from './repo';
+import { getCurrentAuthUserId, getWorkspaceOwnerId } from './repo';
 import type { Attachment } from '../stores/appStore';
 
 const BUCKET = 'cj-attachments';
@@ -42,9 +42,12 @@ export async function uploadTaskFile(
   taskId: string,
   file: File
 ): Promise<{ path: string; name: string; size: string; kind: Attachment['kind'] }> {
-  const authUserId = getCurrentAuthUserId();
-  if (!authUserId) throw new Error('Utilisateur non authentifié.');
-  const path = `${authUserId}/tasks/${taskId}/${Date.now()}-${safeFilename(file.name)}`;
+  if (!getCurrentAuthUserId()) throw new Error('Utilisateur non authentifié.');
+  // Les fichiers vivent sous le namespace du PROPRIÉTAIRE de l'espace actif
+  // (chemin = <owner>/tasks/<id>/…), pour rester cohérents avec les données
+  // partagées ; la RLS storage autorise les membres de l'espace.
+  const ownerId = getWorkspaceOwnerId();
+  const path = `${ownerId}/tasks/${taskId}/${Date.now()}-${safeFilename(file.name)}`;
   const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: false });
   if (error) throw error;
   return { path, name: file.name, size: formatSize(file.size), kind: attachmentKind(file) };

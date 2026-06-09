@@ -30,6 +30,7 @@ const MentionsPage = lazyWithReload(() =>
 const AcceptInvite = lazyWithReload(() => import('./pages/auth/AcceptInvite'));
 const PublicFormPage = lazyWithReload(() => import('./pages/public/PublicFormPage'));
 const ParticipantView = lazyWithReload(() => import('./pages/participant/ParticipantView'));
+const AcceptWorkspaceInvite = lazyWithReload(() => import('./pages/workspace/AcceptWorkspaceInvite'));
 import { ModalRoot } from './components/modals/ModalRoot';
 import { OnboardingModal } from './components/modals/OnboardingModal';
 import { InstallPromptBanner } from './components/pwa/InstallPromptBanner';
@@ -530,6 +531,16 @@ function App() {
           element={
             <Suspense fallback={<div />}>
               <ParticipantView />
+            </Suspense>
+          }
+        />
+
+        {/* Workspace invite acceptance — handles its own auth gate */}
+        <Route
+          path="/workspace/accept"
+          element={
+            <Suspense fallback={<div />}>
+              <AcceptWorkspaceInvite />
             </Suspense>
           }
         />

@@ -5,6 +5,8 @@ import {
   wipeDatabase,
   setCurrentAuthUserId,
   getCurrentAuthUserId,
+  setCurrentProfileId,
+  setActiveWorkspaceOwnerId,
 } from '../lib/repo';
 import { bootstrapUserData, buildOfflineSnapshot } from '../lib/seed';
 import { supabase, SUPABASE_CONFIGURED } from '../lib/supabase';
@@ -177,6 +179,76 @@ async function revalidateSnapshotInBackground(authUserId: string, set: SetFn, ge
       console.warn('[hydrate] revalidation arrière-plan, tentative', attempt, 'échouée', e);
     }
   }
+}
+
+/* ─────────── Espaces partagés (multi-utilisateurs) ─────────── */
+
+interface Membership {
+  ownerId: string;
+  role: string;
+  memberProfileId: string | null;
+}
+
+/** Espaces partagés actifs dont l'utilisateur courant est membre. */
+async function resolveMemberships(authUserId: string): Promise<Membership[]> {
+  if (!SUPABASE_CONFIGURED) return [];
+  const { data, error } = await supabase
+    .from('cj_workspace_members')
+    .select('owner_auth_user_id, role, member_profile_id')
+    .eq('member_auth_user_id', authUserId)
+    .eq('status', 'active');
+  if (error) {
+    console.warn('[hydrate] resolveMemberships failed', error.message);
+    return [];
+  }
+  return (data ?? []).map((r) => ({
+    ownerId: String((r as Record<string, unknown>).owner_auth_user_id),
+    role: String((r as Record<string, unknown>).role ?? 'editor'),
+    memberProfileId: ((r as Record<string, unknown>).member_profile_id as string) ?? null,
+  }));
+}
+
+const activeWsKey = (authUserId: string) => `cj-active-ws-${authUserId}`;
+
+function readActiveWsPref(authUserId: string): string | null {
+  try {
+    return localStorage.getItem(activeWsKey(authUserId));
+  } catch {
+    return null;
+  }
+}
+
+function writeActiveWsPref(authUserId: string, ownerId: string) {
+  try {
+    if (ownerId === authUserId) localStorage.removeItem(activeWsKey(authUserId));
+    else localStorage.setItem(activeWsKey(authUserId), ownerId);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Décide l'espace actif : préférence persistée si valide, sinon — un
+ * propriétaire (0 appartenance) → son propre cockpit ; un collaborateur
+ * (≥1 appartenance) → le 1er espace partagé.
+ */
+function pickActiveWorkspace(authUserId: string, memberships: Membership[]): string {
+  const candidates = new Set<string>([authUserId, ...memberships.map((m) => m.ownerId)]);
+  const pref = readActiveWsPref(authUserId);
+  if (pref && candidates.has(pref)) return pref;
+  if (memberships.length > 0) return memberships[0].ownerId;
+  return authUserId;
+}
+
+/** Profil de repli dans un namespace propriétaire (si member_profile_id absent). */
+async function firstProfileIdOf(ownerId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('cj_profiles')
+    .select('id')
+    .eq('auth_user_id', ownerId)
+    .limit(1)
+    .maybeSingle();
+  return data ? String((data as { id: string }).id) : null;
 }
 
 /** Derive the current sprint label from non-done tasks' customFields.Sprint */
@@ -657,6 +729,7 @@ export type ModalKind =
   | 'workspace-switch'
   | 'settings'
   | 'invite-team'
+  | 'members'
   | 'share'
   | 'retroplan'
   | 'import-tasks'
@@ -807,22 +880,41 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
       // we can group crashes per-user without leaking PII.
       setMonitoringUser(authUserId);
 
-      // ONE round-trip: combined isEmpty-check + profile-resolution + seed.
-      // Returning user → single SELECT, no writes. New user → single SELECT
-      // then parallel-batched seed (all in one wave). Previously this was
-      // 2 sequential round-trips even for the common returning-user case.
-      console.info('[hydrate] step 1/2 — bootstrapUserData');
-      const sessionUser = (await supabase.auth.getSession()).data.session?.user;
-      const { profileId, seeded } = await bootstrapUserData(authUserId, {
-        email: sessionUser?.email ?? email,
-        user_metadata: sessionUser?.user_metadata,
-      });
-      if (bailed) return;
+      // ── Espace actif : son propre cockpit OU membre d'un cockpit partagé ──
+      const memberships = await resolveMemberships(authUserId);
+      const activeOwner = pickActiveWorkspace(authUserId, memberships);
+      const isMemberWorkspace = activeOwner !== authUserId;
+      setActiveWorkspaceOwnerId(isMemberWorkspace ? activeOwner : null);
+      writeActiveWsPref(authUserId, activeOwner);
       console.info(
-        seeded
-          ? `[hydrate] bootstrap: seeded new profile ${profileId}`
-          : `[hydrate] bootstrap: existing profile ${profileId}`
+        `[hydrate] workspace = ${isMemberWorkspace ? `partagé (${activeOwner.slice(0, 8)})` : 'propre'} · ${memberships.length} appartenance(s)`
       );
+
+      let profileId: string;
+      if (isMemberWorkspace) {
+        // Membre : aucun seed de son propre namespace ; on agit avec le profil
+        // créé pour lui dans le namespace du propriétaire (à l'acceptation).
+        const m = memberships.find((x) => x.ownerId === activeOwner);
+        profileId = m?.memberProfileId || (await firstProfileIdOf(activeOwner)) || '';
+        setCurrentProfileId(profileId);
+        console.info('[hydrate] member profile', profileId);
+      } else {
+        // Propriétaire : flux normal (résout/seed son profil).
+        console.info('[hydrate] step 1/2 — bootstrapUserData');
+        const sessionUser = (await supabase.auth.getSession()).data.session?.user;
+        const r = await bootstrapUserData(authUserId, {
+          email: sessionUser?.email ?? email,
+          user_metadata: sessionUser?.user_metadata,
+        });
+        profileId = r.profileId;
+        setCurrentProfileId(profileId);
+        if (bailed) return;
+        console.info(
+          r.seeded
+            ? `[hydrate] bootstrap: seeded new profile ${profileId}`
+            : `[hydrate] bootstrap: existing profile ${profileId}`
+        );
+      }
 
       console.info('[hydrate] step 2/2 — loadSnapshot');
       const snap = await loadSnapshot();
@@ -867,11 +959,12 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
         revalidating: false,
         degraded: false,
       });
-      // Mirror to localStorage for instant-boot on the next page load.
+      // Mirror to localStorage for instant-boot on the next page load
+      // (cache keyed by the logged-in user; content = the active workspace).
       writeSnapshotCache(authUserId, snap, profileId);
-      // Subscribe to live changes in this user's namespace (participant
-      // contributions via cj-share land here without a manual reload).
-      setupRealtime(authUserId, set, get);
+      // Subscribe to live changes in the ACTIVE workspace's namespace (other
+      // members' edits + participant contributions land here without reload).
+      setupRealtime(activeOwner, set, get);
       console.info('[hydrate] DONE — ready=true');
     } catch (err) {
       clearTimeout(overallTimeout);
@@ -979,6 +1072,10 @@ const initialState = (set: SetFn, get: GetFn): State => ({
           '[bootstrap] ⚡ instant-hydrate from localStorage cache (cachedAt=' + cached.cachedAt + ')'
         );
         setCurrentAuthUserId(cachedSession.authUserId);
+        // Restore the last active workspace so any early write goes to the
+        // right namespace (corrected by the real hydrate moments later).
+        const wsPref = readActiveWsPref(cachedSession.authUserId);
+        setActiveWorkspaceOwnerId(wsPref && wsPref !== cachedSession.authUserId ? wsPref : null);
         set({
           authStatus: 'signed_in',
           authEmail: cachedSession.email,
@@ -1049,6 +1146,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
           const prevUserId = getCurrentAuthUserId();
           if (prevUserId) clearSnapshotCache(prevUserId);
           teardownRealtime();
+          setActiveWorkspaceOwnerId(null);
           setCurrentAuthUserId(null);
           // Untag the Sentry scope so subsequent crashes don't get
           // attributed to the previous user.

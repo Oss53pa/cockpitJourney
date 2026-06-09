@@ -240,8 +240,8 @@ export function ProjectView({ project, onOpenTask }: Props) {
             <button onClick={() => openModal('proph3t-brief')} className="btn-secondary text-sm px-3 py-1.5">
               <Sparkles className="w-3.5 h-3.5" /> Brief PROPH3T
             </button>
-            <button onClick={() => openModal('invite-team')} className="btn-secondary text-sm px-3 py-1.5">
-              <Users className="w-3.5 h-3.5" /> Inviter
+            <button onClick={() => openModal('members')} className="btn-secondary text-sm px-3 py-1.5">
+              <Users className="w-3.5 h-3.5" /> Membres
             </button>
             <button
               onClick={() =>
