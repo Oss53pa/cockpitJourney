@@ -688,6 +688,8 @@ export function Sidebar({
         {bottomNavGroups.map(renderNavGroup)}
       </nav>
 
+      <WorkspaceSwitcher />
+
       <div className="border-t border-black/[0.05] p-3">
         <Menu
           trigger={
@@ -840,6 +842,63 @@ function SortableFolderRow({
       )}
     >
       {children({ dragHandle })}
+    </div>
+  );
+}
+
+/**
+ * Sélecteur d'espace partagé — n'apparaît que si l'utilisateur a accès à
+ * plus d'un cockpit (le sien + ceux où il a été invité).
+ */
+function WorkspaceSwitcher() {
+  const workspaces = useApp((s) => s.workspaces);
+  const activeId = useApp((s) => s.activeWorkspaceId);
+  const switchWorkspace = useApp((s) => s.switchWorkspace);
+  if (workspaces.length <= 1) return null;
+  const active = workspaces.find((w) => w.ownerId === activeId);
+  return (
+    <div className="border-t border-black/[0.05] px-3 pt-2.5">
+      <Menu
+        align="left"
+        width={240}
+        direction="up"
+        trigger={
+          <button className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-black/[0.04] text-left">
+            <Building2 className="w-4 h-4 text-atlas-fg-3 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-2xs uppercase tracking-wider text-atlas-fg-3">Espace</div>
+              <div className="text-sm font-medium text-atlas-fg-1 truncate">{active?.label ?? '—'}</div>
+            </div>
+            <ChevronsUpDown className="w-3.5 h-3.5 text-atlas-fg-3 shrink-0" />
+          </button>
+        }
+      >
+        {(close) => (
+          <>
+            <MenuLabel>Changer d'espace</MenuLabel>
+            {workspaces.map((w) => (
+              <MenuItem
+                key={w.ownerId}
+                icon={Building2}
+                onClick={() => {
+                  close();
+                  switchWorkspace(w.ownerId);
+                }}
+              >
+                <span className="inline-flex items-center gap-2">
+                  {w.label}
+                  {w.ownerId === activeId && <span className="text-atlas-amber">✓</span>}
+                  {!w.isOwn && (
+                    <span className="text-2xs text-atlas-fg-3">
+                      ({w.role === 'viewer' ? 'lecture' : w.role})
+                    </span>
+                  )}
+                </span>
+              </MenuItem>
+            ))}
+          </>
+        )}
+      </Menu>
     </div>
   );
 }

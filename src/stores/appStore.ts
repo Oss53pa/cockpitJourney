@@ -183,10 +183,21 @@ async function revalidateSnapshotInBackground(authUserId: string, set: SetFn, ge
 
 /* ─────────── Espaces partagés (multi-utilisateurs) ─────────── */
 
+export type WorkspaceRole = 'owner' | 'admin' | 'editor' | 'viewer';
+
+export interface WorkspaceInfo {
+  ownerId: string;
+  label: string;
+  role: WorkspaceRole;
+  isOwn: boolean;
+}
+
 interface Membership {
   ownerId: string;
-  role: string;
+  role: WorkspaceRole;
   memberProfileId: string | null;
+  ownerName: string | null;
+  ownerEmail: string | null;
 }
 
 /** Espaces partagés actifs dont l'utilisateur courant est membre. */
@@ -194,18 +205,36 @@ async function resolveMemberships(authUserId: string): Promise<Membership[]> {
   if (!SUPABASE_CONFIGURED) return [];
   const { data, error } = await supabase
     .from('cj_workspace_members')
-    .select('owner_auth_user_id, role, member_profile_id')
+    .select('owner_auth_user_id, role, member_profile_id, owner_name, owner_email')
     .eq('member_auth_user_id', authUserId)
     .eq('status', 'active');
   if (error) {
     console.warn('[hydrate] resolveMemberships failed', error.message);
     return [];
   }
-  return (data ?? []).map((r) => ({
-    ownerId: String((r as Record<string, unknown>).owner_auth_user_id),
-    role: String((r as Record<string, unknown>).role ?? 'editor'),
-    memberProfileId: ((r as Record<string, unknown>).member_profile_id as string) ?? null,
-  }));
+  return (data ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      ownerId: String(row.owner_auth_user_id),
+      role: (row.role as WorkspaceRole) ?? 'editor',
+      memberProfileId: (row.member_profile_id as string) ?? null,
+      ownerName: (row.owner_name as string) ?? null,
+      ownerEmail: (row.owner_email as string) ?? null,
+    };
+  });
+}
+
+/** Liste des espaces accessibles : le sien + ceux partagés. */
+function buildWorkspaces(authUserId: string, memberships: Membership[]): WorkspaceInfo[] {
+  return [
+    { ownerId: authUserId, label: 'Mon cockpit', role: 'owner', isOwn: true },
+    ...memberships.map((m) => ({
+      ownerId: m.ownerId,
+      label: m.ownerName || m.ownerEmail || 'Cockpit partagé',
+      role: m.role,
+      isOwn: false,
+    })),
+  ];
 }
 
 const activeWsKey = (authUserId: string) => `cj-active-ws-${authUserId}`;
@@ -492,6 +521,11 @@ interface State {
   // true if hydrate fell back to offline mockData (Supabase unreachable)
   degraded?: boolean;
 
+  // Espaces partagés : la liste accessible, l'espace actif, et mon rôle dedans.
+  workspaces: WorkspaceInfo[];
+  activeWorkspaceId?: string; // owner id de l'espace affiché
+  myWorkspaceRole: WorkspaceRole; // 'owner' | 'admin' | 'editor' | 'viewer'
+
   // UI state
   toasts: Toast[];
   modal: { kind: ModalKind; payload?: any } | null;
@@ -534,6 +568,8 @@ interface State {
   bootstrap: () => Promise<void>;
   // sign out from Supabase + reset in-memory state
   signOut: () => Promise<void>;
+  /** Basculer vers un autre espace (recharge pour ré-hydrater proprement). */
+  switchWorkspace: (ownerId: string) => void;
 
   // toasts
   pushToast: (t: Omit<Toast, 'id'>) => void;
@@ -886,6 +922,10 @@ async function hydrateFromSupabase(authUserId: string, email: string, set: SetFn
       const isMemberWorkspace = activeOwner !== authUserId;
       setActiveWorkspaceOwnerId(isMemberWorkspace ? activeOwner : null);
       writeActiveWsPref(authUserId, activeOwner);
+      const workspaces = buildWorkspaces(authUserId, memberships);
+      const myWorkspaceRole: WorkspaceRole =
+        workspaces.find((w) => w.ownerId === activeOwner)?.role ?? 'owner';
+      set({ workspaces, activeWorkspaceId: activeOwner, myWorkspaceRole });
       console.info(
         `[hydrate] workspace = ${isMemberWorkspace ? `partagé (${activeOwner.slice(0, 8)})` : 'propre'} · ${memberships.length} appartenance(s)`
       );
@@ -1015,6 +1055,9 @@ const initialState = (set: SetFn, get: GetFn): State => ({
   authStatus: 'loading',
   authEmail: undefined,
   currentProfileId: undefined,
+  workspaces: [],
+  activeWorkspaceId: undefined,
+  myWorkspaceRole: 'owner',
 
   toasts: [],
   modal: null,
@@ -1155,6 +1198,9 @@ const initialState = (set: SetFn, get: GetFn): State => ({
             authStatus: 'signed_out',
             authEmail: undefined,
             currentProfileId: undefined,
+            workspaces: [],
+            activeWorkspaceId: undefined,
+            myWorkspaceRole: 'owner',
             ready: false,
             revalidating: false,
             users: [],
@@ -2990,6 +3036,16 @@ Reste sous 400 mots, ton factuel et engagé.`,
       const updated = get().expenses.find((e) => e.id === id);
       if (updated) dbPersist.put('expenses', updated);
     }
+  },
+
+  switchWorkspace: (ownerId) => {
+    const authUserId = getCurrentAuthUserId();
+    if (!authUserId || ownerId === get().activeWorkspaceId) return;
+    // Persist the choice and reload: the bootstrap re-resolves the active
+    // workspace from this preference and re-hydrates cleanly (data, realtime,
+    // profile, cache — all keyed by the new owner).
+    writeActiveWsPref(authUserId, ownerId);
+    window.location.reload();
   },
 
   signOut: async () => {
