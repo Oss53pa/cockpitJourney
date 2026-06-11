@@ -51,7 +51,7 @@ export async function inviteMember(input: {
   email: string;
   fullName?: string;
   role: WorkspaceRole;
-}): Promise<{ emailSent: boolean; link?: string }> {
+}): Promise<{ emailSent: boolean; link?: string; emailError?: string }> {
   const { data, error } = await supabase.functions.invoke('cj-workspace-invite', {
     body: {
       email: input.email,
@@ -61,7 +61,20 @@ export async function inviteMember(input: {
     },
   });
   if (error) throw error;
-  const d = (data ?? {}) as { success?: boolean; emailSent?: boolean; link?: string; error?: string };
+  const d = (data ?? {}) as {
+    success?: boolean;
+    emailSent?: boolean;
+    link?: string;
+    error?: string;
+    note?: string;
+  };
+  // Resend rejected the e-mail (no API key, domain not verified, network…)
+  // but the workspace_members row is already created server-side, so the
+  // link is valid. Surface it instead of throwing — the modal can offer
+  // copy-and-paste as a fallback.
+  if (d.success === false && d.link) {
+    return { emailSent: false, link: d.link, emailError: d.error || d.note };
+  }
   if (d.success === false) throw new Error(d.error || 'Échec de l’invitation');
   return { emailSent: !!d.emailSent, link: d.link };
 }

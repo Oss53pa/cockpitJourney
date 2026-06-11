@@ -764,7 +764,6 @@ export type ModalKind =
   | 'automation-edit'
   | 'workspace-switch'
   | 'settings'
-  | 'invite-team'
   | 'members'
   | 'share'
   | 'retroplan'

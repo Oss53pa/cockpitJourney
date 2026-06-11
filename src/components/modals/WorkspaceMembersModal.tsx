@@ -49,7 +49,7 @@ export function WorkspaceMembersModal({ onClose }: { onClose: () => void }) {
     if (!email.trim() || inviting) return;
     setInviting(true);
     try {
-      const { emailSent, link } = await inviteMember({
+      const { emailSent, link, emailError } = await inviteMember({
         email: email.trim(),
         fullName: fullName.trim() || undefined,
         role,
@@ -58,7 +58,11 @@ export function WorkspaceMembersModal({ onClose }: { onClose: () => void }) {
         pushToast({ kind: 'success', title: 'Invitation envoyée', body: email.trim() });
       } else if (link) {
         await navigator.clipboard?.writeText(link).catch(() => {});
-        pushToast({ kind: 'info', title: 'Lien copié (e-mail indisponible)', body: link });
+        pushToast({
+          kind: 'warning',
+          title: emailError ? 'E-mail non envoyé — lien copié' : 'Lien copié (e-mail indisponible)',
+          body: emailError ? `${emailError} · Partagez le lien manuellement.` : link,
+        });
       }
       setEmail('');
       setFullName('');
