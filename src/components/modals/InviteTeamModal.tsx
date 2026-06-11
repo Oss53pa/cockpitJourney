@@ -43,6 +43,17 @@ export function InviteTeamModal({ onClose }: { onClose: () => void }) {
   const [seatRole, setSeatRole] = useState<string | null>(null);
   const [access, setAccess] = useState<'checking' | 'allowed' | 'denied'>('checking');
   const canInvite = access === 'allowed';
+  // After a submit we keep the modal open if the seat was created but the
+  // e-mail couldn't be sent (RESEND_API_KEY missing, domain not verified,
+  // etc.) — the inviter needs the link to share it manually.
+  const [result, setResult] = useState<{
+    email: string;
+    url: string;
+    sent: boolean;
+    warning?: string;
+    error?: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,14 +141,54 @@ export function InviteTeamModal({ onClose }: { onClose: () => void }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
 
-      pushToast({ kind: 'success', title: 'Invitation envoyée', body: `${email} · rôle ${role}` });
-      setEmail('');
-      onClose();
+      const inviteUrl = (data.invite_url as string) || '';
+      const emailSent = data.email_sent !== false; // legacy edge functions return success without this field
+      const emailWarning = data.email_warning as string | undefined;
+      const emailError = data.email_error as string | undefined;
+
+      if (emailSent && !emailWarning && !emailError) {
+        pushToast({ kind: 'success', title: 'Invitation envoyée', body: `${email} · rôle ${role}` });
+        setEmail('');
+        onClose();
+        return;
+      }
+
+      // Seat created but e-mail didn't go out — surface the link so the
+      // inviter can share it manually (WhatsApp, perso mail, …).
+      pushToast({
+        kind: 'warning',
+        title: 'E-mail non envoyé',
+        body: 'Le compte est créé. Partagez le lien manuellement.',
+      });
+      setResult({
+        email: email.trim(),
+        url: inviteUrl,
+        sent: emailSent,
+        warning: emailWarning,
+        error: emailError,
+      });
     } catch (e) {
       pushToast({ kind: 'error', title: "Échec de l'invitation", body: (e as Error).message });
     } finally {
       setSending(false);
     }
+  };
+
+  const copyLink = async () => {
+    if (!result?.url) return;
+    try {
+      await navigator.clipboard.writeText(result.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      pushToast({ kind: 'error', title: 'Impossible de copier' });
+    }
+  };
+
+  const resetForNext = () => {
+    setResult(null);
+    setEmail('');
+    setCopied(false);
   };
 
   return (
@@ -148,21 +199,63 @@ export function InviteTeamModal({ onClose }: { onClose: () => void }) {
       description="Envoyez un lien magique par email · expire sous 7 jours"
       size="md"
       footer={
-        <>
-          <button onClick={onClose} className="btn-ghost text-sm px-3 py-1.5">
-            Fermer
-          </button>
-          <button
-            disabled={!email.trim() || sending || !canInvite}
-            onClick={submit}
-            className="btn-primary text-sm px-3.5 py-1.5"
-          >
-            {sending ? 'Envoi…' : "Envoyer l'invitation"}
-          </button>
-        </>
+        result ? (
+          <>
+            <button onClick={onClose} className="btn-ghost text-sm px-3 py-1.5">
+              Terminer
+            </button>
+            <button onClick={resetForNext} className="btn-primary text-sm px-3.5 py-1.5">
+              Nouvelle invitation
+            </button>
+          </>
+        ) : (
+          <>
+            <button onClick={onClose} className="btn-ghost text-sm px-3 py-1.5">
+              Fermer
+            </button>
+            <button
+              disabled={!email.trim() || sending || !canInvite}
+              onClick={submit}
+              className="btn-primary text-sm px-3.5 py-1.5"
+            >
+              {sending ? 'Envoi…' : "Envoyer l'invitation"}
+            </button>
+          </>
+        )
       }
     >
-      {access === 'checking' ? (
+      {result ? (
+        <div className="space-y-3">
+          <div className="text-sm text-atlas-fg-2">
+            Le compte de <strong>{result.email}</strong> est créé, mais l'e-mail d'invitation n'a pas pu
+            partir.
+          </div>
+          {result.error && (
+            <div className="text-2xs text-signal-red bg-signal-red/5 border border-signal-red/20 rounded-md px-3 py-2 font-mono break-words">
+              {result.error}
+            </div>
+          )}
+          {result.warning && !result.error && (
+            <div className="text-2xs text-atlas-fg-3 bg-atlas-amber/5 border border-atlas-amber/20 rounded-md px-3 py-2">
+              {result.warning}
+            </div>
+          )}
+          <div>
+            <FieldLabel hint="copiez et partagez via WhatsApp, e-mail perso, etc.">
+              Lien à partager
+            </FieldLabel>
+            <div className="flex gap-2">
+              <TextInput value={result.url} readOnly onFocus={(e) => e.currentTarget.select()} />
+              <button onClick={copyLink} className="btn-secondary text-sm px-3 py-1.5 shrink-0" type="button">
+                {copied ? 'Copié' : 'Copier'}
+              </button>
+            </div>
+            <p className="text-2xs text-atlas-fg-3 mt-1.5">
+              Lien valide 72 h. Toute personne avec ce lien pourra rejoindre le workspace.
+            </p>
+          </div>
+        </div>
+      ) : access === 'checking' ? (
         <div className="text-sm text-atlas-fg-3 py-6 text-center">Vérification des droits…</div>
       ) : !canInvite ? (
         <div className="text-sm text-atlas-fg-2 py-4">
