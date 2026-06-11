@@ -266,7 +266,7 @@ export function TopBar({ breadcrumb, onOpenCommand, onToggleSidebar }: Props) {
                 icon={Users}
                 onClick={() => {
                   close();
-                  openModal('invite-team');
+                  openModal('members');
                 }}
               >
                 Inviter quelqu'un

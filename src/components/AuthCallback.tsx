@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { consumePostLoginTarget, safe as safeRedirect } from '../lib/authRedirect';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -52,7 +53,12 @@ export function AuthCallback() {
       if (cancelled) return;
       cancelled = true;
       if (timeoutId) clearTimeout(timeoutId);
-      navigate('/dashboard', { replace: true });
+      // Email confirmation often opens a new tab → sessionStorage is empty,
+      // so signUpWithPassword forwards the original target as ?next=… on the
+      // confirmation URL. Prefer that, then fall back to sessionStorage.
+      const next = params.get('next');
+      const target = next ? safeRedirect(next) : consumePostLoginTarget();
+      navigate(target, { replace: true });
     };
 
     const fail = (message: string) => {

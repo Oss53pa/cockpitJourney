@@ -8,7 +8,6 @@ import { SettingsModal } from './SettingsModal';
 import { AutomationFormModal } from './AutomationFormModal';
 import { BriefModal } from './BriefModal';
 import { ShortcutsModal } from './ShortcutsModal';
-import { InviteTeamModal } from './InviteTeamModal';
 import { WorkspaceMembersModal } from './WorkspaceMembersModal';
 import { ShareModal } from '../share/ShareModal';
 import { RetroPlanModal } from '../retro/RetroPlanModal';
@@ -65,8 +64,6 @@ export function ModalRoot() {
       return <AutomationFormModal initial={modal.payload} onClose={close} />;
     case 'settings':
       return <SettingsModal onClose={close} />;
-    case 'invite-team':
-      return <InviteTeamModal onClose={close} />;
     case 'members':
       return <WorkspaceMembersModal onClose={close} />;
     case 'share':

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, Loader2, ArrowRight, Lock, User, CheckCircle2 } from 'lucide-react';
 import { signUpWithPassword, SUPABASE_CONFIGURED } from '../../lib/supabase';
+import { peekPostLoginTarget } from '../../lib/authRedirect';
 import { AuthLayout, AuthErrorBanner, AuthSuccessBanner } from '../auth/AuthLayout';
 
 function humanizeAuthError(err: unknown): string {
@@ -49,7 +50,15 @@ export function SignupView() {
     setLoading(true);
     setError(null);
     try {
-      await signUpWithPassword({ email, password, fullName: fullName.trim() || undefined });
+      await signUpWithPassword({
+        email,
+        password,
+        fullName: fullName.trim() || undefined,
+        // If the user landed here from /workspace/accept?token=…, carry that
+        // target through the email confirmation so the new tab opened by the
+        // mail client still lands on the acceptance page.
+        redirectAfter: peekPostLoginTarget() ?? undefined,
+      });
       setDone(true);
     } catch (err) {
       setError(humanizeAuthError(err));

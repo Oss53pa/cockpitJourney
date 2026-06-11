@@ -40,6 +40,7 @@ import { Toaster } from './components/ui/Toaster';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useApp } from './stores/appStore';
 import { cn } from './lib/utils';
+import { consumePostLoginTarget, setPostLoginTarget } from './lib/authRedirect';
 import type { Task, ViewKey } from './types';
 
 /**
@@ -640,7 +641,7 @@ function App() {
           path="/signup"
           element={
             authStatus === 'signed_in' ? (
-              <Navigate to="/dashboard" replace />
+              <Navigate to={consumePostLoginTarget()} replace />
             ) : (
               <ErrorBoundary>
                 <SignupView />
@@ -703,25 +704,11 @@ function SignedOutRedirect() {
   useEffect(() => {
     const target = window.location.pathname + window.location.search;
     if (target !== '/login' && target !== '/') {
-      sessionStorage.setItem('cj-post-login-redirect', target);
+      setPostLoginTarget(target);
     }
     navigate('/login', { replace: true });
   }, [navigate]);
   return null;
-}
-
-/** Read-then-clear the post-login redirect target. Defaults to /dashboard. */
-function consumePostLoginTarget(): string {
-  try {
-    const target = sessionStorage.getItem('cj-post-login-redirect');
-    if (target) {
-      sessionStorage.removeItem('cj-post-login-redirect');
-      return target;
-    }
-  } catch {
-    /* sessionStorage may be unavailable */
-  }
-  return '/dashboard';
 }
 
 export default App;

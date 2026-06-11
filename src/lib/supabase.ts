@@ -185,12 +185,25 @@ export async function signInWithPassword(email: string, password: string) {
  * Tags the request with `data: { app: APP_ID }` so the Atlas Studio
  * shared email template renders the CockpitJourney brand block.
  */
-export async function signUpWithPassword(opts: { email: string; password: string; fullName?: string }) {
+export async function signUpWithPassword(opts: {
+  email: string;
+  password: string;
+  fullName?: string;
+  /** Where to land after email confirmation, e.g. `/workspace/accept?token=…`. */
+  redirectAfter?: string;
+}) {
+  let emailRedirectTo: string | undefined;
+  if (typeof window !== 'undefined') {
+    emailRedirectTo = `${window.location.origin}/auth`;
+    if (opts.redirectAfter && opts.redirectAfter.startsWith('/')) {
+      emailRedirectTo += `?next=${encodeURIComponent(opts.redirectAfter)}`;
+    }
+  }
   const { data, error } = await supabase.auth.signUp({
     email: opts.email.trim().toLowerCase(),
     password: opts.password,
     options: {
-      emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth` : undefined,
+      emailRedirectTo,
       data: {
         app: APP_ID,
         app_tagline: APP_TAGLINE,

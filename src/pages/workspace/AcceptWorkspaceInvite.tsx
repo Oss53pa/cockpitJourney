@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { acceptWorkspaceInvite } from '../../lib/workspace';
+import { setPostLoginTarget } from '../../lib/authRedirect';
 
 /**
  * Route publique /workspace/accept?token=… — l'invité consomme le lien.
@@ -27,15 +28,8 @@ export default function AcceptWorkspaceInvite() {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session) {
-        // Revenir ici après connexion.
-        try {
-          sessionStorage.setItem(
-            'cj-post-login-redirect',
-            `/workspace/accept?token=${encodeURIComponent(token)}`
-          );
-        } catch {
-          /* ignore */
-        }
+        // Revenir ici après connexion (ou inscription — voir SignupView).
+        setPostLoginTarget(`/workspace/accept?token=${encodeURIComponent(token)}`);
         window.location.href = '/login';
         return;
       }
