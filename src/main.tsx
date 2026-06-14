@@ -4,11 +4,14 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App.tsx';
 import './index.css';
 import { initMonitoring, captureException } from './lib/monitoring.ts';
+import { initAtlasErrorMonitor } from './lib/atlasErrorMonitor';
 
 // Initialize Sentry as early as possible so React render errors are
 // caught. The init is async (dynamic import of @sentry/react) so we
 // kick it off but don't block the app — render starts immediately.
 void initMonitoring();
+// + remontée vers la console Atlas Studio (Error Monitor + Bug-Triage ASVC).
+initAtlasErrorMonitor('cockpit-journey');
 
 // Global error capture — forward to Sentry (with our noise filters)
 // and keep the console log for local dev visibility.
