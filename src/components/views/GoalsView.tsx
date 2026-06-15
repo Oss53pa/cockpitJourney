@@ -33,6 +33,7 @@ export function GoalsView() {
   const createTask = useApp((s) => s.createTask);
 
   const workspaceGoals = goals.filter((g) => g.level === 'workspace');
+  const teamGoals = goals.filter((g) => g.level === 'team');
   const personalGoals = goals.filter((g) => g.level === 'personal');
   const avgProgress = goals.length
     ? Math.round(
@@ -140,10 +141,10 @@ export function GoalsView() {
         {workspaceGoals.map((g) => (
           <GoalTree goal={g} key={g.id} />
         ))}
-        {workspaceGoals.length === 0 && (
+        {workspaceGoals.length === 0 && teamGoals.length === 0 && personalGoals.length === 0 && (
           <div className="panel p-10 text-center">
             <Trophy className="w-8 h-8 mx-auto text-atlas-fg-3 mb-2" />
-            <h3 className="text-sm font-medium text-atlas-fg-1">Aucun goal d'entreprise</h3>
+            <h3 className="text-sm font-medium text-atlas-fg-1">Aucun goal</h3>
             <p className="text-2xs text-atlas-fg-3 mt-1">
               Créez le premier objectif stratégique pour votre workspace.
             </p>
@@ -157,9 +158,24 @@ export function GoalsView() {
         )}
       </div>
 
+      {teamGoals.length > 0 && (
+        <div className="mt-10">
+          <h2 className="font-display text-xl font-medium mb-4">
+            Goals d'équipe <span className="text-atlas-fg-3 text-base">· {teamGoals.length}</span>
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {teamGoals.map((g) => (
+              <GoalCard goal={g} key={g.id} compact />
+            ))}
+          </div>
+        </div>
+      )}
+
       {personalGoals.length > 0 && (
         <div className="mt-10">
-          <h2 className="font-display text-xl font-medium mb-4">Goals personnels</h2>
+          <h2 className="font-display text-xl font-medium mb-4">
+            Goals personnels <span className="text-atlas-fg-3 text-base">· {personalGoals.length}</span>
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {personalGoals.map((g) => (
               <GoalCard goal={g} key={g.id} compact />
