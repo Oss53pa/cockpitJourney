@@ -258,11 +258,29 @@ function GoalCard({
   const deleteGoal = useApp((s) => s.deleteGoal);
   const openModal = useApp((s) => s.openModal);
   const allTasks = useApp((s) => s.tasks);
+  const allSubtasks = useApp((s) => s.subtasks);
   const [showTasks, setShowTasks] = useState(false);
 
   const contributingTasks = allTasks.filter((t) => t.goalId === goal.id);
   const doneCount = contributingTasks.filter((t) => t.status === 'done').length;
-  const execPct = contributingTasks.length ? Math.round((doneCount / contributingTasks.length) * 100) : 0;
+
+  // Sous-tâches contributives : celles qui pointent DIRECTEMENT le goal
+  // (subtask.goalId) PLUS celles dont la tâche parente pointe le goal.
+  // Dédupe par id pour éviter de compter deux fois une sous-tâche dont
+  // parent ET sous-tâche ont tous deux le goalId.
+  const contributingTaskIds = new Set(contributingTasks.map((t) => t.id));
+  const contribSubtasks = allSubtasks.filter(
+    (s) => s.goalId === goal.id || (s.taskId && contributingTaskIds.has(s.taskId))
+  );
+  const doneSubCount = contribSubtasks.filter((s) => s.done).length;
+
+  // Total "actions" = tâches sans sous-tâche comptée + sous-tâches.
+  // Sert au % d'exécution affiché à droite de la barre.
+  const subtaskParentIds = new Set(contribSubtasks.map((s) => s.taskId));
+  const tasksCountedAlone = contributingTasks.filter((t) => !subtaskParentIds.has(t.id));
+  const totalActions = tasksCountedAlone.length + contribSubtasks.length;
+  const doneActions = tasksCountedAlone.filter((t) => t.status === 'done').length + doneSubCount;
+  const execPct = totalActions ? Math.round((doneActions / totalActions) * 100) : 0;
 
   const pct = (goal.currentValue / Math.max(1, goal.targetValue)) * 100;
   const formatVal = (v: number) =>
@@ -418,18 +436,27 @@ function GoalCard({
             </div>
           </div>
 
-          {contributingTasks.length > 0 && (
+          {(contributingTasks.length > 0 || contribSubtasks.length > 0) && (
             <div className="mt-4 pt-3 border-t border-black/[0.05]">
               <button
                 onClick={() => setShowTasks((v) => !v)}
                 className="w-full flex items-center justify-between gap-3"
               >
-                <span className="inline-flex items-center gap-1.5 text-2xs text-atlas-fg-3">
+                <span className="inline-flex items-center gap-1.5 text-2xs text-atlas-fg-3 flex-wrap">
                   <ListChecks className="w-3.5 h-3.5" />
-                  Tâches contributrices
+                  Tâches
                   <span className="font-mono font-medium text-atlas-fg-1">
                     {doneCount}/{contributingTasks.length}
                   </span>
+                  {contribSubtasks.length > 0 && (
+                    <>
+                      <span className="text-atlas-fg-3">·</span>
+                      <span>Sous-tâches</span>
+                      <span className="font-mono font-medium text-atlas-fg-1">
+                        {doneSubCount}/{contribSubtasks.length}
+                      </span>
+                    </>
+                  )}
                 </span>
                 <span className="inline-flex items-center gap-2">
                   <span className="w-20 sm:w-28">
