@@ -22,9 +22,9 @@ import { ProgressBar } from '../ui/StatusBadge';
 import { HealthDot } from '../ui/HealthDot';
 import { Menu, MenuItem, MenuSeparator, MenuLabel } from '../ui/Menu';
 import { cn, formatDate, formatNumber } from '../../lib/utils';
-import type { Goal } from '../../types';
+import type { Goal, ViewKey } from '../../types';
 
-export function GoalsView() {
+export function GoalsView({ onNavigate }: { onNavigate?: (view: ViewKey, projectId?: string) => void }) {
   const goals = useApp((s) => s.goals);
   const openModal = useApp((s) => s.openModal);
   const pushToast = useApp((s) => s.pushToast);
@@ -165,7 +165,7 @@ export function GoalsView() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {teamGoals.map((g) => (
-              <GoalCard goal={g} key={g.id} compact />
+              <GoalCard goal={g} key={g.id} compact onNavigate={onNavigate} />
             ))}
           </div>
         </div>
@@ -178,7 +178,7 @@ export function GoalsView() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {personalGoals.map((g) => (
-              <GoalCard goal={g} key={g.id} compact />
+              <GoalCard goal={g} key={g.id} compact onNavigate={onNavigate} />
             ))}
           </div>
         </div>
@@ -245,12 +245,14 @@ function GoalCard({
   compact,
   expanded,
   onToggleExpand,
+  onNavigate,
 }: {
   goal: Goal;
   sub?: boolean;
   compact?: boolean;
   expanded?: boolean;
   onToggleExpand?: () => void;
+  onNavigate?: (view: ViewKey, projectId?: string) => void;
 }) {
   const owner = useApp((s) => s.users.find((u) => u.id === goal.ownerId) || s.users[0]);
   const updateGoal = useApp((s) => s.updateGoal);
@@ -258,11 +260,43 @@ function GoalCard({
   const deleteGoal = useApp((s) => s.deleteGoal);
   const openModal = useApp((s) => s.openModal);
   const allTasks = useApp((s) => s.tasks);
+  const allSubtasks = useApp((s) => s.subtasks);
+  const allProjects = useApp((s) => s.projects);
+  const toggleTaskDone = useApp((s) => s.toggleTaskDone);
+  const toggleSubtask = useApp((s) => s.toggleSubtask);
   const [showTasks, setShowTasks] = useState(false);
 
   const contributingTasks = allTasks.filter((t) => t.goalId === goal.id);
   const doneCount = contributingTasks.filter((t) => t.status === 'done').length;
-  const execPct = contributingTasks.length ? Math.round((doneCount / contributingTasks.length) * 100) : 0;
+
+  // Sous-tâches contributives : directes (subtask.goalId) ou héritées
+  // (la tâche parente pointe le goal). Dédupliquées.
+  const contribTaskIds = new Set(contributingTasks.map((t) => t.id));
+  const contribSubtasks = allSubtasks.filter(
+    (s) => s.goalId === goal.id || (s.taskId && contribTaskIds.has(s.taskId))
+  );
+  const doneSubCount = contribSubtasks.filter((s) => s.done).length;
+
+  // % d'exécution combiné — sans double-comptage tâche-parente + enfants.
+  const subtaskParentIds = new Set(contribSubtasks.map((s) => s.taskId));
+  const tasksCountedAlone = contributingTasks.filter((t) => !subtaskParentIds.has(t.id));
+  const totalActions = tasksCountedAlone.length + contribSubtasks.length;
+  const doneActions = tasksCountedAlone.filter((t) => t.status === 'done').length + doneSubCount;
+  const execPct = totalActions ? Math.round((doneActions / totalActions) * 100) : 0;
+
+  // Projets distincts touchés par les tâches liées.
+  const linkedProjectIds = Array.from(new Set(contributingTasks.map((t) => t.projectId)));
+  const linkedProjects = linkedProjectIds
+    .map((pid) => allProjects.find((p) => p.id === pid))
+    .filter((p): p is NonNullable<typeof p> => Boolean(p));
+
+  const subtasksByTask = new Map<string, typeof contribSubtasks>();
+  for (const s of contribSubtasks) {
+    if (!s.taskId) continue;
+    const arr = subtasksByTask.get(s.taskId) ?? [];
+    arr.push(s);
+    subtasksByTask.set(s.taskId, arr);
+  }
 
   const pct = (goal.currentValue / Math.max(1, goal.targetValue)) * 100;
   const formatVal = (v: number) =>
@@ -418,18 +452,27 @@ function GoalCard({
             </div>
           </div>
 
-          {contributingTasks.length > 0 && (
+          {(contributingTasks.length > 0 || contribSubtasks.length > 0) && (
             <div className="mt-4 pt-3 border-t border-black/[0.05]">
               <button
                 onClick={() => setShowTasks((v) => !v)}
                 className="w-full flex items-center justify-between gap-3"
               >
-                <span className="inline-flex items-center gap-1.5 text-2xs text-atlas-fg-3">
+                <span className="inline-flex items-center gap-1.5 text-2xs text-atlas-fg-3 flex-wrap">
                   <ListChecks className="w-3.5 h-3.5" />
-                  Tâches contributrices
+                  Tâches
                   <span className="font-mono font-medium text-atlas-fg-1">
                     {doneCount}/{contributingTasks.length}
                   </span>
+                  {contribSubtasks.length > 0 && (
+                    <>
+                      <span className="text-atlas-fg-3">·</span>
+                      <span>Sous-tâches</span>
+                      <span className="font-mono font-medium text-atlas-fg-1">
+                        {doneSubCount}/{contribSubtasks.length}
+                      </span>
+                    </>
+                  )}
                 </span>
                 <span className="inline-flex items-center gap-2">
                   <span className="w-20 sm:w-28">
@@ -444,27 +487,97 @@ function GoalCard({
                 </span>
               </button>
               {showTasks && (
-                <ul className="mt-2.5 space-y-1.5">
-                  {contributingTasks.map((t) => (
-                    <li key={t.id} className="flex items-center gap-2 text-2xs">
-                      {t.status === 'done' ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-signal-green shrink-0" />
-                      ) : (
-                        <Circle className="w-3.5 h-3.5 text-atlas-fg-3 shrink-0" />
-                      )}
-                      <span
-                        className={cn(
-                          'truncate',
-                          t.status === 'done' ? 'text-atlas-fg-3 line-through' : 'text-atlas-fg-2'
-                        )}
-                      >
-                        {t.title}
+                <div className="mt-3 space-y-3">
+                  {linkedProjects.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 text-2xs">
+                      <span className="text-atlas-fg-3">
+                        Projet{linkedProjects.length > 1 ? 's' : ''} lié{linkedProjects.length > 1 ? 's' : ''}{' '}
+                        :
                       </span>
-                    </li>
-                  ))}
-                </ul>
+                      {linkedProjects.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => onNavigate?.('project', p.id)}
+                          className="chip text-2xs px-2 py-0.5 border border-atlas-line bg-white hover:border-atlas-sage-deep/40 hover:bg-atlas-sage/5 inline-flex items-center gap-1"
+                          title={`Ouvrir le projet ${p.name}`}
+                        >
+                          <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
+                          {p.name}
+                          <ChevronRight className="w-3 h-3 text-atlas-fg-3" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <ul className="space-y-2">
+                    {contributingTasks.map((t) => {
+                      const subs = subtasksByTask.get(t.id) ?? [];
+                      const proj = allProjects.find((p) => p.id === t.projectId);
+                      return (
+                        <li key={t.id}>
+                          <div className="flex items-start gap-2 text-2xs group">
+                            <button
+                              onClick={() => toggleTaskDone(t.id)}
+                              className="shrink-0 mt-0.5"
+                              title={t.status === 'done' ? 'Marquer comme à faire' : 'Marquer comme fait'}
+                            >
+                              {t.status === 'done' ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-signal-green hover:scale-110 transition-transform" />
+                              ) : (
+                                <Circle className="w-3.5 h-3.5 text-atlas-fg-3 hover:text-atlas-sage-deep hover:scale-110 transition-transform" />
+                              )}
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <button
+                                onClick={() => openModal('task-edit', t)}
+                                className="text-left hover:text-atlas-sage-deep transition-colors"
+                                title="Ouvrir la tâche"
+                              >
+                                <span
+                                  className={cn(
+                                    'block truncate',
+                                    t.status === 'done' ? 'text-atlas-fg-3 line-through' : 'text-atlas-fg-1'
+                                  )}
+                                >
+                                  {t.title}
+                                </span>
+                                {proj && <span className="text-[10px] text-atlas-fg-3">{proj.name}</span>}
+                              </button>
+                            </div>
+                          </div>
+                          {subs.length > 0 && (
+                            <ul className="ml-6 mt-1.5 space-y-1">
+                              {subs.map((s) => (
+                                <li key={s.id} className="flex items-center gap-2 text-2xs">
+                                  <button
+                                    onClick={() => toggleSubtask(s.id)}
+                                    className="shrink-0"
+                                    title={s.done ? 'Décocher' : 'Cocher'}
+                                  >
+                                    {s.done ? (
+                                      <CheckCircle2 className="w-3 h-3 text-signal-green hover:scale-110 transition-transform" />
+                                    ) : (
+                                      <Circle className="w-3 h-3 text-atlas-fg-3 hover:text-atlas-sage-deep hover:scale-110 transition-transform" />
+                                    )}
+                                  </button>
+                                  <span
+                                    className={cn(
+                                      'truncate',
+                                      s.done ? 'text-atlas-fg-3 line-through' : 'text-atlas-fg-2'
+                                    )}
+                                  >
+                                    {s.title}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
               )}
-              {(goal.metricType === 'percentage' || goal.metricType === 'boolean') && (
+              {goal.metricType !== 'currency' && (
                 <p className="mt-2 text-[10px] text-atlas-fg-3 italic">
                   Progression auto-pilotée par ces tâches.
                 </p>

@@ -377,7 +377,7 @@ function CockpitShell() {
                 <Suspense fallback={<ViewSkeleton />}>
                   {view === 'today' && <TodayView onOpenTask={setOpenTask} onNavigate={onNavigate} />}
                   {view === 'inbox' && <InboxView onOpenTask={setOpenTask} />}
-                  {view === 'goals' && <GoalsView />}
+                  {view === 'goals' && <GoalsView onNavigate={onNavigate} />}
                   {view === 'dashboards' && <DashboardView />}
                   {view === 'focus' && <FocusView onExit={() => setView('today')} />}
                   {view === 'automations' && <AutomationsView />}
