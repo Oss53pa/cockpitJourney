@@ -30,6 +30,7 @@ import {
   ArrowDown,
 } from 'lucide-react';
 import { useApp, type Report, type ReportKind, type AttentionPoint } from '../../stores/appStore';
+import type { PeriodAnalytics } from '../../lib/reportAnalytics';
 import type { Task } from '../../types';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../ui/Menu';
 import { Modal } from '../ui/Modal';
@@ -768,15 +769,18 @@ function ReportViewerModal({
   const author = useApp((s) => s.users.find((u) => u.id === report?.authorId) || s.users[0]);
   const tasks = useApp((s) => s.tasks);
   const generateNarrative = useApp((s) => s.generateReportNarrative);
-  const [tab, setTab] = useState<'overview' | 'projects' | 'attention' | 'workload' | 'goals' | 'retards'>(
-    'overview'
-  );
+  const [tab, setTab] = useState<
+    'overview' | 'analytics' | 'projects' | 'attention' | 'workload' | 'goals' | 'retards'
+  >('overview');
   const [generating, setGenerating] = useState(false);
 
   if (!report) return null;
 
   const tabs = [
     { key: 'overview' as const, label: 'Synthèse', icon: BarChart3 },
+    // Analytics tab only shows up on reports generated with the enriched
+    // engine (juin 2026+) — older reports don't have the analytics field.
+    ...(report.analytics ? [{ key: 'analytics' as const, label: 'Analytics', icon: TrendingUp }] : []),
     { key: 'projects' as const, label: 'Projets', icon: Activity, count: (report.projects || []).length },
     {
       key: 'attention' as const,
@@ -964,6 +968,8 @@ function ReportViewerModal({
             </div>
           </>
         )}
+
+        {tab === 'analytics' && report.analytics && <AnalyticsTab analytics={report.analytics} />}
 
         {tab === 'projects' && (
           <div className="space-y-3">
@@ -1498,5 +1504,279 @@ function SectionTitle({ icon: Icon, children }: { icon: any; children: React.Rea
     <h3 className="inline-flex items-center gap-2 text-2xs uppercase tracking-[0.18em] font-medium text-atlas-fg-3 mb-3">
       <Icon className="w-3.5 h-3.5" /> {children}
     </h3>
+  );
+}
+
+/* ───────────────────── Analytics tab ─────────────────────
+ *
+ * Surfaces the period-scoped analytics : throughput sparkline, status /
+ * priority distributions, top tags, period-over-period deltas. All driven
+ * by `report.analytics` (set by generateReport — buildPeriodAnalytics).
+ */
+
+const STATUS_LABEL: Record<string, string> = {
+  todo: 'À faire',
+  in_progress: 'En cours',
+  in_review: 'En revue',
+  blocked: 'Bloqué',
+  done: 'Livré',
+};
+const STATUS_COLOR: Record<string, string> = {
+  todo: 'bg-atlas-fg-3/30',
+  in_progress: 'bg-signal-blue',
+  in_review: 'bg-signal-violet',
+  blocked: 'bg-signal-red',
+  done: 'bg-signal-green',
+};
+const PRIO_LABEL: Record<string, string> = {
+  1: 'P1 — Critique',
+  2: 'P2 — Haute',
+  3: 'P3 — Moyenne',
+  4: 'P4 — Basse',
+};
+const PRIO_COLOR: Record<string, string> = {
+  1: 'bg-signal-red',
+  2: 'bg-signal-yellow',
+  3: 'bg-signal-blue',
+  4: 'bg-atlas-fg-3/40',
+};
+
+function AnalyticsTab({ analytics }: { analytics: PeriodAnalytics }) {
+  const cur = analytics.current;
+  const prev = analytics.previous;
+
+  const statusTotal = Object.values(analytics.statusDistribution).reduce((a, b) => a + b, 0);
+  const prioTotal = Object.values(analytics.priorityDistribution).reduce((a, b) => a + b, 0);
+  const maxDaily = Math.max(1, ...analytics.dailyThroughput.map((d) => Math.max(d.completed, d.created)));
+  const maxTagCount = Math.max(1, ...analytics.topTags.map((t) => t.count));
+
+  return (
+    <div className="space-y-6">
+      {/* Period-over-period comparison cards */}
+      <div>
+        <SectionTitle icon={TrendingUp}>Période vs précédente</SectionTitle>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <ComparisonCard label="Livrées" current={cur.completed} previous={prev.completed} unit="" />
+          <ComparisonCard label="Créées" current={cur.created} previous={prev.created} unit="" />
+          <ComparisonCard
+            label="Retard période"
+            current={cur.overdueInPeriod}
+            previous={prev.overdueInPeriod}
+            unit=""
+            inverted
+          />
+          <ComparisonCard label="Temps réel" current={cur.actualHours} previous={prev.actualHours} unit="h" />
+        </div>
+      </div>
+
+      {/* Daily throughput sparkline */}
+      <div>
+        <SectionTitle icon={Activity}>Cadence quotidienne · livrées (vert) vs créées (gris)</SectionTitle>
+        <div className="panel p-4">
+          <div className="flex items-end gap-0.5 h-24">
+            {analytics.dailyThroughput.map((d) => {
+              const hDone = (d.completed / maxDaily) * 100;
+              const hCreated = (d.created / maxDaily) * 100;
+              return (
+                <div
+                  key={d.date}
+                  className="flex-1 flex flex-col justify-end gap-px"
+                  title={`${d.date} · ${d.completed} livrées · ${d.created} créées`}
+                >
+                  <div
+                    className="w-full bg-atlas-fg-3/30 rounded-sm"
+                    style={{ height: `${hCreated}%`, minHeight: hCreated > 0 ? '2px' : 0 }}
+                  />
+                  <div
+                    className="w-full bg-signal-green rounded-sm"
+                    style={{ height: `${hDone}%`, minHeight: hDone > 0 ? '2px' : 0 }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between text-2xs text-atlas-fg-3 mt-2 tabular-nums">
+            <span>{analytics.dailyThroughput[0]?.date.slice(5) ?? '—'}</span>
+            <span>
+              Σ livrées : <strong className="text-atlas-fg-1">{cur.completed}</strong> · Σ créées :{' '}
+              <strong className="text-atlas-fg-1">{cur.created}</strong>
+            </span>
+            <span>{analytics.dailyThroughput.at(-1)?.date.slice(5) ?? '—'}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Distributions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <SectionTitle icon={BarChart3}>Statut des tâches ouvertes</SectionTitle>
+          <div className="panel p-4 space-y-2">
+            {(['todo', 'in_progress', 'in_review', 'blocked'] as const).map((k) => {
+              const n = analytics.statusDistribution[k];
+              const pct = statusTotal > 0 ? (n / statusTotal) * 100 : 0;
+              return (
+                <div key={k}>
+                  <div className="flex items-center justify-between text-2xs mb-1">
+                    <span className="text-atlas-fg-2">{STATUS_LABEL[k]}</span>
+                    <span className="tabular-nums text-atlas-fg-3">
+                      {n} · {Math.round(pct)}%
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-black/[0.04] rounded-full overflow-hidden">
+                    <div className={cn('h-full', STATUS_COLOR[k])} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+            <div className="text-2xs text-atlas-fg-3 pt-2 border-t border-atlas-line/50 mt-2">
+              Total ouvert : <strong className="text-atlas-fg-1 tabular-nums">{statusTotal}</strong> · Livrées
+              (lifetime) : {analytics.statusDistribution.done}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <SectionTitle icon={AlertTriangle}>Priorité des tâches ouvertes</SectionTitle>
+          <div className="panel p-4 space-y-2">
+            {([1, 2, 3, 4] as const).map((p) => {
+              const n = analytics.priorityDistribution[p];
+              const pct = prioTotal > 0 ? (n / prioTotal) * 100 : 0;
+              return (
+                <div key={p}>
+                  <div className="flex items-center justify-between text-2xs mb-1">
+                    <span className="text-atlas-fg-2">{PRIO_LABEL[p]}</span>
+                    <span className="tabular-nums text-atlas-fg-3">
+                      {n} · {Math.round(pct)}%
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-black/[0.04] rounded-full overflow-hidden">
+                    <div className={cn('h-full', PRIO_COLOR[p])} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Time analysis */}
+      <div>
+        <SectionTitle icon={Calendar}>Temps & cycle</SectionTitle>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="panel p-4">
+            <div className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">
+              Respect des délais
+            </div>
+            <div className="font-display text-2xl font-medium text-atlas-fg-1 mt-1 tabular-nums">
+              {cur.completed > 0 ? Math.round((cur.completedOnTime / cur.completed) * 100) + '%' : '—'}
+            </div>
+            <div className="text-2xs text-atlas-fg-3 mt-1">
+              {cur.completedOnTime}/{cur.completed} tâches livrées dans les temps
+            </div>
+          </div>
+          <div className="panel p-4">
+            <div className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">Cycle moyen</div>
+            <div className="font-display text-2xl font-medium text-atlas-fg-1 mt-1 tabular-nums">
+              {cur.avgCycleHours === null
+                ? '—'
+                : cur.avgCycleHours < 24
+                  ? `${cur.avgCycleHours} h`
+                  : `${Math.round(cur.avgCycleHours / 24)} j`}
+            </div>
+            <div className="text-2xs text-atlas-fg-3 mt-1">Création → livraison</div>
+          </div>
+          <div className="panel p-4">
+            <div className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">
+              Réel vs estimé
+            </div>
+            <div className="font-display text-2xl font-medium text-atlas-fg-1 mt-1 tabular-nums">
+              {cur.estimatedHours > 0
+                ? `${cur.actualHours} / ${cur.estimatedHours} h`
+                : `${cur.actualHours} h`}
+            </div>
+            <div className="text-2xs text-atlas-fg-3 mt-1">
+              {cur.estimatedHours > 0
+                ? `${Math.round((cur.actualHours / cur.estimatedHours) * 100)}% du budget consommé`
+                : 'Aucune estimation renseignée'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Top tags */}
+      {analytics.topTags.length > 0 && (
+        <div>
+          <SectionTitle icon={Award}>Top tags de la période</SectionTitle>
+          <div className="panel p-4">
+            <div className="space-y-1.5">
+              {analytics.topTags.map((t) => (
+                <div key={t.tag} className="flex items-center gap-3">
+                  <div className="w-32 text-2xs text-atlas-fg-2 truncate">{t.tag}</div>
+                  <div className="flex-1 h-2 bg-black/[0.04] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-atlas-amber"
+                      style={{ width: `${(t.count / maxTagCount) * 100}%` }}
+                    />
+                  </div>
+                  <div className="w-8 text-right text-2xs tabular-nums text-atlas-fg-3">{t.count}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ComparisonCard({
+  label,
+  current,
+  previous,
+  unit,
+  inverted = false,
+}: {
+  label: string;
+  current: number;
+  previous: number;
+  unit: string;
+  /** If true, a smaller value is "good" (e.g. retards) and the arrow flips colours. */
+  inverted?: boolean;
+}) {
+  const delta = current - previous;
+  const pct = previous > 0 ? Math.round((delta / previous) * 100) : null;
+  const goodDirection = inverted ? delta < 0 : delta > 0;
+  return (
+    <div className="panel p-4">
+      <div className="text-2xs uppercase tracking-wider text-atlas-fg-3 font-medium">{label}</div>
+      <div className="flex items-baseline gap-2 mt-1">
+        <span className="font-display text-2xl font-medium text-atlas-fg-1 tabular-nums">
+          {current}
+          {unit && <span className="text-base ml-0.5">{unit}</span>}
+        </span>
+        {pct !== null ? (
+          <span
+            className={cn(
+              'text-2xs font-medium inline-flex items-center gap-0.5',
+              delta === 0 ? 'text-atlas-fg-3' : goodDirection ? 'text-signal-green' : 'text-signal-red'
+            )}
+          >
+            {delta > 0 ? (
+              <TrendingUp className="w-2.5 h-2.5" />
+            ) : delta < 0 ? (
+              <TrendingDown className="w-2.5 h-2.5" />
+            ) : null}
+            {delta > 0 ? '+' : ''}
+            {pct}%
+          </span>
+        ) : previous === 0 && current > 0 ? (
+          <span className="text-2xs font-medium text-signal-green">Nouveau</span>
+        ) : null}
+      </div>
+      <div className="text-2xs text-atlas-fg-3 mt-1 tabular-nums">
+        Période précédente : {previous}
+        {unit}
+      </div>
+    </div>
   );
 }

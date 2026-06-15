@@ -16,6 +16,7 @@ import {
   writeSnapshotCache,
   clearSnapshotCache,
 } from '../lib/snapshotCache';
+import { buildPeriodAnalytics, type PeriodAnalytics } from '../lib/reportAnalytics';
 import { setMonitoringUser, captureException } from '../lib/monitoring';
 // Type-only — the runtime code (vendored Proph3t core client) is lazy-imported
 // inside the action so it stays code-split, like the local agent in ./proph3t.
@@ -388,6 +389,12 @@ export interface Report {
   goalsProgress?: ReportGoalEntry[];
   topRetards?: ReportRetard[];
   topAchievements?: string[];
+  /**
+   * Analytics scopées sur la période + comparaison période précédente.
+   * Optionnel — les rapports générés avant l'enrichissement de juin 2026
+   * n'en ont pas et la modale n'affiche pas l'onglet correspondant pour eux.
+   */
+  analytics?: PeriodAnalytics;
 }
 
 export interface ReportProjectBreakdown {
@@ -2303,6 +2310,19 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     const tasksDone = tasks.filter((t) => t.status === 'done').length;
     const automationsRun = automations.reduce((s, a) => s + a.runs, 0);
 
+    // Period-scoped analytics + previous-period comparison. Replaces the
+    // lifetime-wide counts + hardcoded deltas that were shown before
+    // (which made the "Tâches livrées · +12%" line meaningless — the
+    // number was lifetime, the delta was a placeholder).
+    const analytics = buildPeriodAnalytics(tasks, periodStart, periodEnd);
+    const cur = analytics.current;
+    const prev = analytics.previous;
+    const pctOrUndef = (c: number, p: number): number | undefined => {
+      if (p === 0) return undefined;
+      return Math.round(((c - p) / p) * 100);
+    };
+    const onTimePct = cur.completed > 0 ? Math.round((cur.completedOnTime / cur.completed) * 100) : null;
+
     const report: Report = {
       id: uid('r'),
       kind,
@@ -2313,25 +2333,64 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       generatedAt: new Date().toISOString(),
       authorId: get().currentProfileId || 'u_pame',
       highlights: [
-        `${tasksDone} tâches livrées sur la période (toutes périodes confondues)`,
+        `${cur.completed} tâches livrées sur la période` +
+          (prev.completed > 0
+            ? ` (${cur.completed >= prev.completed ? '+' : ''}${cur.completed - prev.completed} vs période précédente)`
+            : ''),
+        `${cur.created} tâches créées · ${cur.created - cur.completed} de plus à traiter`,
+        onTimePct !== null
+          ? `Respect des délais : ${onTimePct}% (${cur.completedOnTime}/${cur.completed} livrées dans les temps)`
+          : null,
+        cur.avgCycleHours !== null
+          ? `Cycle moyen : ${cur.avgCycleHours < 24 ? cur.avgCycleHours + ' h' : Math.round(cur.avgCycleHours / 24) + ' j'} entre création et livraison`
+          : null,
         `${goalsProgress.filter((g) => g.health === 'green').length} goals on-track sur ${goals.length}`,
-        `${automationsRun} exécutions d'automations enregistrées`,
         topAchievements[0] && `Faits marquants : ${topAchievements[0]}`,
       ].filter(Boolean) as string[],
       metrics: [
-        { label: 'Tâches actives', value: String(tasks.filter((t) => t.status !== 'done').length), delta: 8 },
-        { label: 'Tâches livrées', value: String(tasksDone), delta: 12 },
         {
-          label: 'Projets actifs',
-          value: String(projects.filter((p) => p.status === 'active').length),
-          delta: 0,
+          label: 'Tâches livrées',
+          value: String(cur.completed),
+          delta: pctOrUndef(cur.completed, prev.completed),
         },
-        { label: 'En retard', value: String(overdueTotal), delta: overdueTotal > 5 ? 18 : -3 },
-        { label: 'Automations', value: String(automationsRun), delta: 5 },
+        {
+          label: 'Tâches créées',
+          value: String(cur.created),
+          delta: pctOrUndef(cur.created, prev.created),
+        },
+        {
+          label: 'Respect des délais',
+          value: onTimePct !== null ? `${onTimePct}%` : '—',
+        },
+        {
+          label: 'En retard (période)',
+          value: String(cur.overdueInPeriod),
+          delta: pctOrUndef(cur.overdueInPeriod, prev.overdueInPeriod),
+        },
+        {
+          label: 'Cycle moyen',
+          value:
+            cur.avgCycleHours === null
+              ? '—'
+              : cur.avgCycleHours < 24
+                ? `${cur.avgCycleHours} h`
+                : `${Math.round(cur.avgCycleHours / 24)} j`,
+        },
+        {
+          label: 'Temps réel / estimé',
+          value:
+            cur.estimatedHours > 0 ? `${cur.actualHours}/${cur.estimatedHours} h` : `${cur.actualHours} h`,
+        },
         {
           label: 'Goals on-track',
           value: `${goalsProgress.filter((g) => g.health === 'green').length}/${goals.length}`,
         },
+        {
+          label: 'Tâches actives (total)',
+          value: String(tasks.filter((t) => t.status !== 'done').length),
+        },
+        { label: 'Lifetime livrées', value: String(tasksDone) },
+        { label: 'Automations', value: String(automationsRun) },
       ],
       blockers: attentionPoints
         .filter((a) => a.severity === 'critical')
@@ -2347,6 +2406,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       goalsProgress,
       topRetards,
       topAchievements,
+      analytics,
     };
     set((s) => ({ reports: [report, ...s.reports] }));
     dbPersist.put('reports', report);
