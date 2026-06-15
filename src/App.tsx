@@ -383,7 +383,11 @@ function CockpitShell() {
                   {view === 'projects' && <ProjectsView onNavigate={onNavigate} />}
                   {view === 'budget' && <BudgetOverview onNavigate={onNavigate} />}
                   {view === 'project' && project && (
-                    <ProjectView project={project} onOpenTask={setOpenTask} />
+                    <ProjectView
+                      project={project}
+                      onOpenTask={setOpenTask}
+                      onBack={() => onNavigate('projects')}
+                    />
                   )}
                 </Suspense>
               </ErrorBoundary>
