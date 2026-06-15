@@ -244,6 +244,18 @@ export function TopBar({ breadcrumb, onOpenCommand, onToggleSidebar }: Props) {
           )}
         </div>
 
+        {/* Bouton refresh direct — Realtime devrait suffire mais sert de
+            filet de sécurité quand le websocket est passé en arrière-plan
+            (PWA mise en veille, onglet inactif >5min, réseau coupé). */}
+        <button
+          onClick={() => void refreshSnapshot()}
+          className="w-9 h-9 rounded-xl bg-white border border-atlas-line hover:border-atlas-line-2 flex items-center justify-center text-atlas-fg-2"
+          title="Rafraîchir mes données depuis le serveur"
+          aria-label="Rafraîchir"
+        >
+          <RefreshCw className="w-4 h-4" />
+        </button>
+
         <Menu
           trigger={
             <button className="w-9 h-9 rounded-xl bg-white border border-atlas-line hover:border-atlas-line-2 flex items-center justify-center text-atlas-fg-2">

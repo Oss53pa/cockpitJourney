@@ -72,13 +72,30 @@ if (hmr) {
 // participants externes (edge function cj-share) sans rechargement.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let realtimeChannel: any = null;
-type RealtimeKey = 'tasks' | 'comments' | 'subtasks' | 'activity' | 'notifications';
+// Étendu en juin 2026 : on subscribe à toutes les tables structurelles
+// (goals, folders, projects, sections) en plus des tâches/commentaires.
+// Sans ça, les changements faits via cj-mcp / Cowork / SQL direct
+// n'apparaissaient qu'au prochain reload — frustrant et confusing.
+type RealtimeKey =
+  | 'tasks'
+  | 'comments'
+  | 'subtasks'
+  | 'activity'
+  | 'notifications'
+  | 'goals'
+  | 'folders'
+  | 'projects'
+  | 'sections';
 const RT_TABLES: { table: string; key: RealtimeKey }[] = [
   { table: 'cj_tasks', key: 'tasks' },
   { table: 'cj_comments', key: 'comments' },
   { table: 'cj_subtasks', key: 'subtasks' },
   { table: 'cj_activity', key: 'activity' },
   { table: 'cj_notifications', key: 'notifications' },
+  { table: 'cj_goals', key: 'goals' },
+  { table: 'cj_folders', key: 'folders' },
+  { table: 'cj_projects', key: 'projects' },
+  { table: 'cj_sections', key: 'sections' },
 ];
 
 function teardownRealtime() {
