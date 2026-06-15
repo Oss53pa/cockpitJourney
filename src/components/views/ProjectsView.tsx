@@ -74,6 +74,7 @@ export function ProjectsView({ onNavigate }: Props) {
   const deleteProject = useApp((s) => s.deleteProject);
   const moveProjectToFolder = useApp((s) => s.moveProjectToFolder);
   const reorderFolders = useApp((s) => s.reorderFolders);
+  const moveFolderToSphere = useApp((s) => s.moveFolderToSphere);
 
   // 5px threshold so un clic ordinaire (ouvrir un projet, replier un
   // dossier) n'est pas accidentellement interprété comme un drag.
@@ -95,10 +96,30 @@ export function ProjectsView({ onNavigate }: Props) {
       moveProjectToFolder(projectId, target === '__none__' ? '' : target);
       return;
     }
-    // Réordonner les dossiers
+    // Dossier → header de sphère (changement de sphère)
+    if (activeId.startsWith('folder-') && overId.startsWith('sphere-')) {
+      const folderId = activeId.slice('folder-'.length);
+      const targetSphere = overId.slice('sphere-'.length) as 'personnel' | 'professionnel';
+      const folder = folders.find((f) => f.id === folderId);
+      if (folder && (folder.sphere ?? 'personnel') !== targetSphere) {
+        moveFolderToSphere(folderId, targetSphere);
+      }
+      return;
+    }
+    // Dossier → dossier : si même sphère = reorder ; si sphère différente
+    // = on déplace le dossier source dans la sphère du dossier cible.
     if (activeId.startsWith('folder-') && overId.startsWith('folder-')) {
       const from = activeId.slice('folder-'.length);
       const to = overId.slice('folder-'.length);
+      const fromFolder = folders.find((f) => f.id === from);
+      const toFolder = folders.find((f) => f.id === to);
+      if (!fromFolder || !toFolder) return;
+      const fromSphere = fromFolder.sphere ?? 'personnel';
+      const toSphere = toFolder.sphere ?? 'personnel';
+      if (fromSphere !== toSphere) {
+        moveFolderToSphere(from, toSphere);
+        return;
+      }
       const ids = folders.map((f) => f.id);
       const fromIdx = ids.indexOf(from);
       const toIdx = ids.indexOf(to);
@@ -353,16 +374,15 @@ export function ProjectsView({ onNavigate }: Props) {
                   <span>Équipe</span>
                 </div>
 
+                {/* On rend TOUJOURS les deux sphères même quand vides, pour
+                    que la sphère vide reste une cible de drop (déplacer un
+                    dossier de Personnel vers Professionnel ou inversement). */}
                 {(['personnel', 'professionnel'] as const).map((sphere) => {
                   const fs = bySphere[sphere];
-                  if (fs.length === 0) return null;
                   return (
-                    <div key={sphere} className="mt-4">
-                      <div className="px-3 mb-1 text-[10px] uppercase tracking-[0.2em] font-semibold text-atlas-amber-deep">
-                        {sphere === 'personnel' ? 'Personnel' : 'Professionnel'}
-                      </div>
-                      <div className="space-y-0.5">{fs.map(renderFolder)}</div>
-                    </div>
+                    <SphereDropZone key={sphere} sphere={sphere} empty={fs.length === 0}>
+                      {fs.length > 0 && <div className="space-y-0.5">{fs.map(renderFolder)}</div>}
+                    </SphereDropZone>
                   );
                 })}
 
@@ -524,6 +544,37 @@ function UnassignedDropZone({
         )}
       </div>
       {projects.length > 0 && <div className="space-y-0.5">{projects.map(render)}</div>}
+    </div>
+  );
+}
+
+function SphereDropZone({
+  sphere,
+  empty,
+  children,
+}: {
+  sphere: 'personnel' | 'professionnel';
+  empty: boolean;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: 'sphere-' + sphere });
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'mt-4 rounded-lg transition-colors',
+        isOver && 'bg-atlas-sage/10 ring-1 ring-atlas-sage-deep/40 p-1'
+      )}
+    >
+      <div className="px-3 mb-1 text-[10px] uppercase tracking-[0.2em] font-semibold text-atlas-amber-deep">
+        {sphere === 'personnel' ? 'Personnel' : 'Professionnel'}
+        {empty && (
+          <span className="ml-2 normal-case tracking-normal font-normal text-atlas-fg-3">
+            (glissez un dossier ici pour le déplacer dans cette sphère)
+          </span>
+        )}
+      </div>
+      {children}
     </div>
   );
 }
