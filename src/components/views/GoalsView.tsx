@@ -460,6 +460,13 @@ function GoalCard({
               >
                 <span className="inline-flex items-center gap-1.5 text-2xs text-atlas-fg-3 flex-wrap">
                   <ListChecks className="w-3.5 h-3.5" />
+                  {linkedProjects.length > 0 && (
+                    <>
+                      <span>Projets</span>
+                      <span className="font-mono font-medium text-atlas-fg-1">{linkedProjects.length}</span>
+                      <span className="text-atlas-fg-3">·</span>
+                    </>
+                  )}
                   Tâches
                   <span className="font-mono font-medium text-atlas-fg-1">
                     {doneCount}/{contributingTasks.length}
