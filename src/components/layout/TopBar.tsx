@@ -12,6 +12,7 @@ import {
   CheckCheck,
   Users,
   Menu as MenuIcon,
+  RefreshCw,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../stores/appStore';
@@ -34,6 +35,7 @@ export function TopBar({ breadcrumb, onOpenCommand, onToggleSidebar }: Props) {
   const openModal = useApp((s) => s.openModal);
   const pushToast = useApp((s) => s.pushToast);
   const regenerateBrief = useApp((s) => s.regenerateBrief);
+  const refreshSnapshot = useApp((s) => s.refreshSnapshot);
   const revalidating = useApp((s) => s.revalidating);
 
   const unread = notifications.filter((n) => !n.read).length;
@@ -270,6 +272,15 @@ export function TopBar({ breadcrumb, onOpenCommand, onToggleSidebar }: Props) {
                 }}
               >
                 Inviter quelqu'un
+              </MenuItem>
+              <MenuItem
+                icon={RefreshCw}
+                onClick={() => {
+                  close();
+                  void refreshSnapshot();
+                }}
+              >
+                Rafraîchir mes données
               </MenuItem>
               <MenuItem
                 icon={Keyboard}
