@@ -100,9 +100,11 @@ const taskViews: { key: TaskView; label: string; icon: LucideIcon }[] = [
 interface Props {
   project: Project;
   onOpenTask: (t: Task) => void;
+  /** Retour vers la liste des projets — affiche une flèche dans le header. */
+  onBack?: () => void;
 }
 
-export function ProjectView({ project, onOpenTask }: Props) {
+export function ProjectView({ project, onOpenTask, onBack }: Props) {
   const [tab, setTab] = useState<MainTab>('tasks');
   const [taskView, setTaskView] = useState<TaskView>('kanban');
   const [filterPriority, setFilterPriority] = useState<Priority | 'all'>('all');
@@ -172,6 +174,16 @@ export function ProjectView({ project, onOpenTask }: Props) {
       <div className="px-8 pt-7 pb-3 border-b border-black/[0.05]">
         <div className="flex items-start justify-between gap-6">
           <div className="flex items-start gap-4">
+            {onBack && (
+              <button
+                onClick={onBack}
+                title="Retour à la liste des projets"
+                aria-label="Retour"
+                className="w-9 h-9 rounded-xl bg-white border border-atlas-line hover:border-atlas-line-2 hover:bg-black/[0.03] flex items-center justify-center text-atlas-fg-2 mt-2 shrink-0"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
             <div
               className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-soft-pop"
               style={{
