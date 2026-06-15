@@ -570,6 +570,14 @@ interface State {
   signOut: () => Promise<void>;
   /** Basculer vers un autre espace (recharge pour ré-hydrater proprement). */
   switchWorkspace: (ownerId: string) => void;
+  /**
+   * Forcer un re-fetch complet depuis Supabase, en ignorant le snapshot
+   * local. Utile quand des données ont été écrites en dehors de l'onglet
+   * (Claude Cowork via MCP, autre onglet, autre appareil) et que la
+   * subscription Realtime a manqué les events (PWA en arrière-plan,
+   * onglet inactif, réseau coupé puis revenu).
+   */
+  refreshSnapshot: () => Promise<void>;
 
   // toasts
   pushToast: (t: Omit<Toast, 'id'>) => void;
@@ -3045,6 +3053,56 @@ Reste sous 400 mots, ton factuel et engagé.`,
     // profile, cache — all keyed by the new owner).
     writeActiveWsPref(authUserId, ownerId);
     window.location.reload();
+  },
+
+  refreshSnapshot: async () => {
+    const authUserId = getCurrentAuthUserId();
+    const profileId = get().currentProfileId;
+    if (!authUserId || !profileId) {
+      get().pushToast({ kind: 'error', title: 'Session non initialisée' });
+      return;
+    }
+    set({ revalidating: true });
+    try {
+      const snap = await loadSnapshot();
+      set({
+        users: snap.users,
+        folders: snap.folders,
+        projects: snap.projects,
+        sections: snap.sections,
+        tasks: snap.tasks,
+        goals: snap.goals,
+        comments: snap.comments,
+        notifications: snap.notifications,
+        insights: snap.insights,
+        automations: snap.automations,
+        forms: snap.forms,
+        reports: snap.reports,
+        attachments: snap.attachments,
+        dependencies: snap.dependencies,
+        activity: snap.activity,
+        subtasks: snap.subtasks,
+        notes: snap.notes,
+        budgetLines: snap.budgetLines,
+        expenses: snap.expenses,
+        settings: { ...get().settings, ...(snap.settings as Partial<State['settings']>) },
+        revalidating: false,
+        degraded: false,
+      });
+      writeSnapshotCache(authUserId, snap, profileId);
+      get().pushToast({
+        kind: 'success',
+        title: 'Données rafraîchies',
+        body: `${snap.tasks.length} tâches · ${snap.projects.length} projets`,
+      });
+    } catch (e) {
+      set({ revalidating: false });
+      get().pushToast({
+        kind: 'error',
+        title: 'Rafraîchissement échoué',
+        body: (e as Error).message,
+      });
+    }
   },
 
   signOut: async () => {
