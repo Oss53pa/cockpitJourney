@@ -560,7 +560,6 @@ const TOOLS: Tool[] = [
     async handler(args, session) {
       requireScope(session, "write", "admin");
       const userPrefix = session.userId.slice(0, 8);
-      const now = new Date().toISOString();
       // camelCase entity matching appStore `Subtask` (the app reads `data`):
       // it uses `done: boolean` and `position: number` — NOT status/order.
       // deno-lint-ignore no-explicit-any
