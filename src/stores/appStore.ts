@@ -507,6 +507,12 @@ export interface Subtask {
   done: boolean;
   assigneeId?: string;
   position: number;
+  /**
+   * Liaison directe à un OKR (Goal). Optionnelle — par défaut une sous-tâche
+   * contribue au goal de sa tâche parente. Surchargé explicitement quand on
+   * veut que des sous-tâches d'une même tâche pointent vers DIFFÉRENTS goals.
+   */
+  goalId?: string;
 }
 
 interface State {
@@ -1615,20 +1621,36 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       _pendingGoalRecomputes.delete(goalId);
       const goal = get().goals.find((g) => g.id === goalId);
       if (!goal) return;
-      // Currency / number goals stay manual — the execution ratio is shown
-      // alongside the metric in the UI rather than overwriting it.
-      if (goal.metricType !== 'percentage' && goal.metricType !== 'boolean') return;
-      const contributing = get().tasks.filter((t) => t.goalId === goalId);
-      const total = contributing.length;
-      const done = contributing.filter((t) => t.status === 'done').length;
+      // 'currency' goals are intentionally manual : la valeur représente un
+      // montant suivi à part (factures, dépenses). Pour percentage, number
+      // ET boolean on calcule à partir des contributions.
+      if (goal.metricType === 'currency') return;
+
+      // Unités contributives : on prend les sous-tâches qui pointent
+      // directement le goal (granularité fine), PLUS les tâches qui
+      // pointent le goal mais N'ONT PAS de sous-tâche déjà comptée
+      // (évite le double-comptage tâche + ses sous-tâches).
+      const tasks = get().tasks;
+      const subtasks = get().subtasks;
+      const contributingSubs = subtasks.filter((s) => s.goalId === goalId);
+      const subTaskIdsCounted = new Set(contributingSubs.map((s) => s.taskId));
+      const contributingTasks = tasks.filter((t) => t.goalId === goalId && !subTaskIdsCounted.has(t.id));
+
+      const total = contributingSubs.length + contributingTasks.length;
+      const done =
+        contributingSubs.filter((s) => s.done).length +
+        contributingTasks.filter((t) => t.status === 'done').length;
+      const pctDone = total > 0 ? done / total : 0;
+
       const currentValue =
         goal.metricType === 'percentage'
-          ? total
-            ? Math.round((done / total) * 100)
-            : 0
-          : total > 0 && done === total
-            ? goal.targetValue
-            : 0;
+          ? Math.round(pctDone * 100)
+          : goal.metricType === 'number'
+            ? Math.round(pctDone * goal.targetValue)
+            : // boolean : tout-ou-rien
+              total > 0 && done === total
+              ? goal.targetValue
+              : 0;
       const pct = (currentValue / Math.max(1, goal.targetValue)) * 100;
       get().updateGoal(goalId, {
         currentValue,
@@ -2910,11 +2932,21 @@ Reste sous 400 mots, ton factuel et engagé.`,
     dbPersist.put('subtasks', sub);
   },
   toggleSubtask: (id) => {
+    const before = get().subtasks.find((x) => x.id === id);
     set((s: any) => ({
       subtasks: s.subtasks.map((x: Subtask) => (x.id === id ? { ...x, done: !x.done } : x)),
     }));
     const updated = get().subtasks.find((x) => x.id === id);
     if (updated) dbPersist.put('subtasks', updated);
+    // Roll up goal progress quand la sous-tâche est liée (soit directement
+    // via subtask.goalId, soit héritée via la tâche parente).
+    if (before) {
+      const parent = get().tasks.find((t) => t.id === before.taskId);
+      const goalIds = new Set<string>();
+      if (before.goalId) goalIds.add(before.goalId);
+      if (parent?.goalId) goalIds.add(parent.goalId);
+      goalIds.forEach((gid) => get().recomputeGoalFromTasks(gid));
+    }
   },
   removeSubtask: (id) => {
     set((s: any) => ({ subtasks: s.subtasks.filter((x: Subtask) => x.id !== id) }));
