@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, UserPlus, Trash2, RotateCcw, Mail, ShieldCheck } from 'lucide-react';
+import { Loader2, UserPlus, Trash2, RotateCcw, Mail, ShieldCheck, Send } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { FieldLabel, TextInput, NativeSelect } from '../ui/Field';
 import { useApp } from '../../stores/appStore';
@@ -87,6 +87,34 @@ export function WorkspaceMembersModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  // Renvoi d'invitation : l'edge function cj-workspace-invite est un upsert
+  // (par owner+email) → ré-utilise la ligne existante, régénère un token, et
+  // ré-envoie l'e-mail. Pas besoin d'un endpoint distinct.
+  const resend = async (m: WorkspaceMember) => {
+    setBusyId(m.id);
+    try {
+      const { emailSent, link, emailError } = await inviteMember({
+        email: m.email,
+        role: m.role,
+      });
+      if (emailSent) {
+        pushToast({ kind: 'success', title: 'Invitation renvoyée', body: m.email });
+      } else if (link) {
+        await navigator.clipboard?.writeText(link).catch(() => {});
+        pushToast({
+          kind: 'warning',
+          title: emailError ? 'E-mail non envoyé — lien copié' : 'Lien copié (e-mail indisponible)',
+          body: emailError ? `${emailError} · Partagez le lien manuellement.` : link,
+        });
+      }
+      await refresh();
+    } catch (e) {
+      pushToast({ kind: 'error', title: 'Renvoi impossible', body: (e as Error).message });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <Modal
       open
@@ -169,8 +197,12 @@ export function WorkspaceMembersModal({ onClose }: { onClose: () => void }) {
           ) : (
             <div className="space-y-2">
               {members.map((m) => {
-                const active = m.status === 'active';
-                const pending = m.status === 'active' && !m.acceptedAt;
+                // « En attente » = invitation envoyée mais pas encore acceptée.
+                // Couvre les deux schémas : status='pending' (DB actuel) ET
+                // status='active' && acceptedAt=null (legacy avant la migration
+                // qui a introduit le statut pending).
+                const isPending = m.status === 'pending' || (m.status === 'active' && !m.acceptedAt);
+                const isActive = m.status === 'active' && !!m.acceptedAt;
                 return (
                   <div
                     key={m.id}
@@ -183,7 +215,7 @@ export function WorkspaceMembersModal({ onClose }: { onClose: () => void }) {
                       <div className="text-sm font-medium text-atlas-fg-1 truncate">{m.email}</div>
                       <div className="text-2xs text-atlas-fg-3">
                         Invité {relativeTime(m.createdAt)}
-                        {m.acceptedAt ? ' · a rejoint' : pending ? ' · invitation en attente' : ''}
+                        {isActive ? ' · a rejoint' : isPending ? ' · en attente d’acceptation' : ''}
                       </div>
                     </div>
                     {m.status !== 'revoked' ? (
@@ -209,8 +241,18 @@ export function WorkspaceMembersModal({ onClose }: { onClose: () => void }) {
                       </span>
                     )}
                     <span className="hidden sm:inline-flex chip text-[9px] px-1.5 py-0 border bg-black/[0.04] text-atlas-fg-3 border-atlas-line">
-                      {active ? <ShieldCheck className="w-3 h-3" /> : null} {ROLE_LABEL[m.role]}
+                      {isActive ? <ShieldCheck className="w-3 h-3" /> : null} {ROLE_LABEL[m.role]}
                     </span>
+                    {isPending && (
+                      <button
+                        onClick={() => void resend(m)}
+                        disabled={busyId === m.id}
+                        className="btn-ghost !p-1.5 hover:text-atlas-sage-deep"
+                        title="Renvoyer l'invitation par e-mail"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
+                    )}
                     {m.status === 'revoked' ? (
                       <button
                         onClick={() => void withBusy(m.id, () => reactivateMember(m.id), 'Membre réactivé')}
