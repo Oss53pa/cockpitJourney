@@ -362,9 +362,17 @@ function GoalCard({
                 </span>
                 <HealthDot health={goal.health} label />
               </div>
-              <h3 className="font-display text-lg font-medium tracking-tight text-atlas-fg-1 leading-snug">
-                {goal.title}
-              </h3>
+              <button
+                type="button"
+                onClick={() => openModal('goal-edit', goal)}
+                className="group/title block text-left hover:text-atlas-sage-deep transition-colors"
+                title="Cliquer pour modifier ce goal"
+              >
+                <h3 className="font-display text-lg font-medium tracking-tight text-atlas-fg-1 leading-snug inline-flex items-center gap-2 group-hover/title:text-atlas-sage-deep transition-colors">
+                  {goal.title}
+                  <Edit3 className="w-3.5 h-3.5 text-atlas-fg-3 opacity-0 group-hover/title:opacity-100 transition-opacity" />
+                </h3>
+              </button>
               {goal.description && <p className="text-sm text-atlas-fg-3 mt-1">{goal.description}</p>}
             </div>
             <div className="flex items-center gap-1 shrink-0">
@@ -373,9 +381,22 @@ function GoalCard({
                   {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => openModal('goal-edit', goal)}
+                className="w-8 h-8 rounded-lg border border-atlas-line bg-white hover:border-atlas-sage-deep/40 hover:bg-atlas-sage/5 flex items-center justify-center text-atlas-fg-2 hover:text-atlas-sage-deep transition-colors"
+                title="Modifier le goal"
+                aria-label="Modifier"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+              </button>
               <Menu
                 trigger={
-                  <button className="btn-ghost !p-1.5">
+                  <button
+                    className="w-8 h-8 rounded-lg border border-atlas-line bg-white hover:border-atlas-line-2 hover:bg-black/[0.03] flex items-center justify-center text-atlas-fg-2"
+                    title="Plus d'actions"
+                    aria-label="Plus d'actions"
+                  >
                     <MoreHorizontal className="w-4 h-4" />
                   </button>
                 }

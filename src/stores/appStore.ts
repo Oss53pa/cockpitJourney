@@ -631,7 +631,7 @@ interface State {
   clearNotifications: () => void;
 
   // goals
-  createGoal: (g: Omit<Goal, 'id'>) => void;
+  createGoal: (g: Omit<Goal, 'id'>) => Goal;
   updateGoal: (id: string, patch: Partial<Goal>) => void;
   deleteGoal: (id: string) => void;
   bumpGoalValue: (id: string, delta: number) => void;
@@ -1570,6 +1570,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     set((s) => ({ goals: [...s.goals, goal] }));
     dbPersist.put('goals', goal);
     get().pushToast({ kind: 'success', title: 'Goal créé', body: goal.title });
+    return goal;
   },
   updateGoal: (id, patch) => {
     set((s) => ({ goals: s.goals.map((g) => (g.id === id ? { ...g, ...patch } : g)) }));

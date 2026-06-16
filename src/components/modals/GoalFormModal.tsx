@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp, useCurrentUser } from '../../stores/appStore';
 import { Modal } from '../ui/Modal';
 import { FieldLabel, NativeSelect, TextInput, Textarea } from '../ui/Field';
+import { Search, Link2 } from 'lucide-react';
+import { cn } from '../../lib/utils';
 import type { Goal } from '../../types';
 
 interface Props {
@@ -12,8 +14,11 @@ interface Props {
 export function GoalFormModal({ initial, onClose }: Props) {
   const users = useApp((s) => s.users);
   const goals = useApp((s) => s.goals);
+  const allTasks = useApp((s) => s.tasks);
+  const allProjects = useApp((s) => s.projects);
   const create = useApp((s) => s.createGoal);
   const update = useApp((s) => s.updateGoal);
+  const updateTask = useApp((s) => s.updateTask);
   const me = useCurrentUser();
 
   const [title, setTitle] = useState(initial?.title ?? '');
@@ -35,6 +40,52 @@ export function GoalFormModal({ initial, onClose }: Props) {
       : new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10)
   );
 
+  // Liaison tâches ↔ goal : on garde un Set des taskId qui pointent ce goal.
+  // À la sauvegarde, on diff vs l'état initial pour ne toucher QUE les
+  // tâches qui ont changé (évite N writes inutiles pour les goals avec
+  // beaucoup de tâches contributives).
+  const initialLinkedIds = useMemo(
+    () => new Set(allTasks.filter((t) => initial?.id && t.goalId === initial.id).map((t) => t.id)),
+    // Snapshot une seule fois à l'ouverture pour ne pas perdre les modifs
+    // en cours si une autre tab modifie un task.goalId en parallèle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+  const [linkedIds, setLinkedIds] = useState<Set<string>>(() => new Set(initialLinkedIds));
+  const [taskSearch, setTaskSearch] = useState('');
+
+  const projectsById = useMemo(() => new Map(allProjects.map((p) => [p.id, p])), [allProjects]);
+
+  // Tâches affichables : par défaut on montre uniquement celles liées (pour
+  // garder la liste courte). Quand l'utilisateur tape une recherche, on
+  // étend à toutes les tâches matchant le terme (titre ou projet).
+  const visibleTasks = useMemo(() => {
+    const q = taskSearch.trim().toLowerCase();
+    if (!q) {
+      return allTasks.filter((t) => linkedIds.has(t.id));
+    }
+    return allTasks
+      .filter((t) => {
+        if (linkedIds.has(t.id)) return true;
+        const pName = projectsById.get(t.projectId)?.name ?? '';
+        return (
+          t.title.toLowerCase().includes(q) ||
+          pName.toLowerCase().includes(q) ||
+          (t.tags ?? []).some((tag) => tag.toLowerCase().includes(q))
+        );
+      })
+      .slice(0, 60);
+  }, [allTasks, linkedIds, taskSearch, projectsById]);
+
+  const toggleLink = (taskId: string) => {
+    setLinkedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  };
+
   const submit = () => {
     if (!title.trim()) return;
     const payload: Omit<Goal, 'id'> = {
@@ -53,8 +104,23 @@ export function GoalFormModal({ initial, onClose }: Props) {
       status: 'on_track',
       health: 'green',
     };
-    if (initial?.id) update(initial.id, payload);
-    else create(payload);
+    let goalId: string;
+    if (initial?.id) {
+      update(initial.id, payload);
+      goalId = initial.id;
+    } else {
+      goalId = create(payload).id;
+    }
+
+    // Diff des liaisons : on applique uniquement les changements (link/unlink).
+    // updateTask déclenche recomputeGoalFromTasks → le goal se met à jour
+    // automatiquement après les modifs de liaison.
+    for (const tid of linkedIds) {
+      if (!initialLinkedIds.has(tid)) updateTask(tid, { goalId });
+    }
+    for (const tid of initialLinkedIds) {
+      if (!linkedIds.has(tid)) updateTask(tid, { goalId: undefined });
+    }
     onClose();
   };
 
@@ -177,6 +243,89 @@ export function GoalFormModal({ initial, onClose }: Props) {
             <TextInput type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </div>
         </div>
+
+        {/* Liaison tâches ↔ goal */}
+        <div className="pt-4 border-t border-atlas-line/60">
+          <FieldLabel
+            hint={`${linkedIds.size} tâche${linkedIds.size > 1 ? 's' : ''} liée${linkedIds.size > 1 ? 's' : ''}`}
+          >
+            Tâches contributrices
+          </FieldLabel>
+          <div className="relative mb-2">
+            <Search className="w-3.5 h-3.5 text-atlas-fg-3 absolute left-3 top-1/2 -translate-y-1/2" />
+            <TextInput
+              value={taskSearch}
+              onChange={(e) => setTaskSearch(e.target.value)}
+              placeholder="Chercher une tâche par titre, projet ou tag…"
+              className="pl-9"
+            />
+          </div>
+          <div className="max-h-64 overflow-y-auto rounded-xl border border-atlas-line bg-atlas-cream/40">
+            {visibleTasks.length === 0 ? (
+              <div className="py-6 px-4 text-center text-2xs text-atlas-fg-3">
+                {taskSearch
+                  ? `Aucune tâche ne matche « ${taskSearch} ».`
+                  : "Aucune tâche liée pour l'instant. Tapez ci-dessus pour en chercher."}
+              </div>
+            ) : (
+              <ul className="divide-y divide-atlas-line/40">
+                {visibleTasks.map((t) => {
+                  const isLinked = linkedIds.has(t.id);
+                  const proj = projectsById.get(t.projectId);
+                  return (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        onClick={() => toggleLink(t.id)}
+                        className={cn(
+                          'w-full flex items-start gap-2.5 px-3 py-2 text-left hover:bg-atlas-sage/5 transition-colors',
+                          isLinked && 'bg-atlas-sage/10'
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'shrink-0 w-4 h-4 rounded border flex items-center justify-center mt-0.5 transition-colors',
+                            isLinked
+                              ? 'bg-atlas-sage-deep border-atlas-sage-deep text-white'
+                              : 'border-atlas-line bg-white text-transparent'
+                          )}
+                        >
+                          {isLinked && <Link2 className="w-2.5 h-2.5" strokeWidth={3} />}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm text-atlas-fg-1 truncate">{t.title}</div>
+                          {proj && (
+                            <div className="text-2xs text-atlas-fg-3 flex items-center gap-1.5">
+                              <span
+                                className="inline-block w-1.5 h-1.5 rounded-full"
+                                style={{ background: proj.color }}
+                              />
+                              {proj.name}
+                              {t.status === 'done' && <span className="text-signal-green">· livrée</span>}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+          {linkedIds.size > 0 && taskSearch && (
+            <p className="text-2xs text-atlas-fg-3 mt-1.5">
+              Astuce : videz la recherche pour ne voir que les tâches déjà liées.
+            </p>
+          )}
+        </div>
+
+        {linkedIds.size > 0 && (
+          <div className="rounded-xl border border-atlas-sage/30 bg-atlas-sage/5 px-3 py-2 text-2xs text-atlas-fg-2 inline-flex items-center gap-2">
+            <Link2 className="w-3.5 h-3.5 text-atlas-sage-deep" />
+            La progression du goal sera recalculée automatiquement à partir des tâches liées (et de leurs
+            sous-tâches).
+          </div>
+        )}
       </div>
     </Modal>
   );
