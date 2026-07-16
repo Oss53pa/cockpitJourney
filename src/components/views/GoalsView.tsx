@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../stores/appStore';
 import { Avatar } from '../ui/Avatar';
+import { NativeSelect } from '../ui/Field';
 import { ProgressBar } from '../ui/StatusBadge';
 import { HealthDot } from '../ui/HealthDot';
 import { Menu, MenuItem, MenuSeparator, MenuLabel } from '../ui/Menu';
@@ -136,6 +137,8 @@ export function GoalsView() {
         />
       </div>
 
+      <OrphanActionsPanel />
+
       <div className="space-y-4">
         {workspaceGoals.map((g) => (
           <GoalTree goal={g} key={g.id} />
@@ -197,6 +200,136 @@ function Glance({
         {total !== undefined && <span className="text-base text-atlas-fg-3 font-normal"> / {total}</span>}
       </div>
       {subtitle && <div className="text-2xs text-atlas-fg-3 mt-1">{subtitle}</div>}
+    </div>
+  );
+}
+
+/**
+ * Panneau « zéro action orpheline » : liste toutes les actions sans Goal et
+ * permet de les rattacher (unitairement ou en lot) pour qu'elles comptent dans
+ * une progression. Se replie en bandeau vert rassurant quand il n'en reste
+ * aucune.
+ */
+function OrphanActionsPanel() {
+  const tasks = useApp((s) => s.tasks);
+  const goals = useApp((s) => s.goals);
+  const projects = useApp((s) => s.projects);
+  const updateTask = useApp((s) => s.updateTask);
+  const pushToast = useApp((s) => s.pushToast);
+  const [bulkGoal, setBulkGoal] = useState('');
+  const [open, setOpen] = useState(true);
+
+  const orphans = tasks.filter((t) => !t.goalId);
+  const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? 'Inbox';
+
+  if (goals.length === 0) return null; // rien à quoi rattacher tant qu'aucun goal n'existe
+
+  if (orphans.length === 0) {
+    return (
+      <div className="mb-7 flex items-center gap-2.5 rounded-xl border border-signal-green/25 bg-signal-green/[0.06] px-4 py-2.5">
+        <CheckCircle2 className="w-4 h-4 text-signal-green shrink-0" />
+        <span className="text-2xs text-atlas-fg-2">
+          Aucune action orpheline — chaque tâche contribue à un objectif.
+        </span>
+      </div>
+    );
+  }
+
+  const assignAll = () => {
+    if (!bulkGoal) return;
+    orphans.forEach((t) => updateTask(t.id, { goalId: bulkGoal }));
+    pushToast({
+      kind: 'success',
+      title: `${orphans.length} action(s) rattachée(s)`,
+      body: goals.find((g) => g.id === bulkGoal)?.title,
+    });
+    setBulkGoal('');
+  };
+
+  return (
+    <div className="mb-7 rounded-2xl border border-signal-yellow/30 bg-signal-yellow/[0.05] overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-3 px-4 py-3"
+      >
+        <AlertTriangle className="w-4 h-4 text-signal-yellow shrink-0" />
+        <div className="flex-1 text-left">
+          <div className="text-sm font-medium text-atlas-fg-1">
+            {orphans.length} action{orphans.length > 1 ? 's' : ''} orpheline{orphans.length > 1 ? 's' : ''}
+          </div>
+          <div className="text-2xs text-atlas-fg-3">
+            Rattachez-les à un objectif — sinon elles ne font progresser aucun goal.
+          </div>
+        </div>
+        {open ? (
+          <ChevronDown className="w-4 h-4 text-atlas-fg-3" />
+        ) : (
+          <ChevronRight className="w-4 h-4 text-atlas-fg-3" />
+        )}
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4">
+          {/* Rattachement en lot */}
+          <div className="flex items-center gap-2 mb-3 rounded-lg bg-white/60 border border-atlas-line p-2">
+            <span className="text-2xs text-atlas-fg-3 px-1">Tout rattacher à</span>
+            <div className="flex-1">
+              <NativeSelect value={bulkGoal} onChange={(e) => setBulkGoal(e.target.value)}>
+                <option value="">— choisir un objectif</option>
+                {goals.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.title}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+            <button
+              onClick={assignAll}
+              disabled={!bulkGoal}
+              className="btn-secondary text-xs px-3 py-2 whitespace-nowrap"
+            >
+              Rattacher les {orphans.length}
+            </button>
+          </div>
+
+          {/* Rattachement unitaire */}
+          <ul className="space-y-1.5 max-h-72 overflow-y-auto">
+            {orphans.map((t) => (
+              <li
+                key={t.id}
+                className="flex items-center gap-2 rounded-lg bg-white border border-atlas-line px-3 py-2"
+              >
+                <Circle className="w-3.5 h-3.5 text-atlas-fg-3 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-atlas-fg-1 truncate">{t.title}</div>
+                  <div className="text-2xs text-atlas-fg-3 truncate">{projectName(t.projectId)}</div>
+                </div>
+                <div className="w-52 shrink-0">
+                  <NativeSelect
+                    value=""
+                    onChange={(e) => {
+                      if (!e.target.value) return;
+                      updateTask(t.id, { goalId: e.target.value });
+                      pushToast({
+                        kind: 'success',
+                        title: 'Action rattachée',
+                        body: goals.find((g) => g.id === e.target.value)?.title,
+                      });
+                    }}
+                  >
+                    <option value="">Rattacher à…</option>
+                    {goals.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.title}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -281,7 +414,9 @@ function GoalCard({
       <div className="flex items-start gap-5">
         <div className="flex flex-col items-center gap-2">
           <RingProgress value={pct} color={ringColor} size={compact ? 60 : 80} />
-          {!compact && (
+          {/* Réglage manuel réservé au mode manuel : en auto la valeur serait
+              écrasée au prochain changement d'action. */}
+          {!compact && goal.progressMode === 'manual' && (
             <div className="flex items-center gap-1">
               <button
                 onClick={() => incr(-Math.max(1, Math.round(goal.targetValue * 0.05)))}
@@ -448,9 +583,9 @@ function GoalCard({
                   ))}
                 </ul>
               )}
-              {(goal.metricType === 'percentage' || goal.metricType === 'boolean') && (
+              {goal.progressMode !== 'manual' && (
                 <p className="mt-2 text-[10px] text-atlas-fg-3 italic">
-                  Progression auto-pilotée par ces tâches.
+                  Progression auto-pilotée par ces tâches et leurs sous-tâches (crédit partiel).
                 </p>
               )}
             </div>

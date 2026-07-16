@@ -322,8 +322,8 @@ describe('recomputeGoalFromTasks', () => {
     expect(useApp.getState().goals[0].currentValue).toBe(67);
   });
 
-  it('does NOT touch a currency goal (execution shown separately in UI)', async () => {
-    const goal = g('g1', { metricType: 'currency', targetValue: 1_000_000, currentValue: 500_000 });
+  it('auto-pilots a currency goal via the execution ratio (target × fraction)', async () => {
+    const goal = g('g1', { metricType: 'currency', targetValue: 1_000_000, currentValue: 0 });
     useApp.setState({
       goals: [goal],
       tasks: [
@@ -333,7 +333,59 @@ describe('recomputeGoalFromTasks', () => {
     });
     useApp.getState().recomputeGoalFromTasks('g1');
     await Promise.resolve();
+    // 1/2 actions faites → 50% de 1 000 000.
     expect(useApp.getState().goals[0].currentValue).toBe(500_000);
+  });
+
+  it('never overwrites a goal in manual mode', async () => {
+    const goal = g('g1', { metricType: 'percentage', progressMode: 'manual', currentValue: 42 });
+    useApp.setState({
+      goals: [goal],
+      tasks: [
+        t('t1', 'p1', 'sec1', { goalId: 'g1', status: 'done' }),
+        t('t2', 'p1', 'sec1', { goalId: 'g1', status: 'done' }),
+      ],
+    });
+    useApp.getState().recomputeGoalFromTasks('g1');
+    await Promise.resolve();
+    expect(useApp.getState().goals[0].currentValue).toBe(42);
+  });
+
+  it('gives an in-progress action partial credit from its completed sub-actions', async () => {
+    const goal = g('g1', { metricType: 'percentage', targetValue: 100, currentValue: 0 });
+    useApp.setState({
+      goals: [goal],
+      tasks: [
+        t('t1', 'p1', 'sec1', { goalId: 'g1', status: 'done' }),
+        t('t2', 'p1', 'sec1', { goalId: 'g1', status: 'in_progress' }),
+      ],
+      subtasks: [
+        { id: 'st1', taskId: 't2', title: 'a', done: true, position: 0 },
+        { id: 'st2', taskId: 't2', title: 'b', done: true, position: 1 },
+        { id: 'st3', taskId: 't2', title: 'c', done: false, position: 2 },
+        { id: 'st4', taskId: 't2', title: 'd', done: false, position: 3 },
+      ],
+    });
+    useApp.getState().recomputeGoalFromTasks('g1');
+    await Promise.resolve();
+    // t1 = 1, t2 = 2/4 = 0,5 → (1 + 0,5) / 2 = 0,75 → 75%.
+    expect(useApp.getState().goals[0].currentValue).toBe(75);
+  });
+
+  it('toggling a sub-action recomputes the parent action goal', async () => {
+    const goal = g('g1', { metricType: 'percentage', targetValue: 100, currentValue: 0 });
+    useApp.setState({
+      goals: [goal],
+      tasks: [t('t1', 'p1', 'sec1', { goalId: 'g1', status: 'in_progress' })],
+      subtasks: [
+        { id: 'st1', taskId: 't1', title: 'a', done: false, position: 0 },
+        { id: 'st2', taskId: 't1', title: 'b', done: false, position: 1 },
+      ],
+    });
+    useApp.getState().toggleSubtask('st1');
+    await Promise.resolve();
+    // 1/2 sous-actions faites sur l'unique action → 50%.
+    expect(useApp.getState().goals[0].currentValue).toBe(50);
   });
 
   it('coalesces a burst of recomputes into a single updateGoal write', async () => {

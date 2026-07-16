@@ -162,6 +162,14 @@ export interface Goal {
   level: 'workspace' | 'team' | 'personal';
   parentGoalId?: string;
   metricType: 'percentage' | 'number' | 'currency' | 'boolean';
+  /**
+   * Pilotage de la progression :
+   * - `'auto'` (défaut) : `currentValue` est recalculé depuis les actions
+   *   contributrices (et leurs sous-actions) — voir `computeGoalProgress`.
+   * - `'manual'` : l'utilisateur saisit `currentValue`, jamais écrasé.
+   * `undefined` est traité comme `'auto'` (compat. données existantes).
+   */
+  progressMode?: 'auto' | 'manual';
   targetValue: number;
   currentValue: number;
   unit?: string;

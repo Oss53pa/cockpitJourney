@@ -213,7 +213,19 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
   };
 
   const handleSubmit = () => {
-    if (!title.trim() || !projectId) return;
+    // Garde « zéro action orpheline » : une action doit toujours contribuer à
+    // un objectif (sinon elle ne fait progresser aucun goal).
+    if (!title.trim() || !projectId || !goalId) {
+      if (!goalId) {
+        setTab('basics');
+        pushToast({
+          kind: 'warning',
+          title: 'Objectif requis',
+          body: 'Rattachez cette action à un Goal avant de la créer.',
+        });
+      }
+      return;
+    }
     const tags = tagsRaw
       .split(',')
       .map((t) => t.trim())
@@ -295,7 +307,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!title.trim() || !projectId}
+            disabled={!title.trim() || !projectId || !goalId}
             className="btn-primary text-sm px-3.5 py-1.5"
           >
             {mode === 'create' ? 'Créer la tâche' : 'Enregistrer'}
@@ -458,6 +470,28 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
                     ))}
                   </NativeSelect>
                 </div>
+              </div>
+              <div>
+                <FieldLabel hint="obligatoire — aucune action ne doit rester orpheline">
+                  Contribue au Goal <span className="text-signal-red">*</span>
+                </FieldLabel>
+                <NativeSelect
+                  value={goalId}
+                  onChange={(e) => setGoalId(e.target.value)}
+                  className={cn(!goalId && 'border-signal-red/50')}
+                >
+                  <option value="">— Choisir un objectif…</option>
+                  {goals.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.title}
+                    </option>
+                  ))}
+                </NativeSelect>
+                {!goalId && (
+                  <p className="mt-1 text-2xs text-signal-red">
+                    Rattachez l'action à un objectif pour qu'elle compte dans sa progression.
+                  </p>
+                )}
               </div>
             </>
           )}
@@ -707,18 +741,19 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
 
           {tab === 'links' && (
             <>
-              <div>
-                <FieldLabel hint="cette tâche sera comptabilisée dans la progression du goal">
-                  Contribue au Goal
-                </FieldLabel>
-                <NativeSelect value={goalId} onChange={(e) => setGoalId(e.target.value)}>
-                  <option value="">— aucun</option>
-                  {goals.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.title}
-                    </option>
-                  ))}
-                </NativeSelect>
+              <div className="surface p-3 flex items-start gap-3">
+                <Target className="w-4 h-4 text-atlas-amber-deep mt-0.5 shrink-0" />
+                <div className="text-2xs text-atlas-fg-2">
+                  L'objectif rattaché se choisit dans l'onglet <strong>Essentiel</strong> (champ
+                  obligatoire){' '}
+                  {goalId ? (
+                    <>
+                      — actuellement : <strong>{goals.find((g) => g.id === goalId)?.title}</strong>.
+                    </>
+                  ) : (
+                    <>— <span className="text-signal-red">aucun pour l'instant</span>.</>
+                  )}
+                </div>
               </div>
               <div className="border-t border-atlas-line pt-4 space-y-3">
                 <div className="flex items-center justify-between panel p-3">

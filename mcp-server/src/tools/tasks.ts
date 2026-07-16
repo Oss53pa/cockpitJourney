@@ -11,6 +11,7 @@
  */
 import { requireScope } from '../auth.js';
 import { pickRow, camelizePatch, type ToolDefinition } from './common.js';
+import { recomputeGoal, goalIdOfTask } from './goalRecompute.js';
 
 interface ListTasksArgs {
   status?: 'todo' | 'in_progress' | 'in_review' | 'done' | 'cancelled';
@@ -24,6 +25,7 @@ interface ListTasksArgs {
 interface CreateTaskArgs {
   title: string;
   project_id?: string;
+  goal_id?: string;
   priority?: 1 | 2 | 3 | 4;
   due_date?: string;
   description?: string;
@@ -86,12 +88,16 @@ export const listTasks: ToolDefinition<ListTasksArgs> = {
 export const createTask: ToolDefinition<CreateTaskArgs> = {
   name: 'cj_create_task',
   description:
-    "Crée une nouvelle tâche dans CockpitJourney. Si project_id n'est pas fourni, la tâche est créée dans la boîte d'entrée (Inbox).",
+    "Crée une nouvelle tâche dans CockpitJourney. Si project_id n'est pas fourni, la tâche est créée dans la boîte d'entrée (Inbox). Fournir goal_id pour rattacher l'action à un OKR (fortement recommandé : les actions non rattachées restent orphelines et ne font progresser aucun goal).",
   inputSchema: {
     type: 'object',
     properties: {
       title: { type: 'string', minLength: 1, description: 'Titre de la tâche (obligatoire)' },
       project_id: { type: 'string', description: 'ID du projet (omis = inbox)' },
+      goal_id: {
+        type: 'string',
+        description: "ID de l'OKR auquel rattacher l'action (recommandé — évite les actions orphelines).",
+      },
       priority: {
         type: 'number',
         enum: [1, 2, 3, 4],
@@ -148,6 +154,7 @@ export const createTask: ToolDefinition<CreateTaskArgs> = {
       status: args.status ?? 'todo',
       priority: args.priority ?? 2,
       dueDate: args.due_date ?? null,
+      goalId: args.goal_id ?? undefined,
       assignees: [],
       tags: [],
       source: 'manual',
@@ -167,6 +174,8 @@ export const createTask: ToolDefinition<CreateTaskArgs> = {
       auth_user_id: session.userId,
     });
     if (error) throw new Error(`cj_create_task: ${error.message}`);
+    // Recale le goal si l'action y contribue (surtout si créée déjà 'done').
+    if (args.goal_id) await recomputeGoal(session, args.goal_id);
     return { ok: true, task: data };
   },
 };
@@ -203,6 +212,10 @@ export const completeTask: ToolDefinition<CompleteTaskArgs> = {
       .eq('id', args.task_id);
     if (error) throw new Error(`cj_complete_task: ${error.message}`);
 
+    // Fait progresser le goal rattaché (auto), côté base.
+    const goalId = ((merged as Record<string, unknown>).goalId as string | undefined) ?? null;
+    if (goalId) await recomputeGoal(session, goalId);
+
     return { ok: true, task_id: args.task_id, completed_at: now };
   },
 };
@@ -236,9 +249,10 @@ export const updateTask: ToolDefinition<UpdateTaskArgs> = {
     if (!row) throw new Error(`Tâche ${args.task_id} introuvable`);
 
     const now = new Date().toISOString();
+    const before = (row.data ?? {}) as Record<string, unknown>;
     const patch = camelizePatch(args.patch);
     const merged = {
-      ...((row.data ?? {}) as Record<string, unknown>),
+      ...before,
       ...patch,
       updatedAt: now,
     };
@@ -253,6 +267,17 @@ export const updateTask: ToolDefinition<UpdateTaskArgs> = {
 
     const { error } = await session.client.from('cj_tasks').update(update).eq('id', args.task_id);
     if (error) throw new Error(`cj_update_task: ${error.message}`);
+
+    // Roll up goal progress when a contribution changed (status or link),
+    // recomputing both the previous and the new goal if the link moved.
+    if ('status' in patch || 'goalId' in patch) {
+      const affected = new Set<string>();
+      const prevGoal = before.goalId as string | undefined;
+      const nextGoal = (merged as Record<string, unknown>).goalId as string | undefined;
+      if (prevGoal) affected.add(prevGoal);
+      if (nextGoal) affected.add(nextGoal);
+      for (const gid of affected) await recomputeGoal(session, gid);
+    }
     return { ok: true, task: merged };
   },
 };
@@ -309,6 +334,10 @@ export const addSubtasks: ToolDefinition<AddSubtasksArgs> = {
 
     const { error } = await session.client.from('cj_subtasks').insert(rows);
     if (error) throw new Error(`cj_add_subtasks: ${error.message}`);
+    // Ajouter des sous-actions (faites ou non) change le crédit partiel de la
+    // tâche → recale le goal rattaché.
+    const goalId = await goalIdOfTask(session, args.task_id);
+    if (goalId) await recomputeGoal(session, goalId);
     return { ok: true, count: rows.length, subtasks: rows.map((r) => r.data) };
   },
 };
