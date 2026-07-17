@@ -39,6 +39,7 @@ import {
   Share2,
   CalendarClock,
   Columns3,
+  Percent,
 } from 'lucide-react';
 import { RetroPlanPanel } from './retro/RetroPlanPanel';
 import type { Task, Priority, ViewKey } from '../types';
@@ -509,6 +510,32 @@ function DetailsTab({
                 </>
               )}
             </Menu>
+          </Field>
+          <Field icon={Percent} label="Avancement">
+            {task.status === 'done' ? (
+              <span className="text-2xs text-atlas-fg-3">100% (terminée)</span>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  defaultValue={task.progressPct ?? ''}
+                  placeholder="—"
+                  className="w-16 text-sm px-2 py-1 rounded-md border border-atlas-line bg-white"
+                  onBlur={(e) => {
+                    const raw = e.target.value.trim();
+                    if (raw === '') {
+                      updateTask(task.id, { progressPct: undefined });
+                      return;
+                    }
+                    const n = Math.max(0, Math.min(100, Number(raw)));
+                    if (Number.isFinite(n)) updateTask(task.id, { progressPct: n });
+                  }}
+                />
+                <span className="text-2xs text-atlas-fg-3">%</span>
+              </div>
+            )}
           </Field>
           <Field icon={Columns3} label="Section">
             <Menu

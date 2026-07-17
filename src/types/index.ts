@@ -95,6 +95,14 @@ export interface Task {
   estimatedMinutes?: number;
   actualMinutes?: number;
   completionDate?: string;
+  /**
+   * Avancement manuel en % (0-100), pour les tâches sans sous-tâches qui ne
+   * sont pas encore "done" mais ont un avancement réel connu (ex. import
+   * depuis une source externe avec un % précis). Compté dans le crédit
+   * pondéré de `computeGoalProgress` en repli quand il n'y a pas de
+   * sous-tâches — n'écrase jamais le crédit plein d'une tâche `done`.
+   */
+  progressPct?: number;
   assignees: string[];
   watchers?: string[];
   tags: string[];

@@ -25,14 +25,23 @@ export interface GoalProgressSubtask {
  * Poids d'avancement d'une action, dans [0, 1].
  * - `done` → 1 (crédit plein, même sans sous-actions).
  * - sinon avec sous-actions → fraction des sous-actions cochées.
+ * - sinon avec `progressPct` connu (import externe, saisie manuelle) → ce %.
  * - sinon → 0.
  */
-export function taskWeight(task: Pick<Task, 'id' | 'status'>, subtasks: GoalProgressSubtask[]): number {
+export function taskWeight(
+  task: Pick<Task, 'id' | 'status' | 'progressPct'>,
+  subtasks: GoalProgressSubtask[]
+): number {
   if (task.status === 'done') return 1;
   const own = subtasks.filter((s) => s.taskId === task.id);
-  if (own.length === 0) return 0;
-  const done = own.filter((s) => s.done).length;
-  return done / own.length;
+  if (own.length > 0) {
+    const done = own.filter((s) => s.done).length;
+    return done / own.length;
+  }
+  if (typeof task.progressPct === 'number') {
+    return Math.max(0, Math.min(100, task.progressPct)) / 100;
+  }
+  return 0;
 }
 
 export interface GoalProgress {
@@ -55,7 +64,7 @@ export interface GoalProgress {
  */
 export function computeGoalProgress(
   goal: Pick<Goal, 'id' | 'metricType' | 'targetValue'>,
-  allTasks: Pick<Task, 'id' | 'status' | 'goalId'>[],
+  allTasks: Pick<Task, 'id' | 'status' | 'goalId' | 'progressPct'>[],
   allSubtasks: GoalProgressSubtask[]
 ): GoalProgress {
   const contributing = allTasks.filter((t) => t.goalId === goal.id);

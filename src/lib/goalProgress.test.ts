@@ -5,11 +5,13 @@ import type { Goal, Task } from '../types';
 const task = (
   id: string,
   status: Task['status'],
-  goalId?: string
-): Pick<Task, 'id' | 'status' | 'goalId'> => ({
+  goalId?: string,
+  progressPct?: number
+): Pick<Task, 'id' | 'status' | 'goalId' | 'progressPct'> => ({
   id,
   status,
   goalId,
+  progressPct,
 });
 
 const goal = (extras: Partial<Goal> = {}): Pick<Goal, 'id' | 'metricType' | 'targetValue'> => ({
@@ -36,6 +38,23 @@ describe('taskWeight', () => {
       { taskId: 't1', done: false },
     ];
     expect(taskWeight({ id: 't1', status: 'todo' }, subs)).toBe(0.25);
+  });
+
+  it('falls back to progressPct when there are no sub-actions', () => {
+    expect(taskWeight({ id: 't1', status: 'in_progress', progressPct: 39 }, [])).toBeCloseTo(0.39);
+  });
+
+  it('prefers sub-action ratio over progressPct when both are present', () => {
+    const subs = [
+      { taskId: 't1', done: true },
+      { taskId: 't1', done: false },
+    ];
+    expect(taskWeight({ id: 't1', status: 'todo', progressPct: 90 }, subs)).toBe(0.5);
+  });
+
+  it('clamps an out-of-range progressPct into [0, 1]', () => {
+    expect(taskWeight({ id: 't1', status: 'in_progress', progressPct: 150 }, [])).toBe(1);
+    expect(taskWeight({ id: 't1', status: 'in_progress', progressPct: -20 }, [])).toBe(0);
   });
 });
 
@@ -76,6 +95,12 @@ describe('computeGoalProgress', () => {
     );
     expect(complete.currentValue).toBe(1);
     expect(complete.status).toBe('achieved');
+  });
+
+  it('credits a manually-tracked progressPct (e.g. imported from an external source)', () => {
+    const tasks = [task('t1', 'in_progress', 'g1', 40), task('t2', 'in_progress', 'g1', 60)];
+    const r = computeGoalProgress(goal(), tasks, []);
+    expect(r.currentValue).toBe(50); // (0.4 + 0.6) / 2 = 50%
   });
 
   it('ignores tasks linked to other goals', () => {

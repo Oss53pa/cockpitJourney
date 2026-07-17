@@ -236,7 +236,8 @@ async function recomputeGoalFromTasks(session: CjSession, goalId: string): Promi
       .from("cj_tasks").select("id, status, data").eq("data->>goalId", goalId);
     const tasks = (taskRows ?? []).map((r) => {
       const d = (r.data ?? {}) as Record<string, unknown>;
-      return { id: String(r.id), status: String(r.status ?? d.status ?? "todo") };
+      const progressPct = typeof d.progressPct === "number" ? d.progressPct : undefined;
+      return { id: String(r.id), status: String(r.status ?? d.status ?? "todo"), progressPct };
     });
     const total = tasks.length;
 
@@ -250,12 +251,14 @@ async function recomputeGoalFromTasks(session: CjSession, goalId: string): Promi
       }));
     }
 
-    // Poids par action : done = 1, sinon fraction des sous-actions cochées.
-    const weight = (t: { id: string; status: string }) => {
+    // Poids par action : done = 1, sinon fraction des sous-actions cochées,
+    // sinon progressPct connu (import externe / saisie manuelle) en repli.
+    const weight = (t: { id: string; status: string; progressPct?: number }) => {
       if (t.status === "done") return 1;
       const own = subs.filter((s) => s.taskId === t.id);
-      if (own.length === 0) return 0;
-      return own.filter((s) => s.done).length / own.length;
+      if (own.length > 0) return own.filter((s) => s.done).length / own.length;
+      if (typeof t.progressPct === "number") return Math.max(0, Math.min(100, t.progressPct)) / 100;
+      return 0;
     };
     const fraction = total > 0 ? tasks.reduce((s, t) => s + weight(t), 0) / total : 0;
 
@@ -578,9 +581,10 @@ const TOOLS: Tool[] = [
       if ("sectionId" in patch) update.section_id = patch.sectionId;
       const { error } = await session.client.from("cj_tasks").update(update).eq("id", args.task_id);
       if (error) throw new Error(`cj_update_task: ${error.message}`);
-      // Le lien ou le statut a bougé → les deux OKR concernés se recalculent
-      // (l'ancien perd une contribution, le nouveau en gagne une).
-      if ("status" in patch || "goalId" in patch) {
+      // Le lien, le statut ou l'avancement manuel a bougé → les deux OKR
+      // concernés se recalculent (l'ancien perd une contribution, le
+      // nouveau en gagne une ; ou le poids de la contribution a changé).
+      if ("status" in patch || "goalId" in patch || "progressPct" in patch) {
         const affected = new Set<string>();
         const prev = before.goalId as string | undefined;
         const next = (merged as Record<string, unknown>).goalId as string | undefined;

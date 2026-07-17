@@ -1377,8 +1377,9 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     set((s: any) => ({ tasks: s.tasks.map((t: any) => (t.id === id ? { ...t, ...patch } : t)) }));
     const updated = get().tasks.find((t) => t.id === id);
     if (updated) dbPersist.put('tasks', updated);
-    // Roll up goal progress when a contribution changes (status or link).
-    if (before && ('status' in patch || 'goalId' in patch)) {
+    // Roll up goal progress when a contribution changes (status, link, or
+    // manual progress %).
+    if (before && ('status' in patch || 'goalId' in patch || 'progressPct' in patch)) {
       const affected = new Set<string>();
       if (before.goalId) affected.add(before.goalId);
       if (updated?.goalId) affected.add(updated.goalId);
