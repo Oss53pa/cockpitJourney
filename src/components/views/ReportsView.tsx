@@ -35,6 +35,15 @@ import type { Task } from '../../types';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../ui/Menu';
 import { Modal } from '../ui/Modal';
 import { GoalPerformancePanel } from './GoalPerformancePanel';
+import { DuplicateActionsPanel } from './DuplicateActionsPanel';
+import { findDuplicateTasks } from '../../lib/duplicates';
+
+/** Onglets de la vue Rapports — le vivant et le nettoyage avant l'historique. */
+const VIEW_TABS = [
+  { key: 'live' as const, label: 'Performance · temps réel', icon: Target },
+  { key: 'dups' as const, label: 'Doublons', icon: Copy },
+  { key: 'archive' as const, label: 'Rapports archivés', icon: FileBarChart },
+];
 import { cn, relativeTime } from '../../lib/utils';
 import { ReportExportDialog } from '../reports/ReportExportDialog';
 
@@ -95,6 +104,7 @@ export function ReportsView() {
   const generateReport = useApp((s) => s.generateReport);
   const deleteReport = useApp((s) => s.deleteReport);
   const [filter, setFilter] = useState<'all' | ReportKind>('all');
+  const [view, setView] = useState<(typeof VIEW_TABS)[number]['key']>('live');
   const [openReportId, setOpenReportId] = useState<string | null>(null);
   const [exportReportId, setExportReportId] = useState<string | null>(null);
   // Default to "table" — proper history view. Card grid stays available
@@ -104,6 +114,14 @@ export function ReportsView() {
     'generatedAt'
   );
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  // Compteur de doublons pour le badge d'onglet — recalculé en direct.
+  const allTasks = useApp((s) => s.tasks);
+  const allSubtasks = useApp((s) => s.subtasks);
+  const dupExcess = useMemo(
+    () => findDuplicateTasks(allTasks, allSubtasks).reduce((s, g) => s + g.remove.length, 0),
+    [allTasks, allSubtasks]
+  );
 
   const filtered = useMemo(() => {
     const base = filter === 'all' ? reports : reports.filter((r) => r.kind === filter);
@@ -184,149 +202,188 @@ export function ReportsView() {
         </div>
       </div>
 
-      {/* Rapport vivant : recalculé depuis les actions, contrairement aux
-          rapports archivés ci-dessous qui sont des snapshots figés. */}
-      <GoalPerformancePanel />
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-7">
-        {(Object.keys(kindLabels) as ReportKind[]).map((k) => {
-          const count = reports.filter((r) => r.kind === k).length;
+      {/* Le rapport vivant (recalculé depuis les actions) et le nettoyage des
+          doublons vivent dans leurs propres onglets, séparés de l'historique
+          de snapshots figés. */}
+      <nav className="flex items-center gap-0.5 border-b border-atlas-line mb-6 -mx-2 px-2 overflow-x-auto">
+        {VIEW_TABS.map((t) => {
+          const T = t.icon;
+          const active = view === t.key;
+          const count = t.key === 'dups' ? dupExcess : t.key === 'archive' ? reports.length : 0;
           return (
             <button
-              key={k}
-              onClick={() => {
-                const r = generateReport(k);
-                setOpenReportId(r.id);
-              }}
-              className="panel p-4 text-left group hover:border-atlas-amber/40 transition-all hover:-translate-y-0.5"
+              key={t.key}
+              onClick={() => setView(t.key)}
+              className={cn(
+                'inline-flex items-center gap-2 px-3 py-2 text-sm border-b-2 -mb-px whitespace-nowrap transition-colors',
+                active
+                  ? 'border-atlas-amber text-atlas-fg-1 font-medium'
+                  : 'border-transparent text-atlas-fg-3 hover:text-atlas-fg-1'
+              )}
             >
-              <div
-                className={cn(
-                  'w-9 h-9 rounded-xl flex items-center justify-center border mb-3',
-                  kindColors[k]
-                )}
-              >
-                <Calendar className="w-4 h-4" />
-              </div>
-              <div className="text-sm font-medium text-atlas-fg-1">{kindLabels[k]}</div>
-              <div className="text-2xs text-atlas-fg-3 mt-0.5">
-                {count} archivé{count > 1 ? 's' : ''}
-              </div>
-              <div className="mt-3 inline-flex items-center gap-1 text-2xs uppercase tracking-wider font-medium text-atlas-amber-deep group-hover:gap-2 transition-all">
-                <RefreshCw className="w-3 h-3" /> Générer
-              </div>
+              <T className={cn('w-3.5 h-3.5', active && 'text-atlas-amber-deep')} />
+              {t.label}
+              {count > 0 && (
+                <span
+                  className={cn(
+                    'chip text-[9px] px-1.5 py-0',
+                    t.key === 'dups' ? 'bg-signal-red/15 text-signal-red' : 'bg-black/[0.05] text-atlas-fg-3'
+                  )}
+                >
+                  {count}
+                </span>
+              )}
             </button>
           );
         })}
-      </div>
+      </nav>
 
-      {/* Filters + history label + layout toggle */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-2xs uppercase tracking-[0.18em] font-medium text-atlas-fg-3 mr-1">
-            Historique
-          </span>
-          <button
-            onClick={() => setFilter('all')}
-            className={cn(
-              'px-3 py-1 rounded-full text-2xs uppercase tracking-wider font-medium border',
-              filter === 'all'
-                ? 'bg-atlas-amber/15 border-atlas-amber/30 text-atlas-amber-deep'
-                : 'border-atlas-line text-atlas-fg-3 hover:bg-black/[0.04]'
-            )}
-          >
-            Tous · {reports.length}
-          </button>
-          {(Object.keys(kindLabels) as ReportKind[]).map((k) => (
-            <button
-              key={k}
-              onClick={() => setFilter(k)}
-              className={cn(
-                'px-3 py-1 rounded-full text-2xs uppercase tracking-wider font-medium border',
-                filter === k
-                  ? 'bg-atlas-amber/15 border-atlas-amber/30 text-atlas-amber-deep'
-                  : 'border-atlas-line text-atlas-fg-3 hover:bg-black/[0.04]'
-              )}
-            >
-              {kindLabels[k]}
-            </button>
-          ))}
-        </div>
-        <div className="ml-auto inline-flex items-center gap-0 rounded-full border border-atlas-line bg-white p-0.5">
-          <button
-            onClick={() => setLayout('table')}
-            aria-label="Vue tableau"
-            title="Vue tableau"
-            className={cn(
-              'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-2xs uppercase tracking-wider font-medium transition',
-              layout === 'table'
-                ? 'bg-atlas-amber/15 text-atlas-amber-deep'
-                : 'text-atlas-fg-3 hover:text-atlas-fg-1'
-            )}
-          >
-            <Rows3 className="w-3 h-3" />
-            Table
-          </button>
-          <button
-            onClick={() => setLayout('cards')}
-            aria-label="Vue cartes"
-            title="Vue cartes"
-            className={cn(
-              'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-2xs uppercase tracking-wider font-medium transition',
-              layout === 'cards'
-                ? 'bg-atlas-amber/15 text-atlas-amber-deep'
-                : 'text-atlas-fg-3 hover:text-atlas-fg-1'
-            )}
-          >
-            <LayoutGrid className="w-3 h-3" />
-            Cartes
-          </button>
-        </div>
-      </div>
+      {view === 'live' && <GoalPerformancePanel />}
+      {view === 'dups' && <DuplicateActionsPanel />}
 
-      {filtered.length === 0 ? (
-        <div className="panel p-10 text-center">
-          <FileBarChart className="w-8 h-8 mx-auto text-atlas-fg-3 mb-2" />
-          <h3 className="text-sm font-medium text-atlas-fg-1">Aucun rapport</h3>
-          <p className="text-2xs text-atlas-fg-3 mt-1 mb-4">
-            Générez votre premier rapport — analyse complète multi-projets.
-          </p>
-          <button
-            onClick={() => {
-              const r = generateReport('weekly');
-              setOpenReportId(r.id);
-            }}
-            className="btn-primary text-sm px-3.5 py-1.5 inline-flex"
-          >
-            <Sparkles className="w-3.5 h-3.5" /> Générer hebdo
-          </button>
-        </div>
-      ) : layout === 'table' ? (
-        <ReportsHistoryTable
-          reports={filtered}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          onSort={handleSort}
-          onOpen={(id) => setOpenReportId(id)}
-          onExport={(id) => setExportReportId(id)}
-          onDelete={(id, title) => {
-            if (confirm(`Supprimer "${title}" ?`)) deleteReport(id);
-          }}
-        />
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {filtered.map((r) => (
-            <ReportCard
-              key={r.id}
-              report={r}
-              onOpen={() => setOpenReportId(r.id)}
-              onExport={() => setExportReportId(r.id)}
-              onDelete={() => {
-                if (confirm(`Supprimer "${r.title}" ?`)) deleteReport(r.id);
+      {view === 'archive' && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-7">
+            {(Object.keys(kindLabels) as ReportKind[]).map((k) => {
+              const count = reports.filter((r) => r.kind === k).length;
+              return (
+                <button
+                  key={k}
+                  onClick={() => {
+                    const r = generateReport(k);
+                    setOpenReportId(r.id);
+                  }}
+                  className="panel p-4 text-left group hover:border-atlas-amber/40 transition-all hover:-translate-y-0.5"
+                >
+                  <div
+                    className={cn(
+                      'w-9 h-9 rounded-xl flex items-center justify-center border mb-3',
+                      kindColors[k]
+                    )}
+                  >
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <div className="text-sm font-medium text-atlas-fg-1">{kindLabels[k]}</div>
+                  <div className="text-2xs text-atlas-fg-3 mt-0.5">
+                    {count} archivé{count > 1 ? 's' : ''}
+                  </div>
+                  <div className="mt-3 inline-flex items-center gap-1 text-2xs uppercase tracking-wider font-medium text-atlas-amber-deep group-hover:gap-2 transition-all">
+                    <RefreshCw className="w-3 h-3" /> Générer
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Filters + history label + layout toggle */}
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-2xs uppercase tracking-[0.18em] font-medium text-atlas-fg-3 mr-1">
+                Historique
+              </span>
+              <button
+                onClick={() => setFilter('all')}
+                className={cn(
+                  'px-3 py-1 rounded-full text-2xs uppercase tracking-wider font-medium border',
+                  filter === 'all'
+                    ? 'bg-atlas-amber/15 border-atlas-amber/30 text-atlas-amber-deep'
+                    : 'border-atlas-line text-atlas-fg-3 hover:bg-black/[0.04]'
+                )}
+              >
+                Tous · {reports.length}
+              </button>
+              {(Object.keys(kindLabels) as ReportKind[]).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setFilter(k)}
+                  className={cn(
+                    'px-3 py-1 rounded-full text-2xs uppercase tracking-wider font-medium border',
+                    filter === k
+                      ? 'bg-atlas-amber/15 border-atlas-amber/30 text-atlas-amber-deep'
+                      : 'border-atlas-line text-atlas-fg-3 hover:bg-black/[0.04]'
+                  )}
+                >
+                  {kindLabels[k]}
+                </button>
+              ))}
+            </div>
+            <div className="ml-auto inline-flex items-center gap-0 rounded-full border border-atlas-line bg-white p-0.5">
+              <button
+                onClick={() => setLayout('table')}
+                aria-label="Vue tableau"
+                title="Vue tableau"
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-2xs uppercase tracking-wider font-medium transition',
+                  layout === 'table'
+                    ? 'bg-atlas-amber/15 text-atlas-amber-deep'
+                    : 'text-atlas-fg-3 hover:text-atlas-fg-1'
+                )}
+              >
+                <Rows3 className="w-3 h-3" />
+                Table
+              </button>
+              <button
+                onClick={() => setLayout('cards')}
+                aria-label="Vue cartes"
+                title="Vue cartes"
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-2xs uppercase tracking-wider font-medium transition',
+                  layout === 'cards'
+                    ? 'bg-atlas-amber/15 text-atlas-amber-deep'
+                    : 'text-atlas-fg-3 hover:text-atlas-fg-1'
+                )}
+              >
+                <LayoutGrid className="w-3 h-3" />
+                Cartes
+              </button>
+            </div>
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="panel p-10 text-center">
+              <FileBarChart className="w-8 h-8 mx-auto text-atlas-fg-3 mb-2" />
+              <h3 className="text-sm font-medium text-atlas-fg-1">Aucun rapport</h3>
+              <p className="text-2xs text-atlas-fg-3 mt-1 mb-4">
+                Générez votre premier rapport — analyse complète multi-projets.
+              </p>
+              <button
+                onClick={() => {
+                  const r = generateReport('weekly');
+                  setOpenReportId(r.id);
+                }}
+                className="btn-primary text-sm px-3.5 py-1.5 inline-flex"
+              >
+                <Sparkles className="w-3.5 h-3.5" /> Générer hebdo
+              </button>
+            </div>
+          ) : layout === 'table' ? (
+            <ReportsHistoryTable
+              reports={filtered}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSort={handleSort}
+              onOpen={(id) => setOpenReportId(id)}
+              onExport={(id) => setExportReportId(id)}
+              onDelete={(id, title) => {
+                if (confirm(`Supprimer "${title}" ?`)) deleteReport(id);
               }}
             />
-          ))}
-        </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {filtered.map((r) => (
+                <ReportCard
+                  key={r.id}
+                  report={r}
+                  onOpen={() => setOpenReportId(r.id)}
+                  onExport={() => setExportReportId(r.id)}
+                  onDelete={() => {
+                    if (confirm(`Supprimer "${r.title}" ?`)) deleteReport(r.id);
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {openReportId && (
