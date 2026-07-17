@@ -826,7 +826,7 @@ function KanbanCard({
         </div>
         <div className="mt-2 flex items-center gap-1.5 flex-wrap">
           <StatusBadge status={task.status} size="xs" />
-          {task.tags.slice(0, 2).map((tag) => (
+          {(task.tags ?? []).slice(0, 2).map((tag) => (
             <span
               key={tag}
               className="chip bg-black/[0.04] text-atlas-fg-2 border border-atlas-line text-[9px]"
@@ -1326,7 +1326,9 @@ function TableBoard({ tasks, onOpenTask }: { tasks: Task[]; onOpenTask: (t: Task
               >
                 {t.title}
               </div>
-              <div className="text-2xs text-atlas-fg-3 truncate">{t.tags.map((x) => `#${x}`).join('  ')}</div>
+              <div className="text-2xs text-atlas-fg-3 truncate">
+                {(t.tags ?? []).map((x) => `#${x}`).join('  ')}
+              </div>
             </div>
             <span className="chip bg-black/[0.04] text-atlas-fg-2 border border-atlas-line">
               {t.status.replace('_', ' ')}

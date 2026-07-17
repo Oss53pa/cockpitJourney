@@ -145,7 +145,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
     setTitle(tpl.title);
     setDescription(tpl.description ?? '');
     setPriority(tpl.priority);
-    setTagsRaw(tpl.tags.join(', '));
+    setTagsRaw((tpl.tags ?? []).join(', '));
     setEstimateMinutes(tpl.estimatedMinutes ?? '');
     setTaskType(tpl.taskType ?? 'standard');
   };
@@ -173,7 +173,7 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
     (t) =>
       (t.actualMinutes || t.estimatedMinutes) &&
       estimateTags.length > 0 &&
-      t.tags.some((tg) => estimateTags.includes(tg))
+      (t.tags ?? []).some((tg) => estimateTags.includes(tg))
   );
   const similarAvg = similarTasks.length
     ? Math.round(

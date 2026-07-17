@@ -438,7 +438,7 @@ function DetailsTab({ task }: { task: Task }) {
     (t) =>
       t.id !== task.id &&
       (t.actualMinutes || t.estimatedMinutes) &&
-      t.tags.some((tag) => task.tags.includes(tag))
+      (t.tags ?? []).some((tag) => (task.tags ?? []).includes(tag))
   );
   const avgSimilarMinutes = similarTasks.length
     ? Math.round(
@@ -626,11 +626,11 @@ function DetailsTab({ task }: { task: Task }) {
           </Field>
           <Field icon={Hash} label="Tags">
             <div className="flex items-center gap-1 flex-wrap">
-              {task.tags.map((t) => (
+              {(task.tags ?? []).map((t) => (
                 <span key={t} className="chip bg-black/[0.04] text-atlas-fg-2 border border-atlas-line">
                   #{t}
                   <button
-                    onClick={() => updateTask(task.id, { tags: task.tags.filter((x) => x !== t) })}
+                    onClick={() => updateTask(task.id, { tags: (task.tags ?? []).filter((x) => x !== t) })}
                     className="ml-1 text-atlas-fg-3 hover:text-signal-red"
                   >
                     ×
@@ -805,8 +805,8 @@ function DetailsTab({ task }: { task: Task }) {
             </span>
           </div>
           <p className="text-sm text-atlas-fg-1">
-            Sur {similarTasks.length} tâches partageant {task.tags.length > 1 ? 'ces tags' : 'ce tag'}, la
-            durée moyenne observée est de{' '}
+            Sur {similarTasks.length} tâches partageant {(task.tags ?? []).length > 1 ? 'ces tags' : 'ce tag'}
+            , la durée moyenne observée est de{' '}
             <strong className="text-atlas-amber-deep">{fmtDuration(avgSimilarMinutes)}</strong>.
             {task.estimatedMinutes
               ? ` Votre estimation actuelle : ${fmtDuration(task.estimatedMinutes)}.`
@@ -1642,7 +1642,7 @@ function isImportant(task: Task): boolean {
   if (task.goalId) return true;
   if (task.attentionPoint) return true;
   if (task.requiresApproval) return true;
-  return task.tags.some((t) => IMPORTANCE_TAGS.some((k) => t.toLowerCase().includes(k)));
+  return (task.tags ?? []).some((t) => IMPORTANCE_TAGS.some((k) => t.toLowerCase().includes(k)));
 }
 
 /** Matrice d'Eisenhower → priorité 1..4. */
@@ -1691,12 +1691,12 @@ function titleWords(s: string): string[] {
 
 /** Tâches similaires : score = tags partagés (×2) + mots de titre communs. */
 function findSimilarTasks(task: Task, all: Task[]): Task[] {
-  const myTags = new Set(task.tags.map((t) => t.toLowerCase()));
+  const myTags = new Set((task.tags ?? []).map((t) => t.toLowerCase()));
   const myWords = new Set(titleWords(task.title));
   return all
     .filter((t) => t.id !== task.id)
     .map((t) => {
-      const tagOverlap = t.tags.filter((x) => myTags.has(x.toLowerCase())).length;
+      const tagOverlap = (t.tags ?? []).filter((x) => myTags.has(x.toLowerCase())).length;
       const wordOverlap = titleWords(t.title).filter((w) => myWords.has(w)).length;
       return { t, score: tagOverlap * 2 + wordOverlap };
     })
