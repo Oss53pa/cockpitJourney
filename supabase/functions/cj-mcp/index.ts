@@ -212,7 +212,75 @@ function normTaskStatus(s: unknown): string {
   return "todo";
 }
 
-// ─────────────────────────── Tools (18) ───────────────────────────
+/**
+ * Recalcul de la progression d'un goal depuis ses actions — miroir serveur de
+ * `src/lib/goalProgress.ts` (app web). Sans lui, compléter une action via MCP
+ * laissait l'OKR figé jusqu'au prochain passage dans le navigateur.
+ *
+ * Règles (identiques à l'app) : crédit partiel pondéré par les sous-actions ;
+ * tous les types de métriques auto-pilotés (ratio d'exécution appliqué à la
+ * cible pour number/currency) ; `progressMode: 'manual'` jamais écrasé.
+ *
+ * Best-effort : toute erreur est avalée — le recalcul ne doit jamais faire
+ * échouer l'action de l'utilisateur.
+ */
+async function recomputeGoalFromTasks(session: CjSession, goalId: string): Promise<void> {
+  try {
+    const { data: goalRow } = await session.client
+      .from("cj_goals").select("data").eq("id", goalId).maybeSingle();
+    if (!goalRow) return;
+    const g = (goalRow.data ?? {}) as Record<string, unknown>;
+    if (g.progressMode === "manual") return;
+
+    const { data: taskRows } = await session.client
+      .from("cj_tasks").select("id, status, data").eq("data->>goalId", goalId);
+    const tasks = (taskRows ?? []).map((r) => {
+      const d = (r.data ?? {}) as Record<string, unknown>;
+      return { id: String(r.id), status: String(r.status ?? d.status ?? "todo") };
+    });
+    const total = tasks.length;
+
+    let subs: { taskId: string; done: boolean }[] = [];
+    if (total > 0) {
+      const { data: subRows } = await session.client
+        .from("cj_subtasks").select("task_id, data").in("task_id", tasks.map((t) => t.id));
+      subs = (subRows ?? []).map((r) => ({
+        taskId: String(r.task_id),
+        done: Boolean(((r.data ?? {}) as Record<string, unknown>).done),
+      }));
+    }
+
+    // Poids par action : done = 1, sinon fraction des sous-actions cochées.
+    const weight = (t: { id: string; status: string }) => {
+      if (t.status === "done") return 1;
+      const own = subs.filter((s) => s.taskId === t.id);
+      if (own.length === 0) return 0;
+      return own.filter((s) => s.done).length / own.length;
+    };
+    const fraction = total > 0 ? tasks.reduce((s, t) => s + weight(t), 0) / total : 0;
+
+    const target = Number(g.targetValue ?? 0);
+    const metric = String(g.metricType ?? "number");
+    const currentValue =
+      metric === "percentage"
+        ? Math.round(fraction * 100)
+        : metric === "boolean"
+          ? (total > 0 && fraction >= 1 ? target : 0)
+          : Math.round(target * fraction);
+
+    const pct = (currentValue / Math.max(1, target)) * 100;
+    const health = pct >= 60 ? "green" : pct >= 35 ? "yellow" : "red";
+    const status = pct >= 100 ? "achieved" : pct >= 60 ? "on_track" : pct >= 35 ? "at_risk" : "off_track";
+
+    await session.client.from("cj_goals")
+      .update({ data: { ...g, currentValue, health, status, updatedAt: new Date().toISOString() }, status })
+      .eq("id", goalId);
+  } catch (err) {
+    console.error(`recomputeGoalFromTasks(${goalId}) failed:`, err);
+  }
+}
+
+// ─────────────────────────── Tools (19) ───────────────────────────
 interface Tool {
   name: string;
   description: string;
@@ -499,8 +567,9 @@ const TOOLS: Tool[] = [
       if (readErr) throw new Error(`cj_update_task (read): ${readErr.message}`);
       if (!row) throw new Error(`Tâche ${args.task_id} introuvable`);
       const now = new Date().toISOString();
+      const before = (row.data ?? {}) as Record<string, unknown>;
       const patch = camelizePatch(args.patch as Record<string, unknown>);
-      const merged = { ...((row.data ?? {}) as Record<string, unknown>), ...patch, updatedAt: now };
+      const merged = { ...before, ...patch, updatedAt: now };
       const update: Record<string, unknown> = { data: merged };
       if ("status" in patch) update.status = patch.status;
       if ("priority" in patch) update.priority = patch.priority;
@@ -509,6 +578,16 @@ const TOOLS: Tool[] = [
       if ("sectionId" in patch) update.section_id = patch.sectionId;
       const { error } = await session.client.from("cj_tasks").update(update).eq("id", args.task_id);
       if (error) throw new Error(`cj_update_task: ${error.message}`);
+      // Le lien ou le statut a bougé → les deux OKR concernés se recalculent
+      // (l'ancien perd une contribution, le nouveau en gagne une).
+      if ("status" in patch || "goalId" in patch) {
+        const affected = new Set<string>();
+        const prev = before.goalId as string | undefined;
+        const next = (merged as Record<string, unknown>).goalId as string | undefined;
+        if (prev) affected.add(prev);
+        if (next) affected.add(next);
+        for (const gid of affected) await recomputeGoalFromTasks(session, gid);
+      }
       return { ok: true, task: merged };
     },
   },
@@ -530,7 +609,60 @@ const TOOLS: Tool[] = [
       const merged = { ...((row.data ?? {}) as Record<string, unknown>), status: "done", completionDate: now, updatedAt: now };
       const { error } = await session.client.from("cj_tasks").update({ status: "done", data: merged }).eq("id", args.task_id);
       if (error) throw new Error(`cj_complete_task: ${error.message}`);
-      return { ok: true, task_id: args.task_id, completed_at: now };
+      // Fait progresser l'OKR rattaché côté base (sinon il resterait figé
+      // jusqu'à la prochaine ouverture du navigateur).
+      const doneGoalId = ((merged as Record<string, unknown>).goalId as string | undefined) ?? null;
+      if (doneGoalId) await recomputeGoalFromTasks(session, doneGoalId);
+      return { ok: true, task_id: args.task_id, completed_at: now, goal_id: doneGoalId };
+    },
+  },
+  {
+    name: "cj_delete_task",
+    description:
+      "Supprime DÉFINITIVEMENT une tâche, ses sous-tâches et ses commentaires, et décrémente le compteur du projet. Irréversible : à n'utiliser que sur demande explicite (ex. nettoyage de doublons). Pour clore une tâche faite, utiliser cj_complete_task.",
+    inputSchema: {
+      type: "object",
+      properties: { task_id: { type: "string", description: "ID de la tâche à supprimer définitivement" } },
+      required: ["task_id"],
+      additionalProperties: false,
+    },
+    async handler(args, session) {
+      requireScope(session, "write", "admin");
+      // On lit d'abord : il faut le projectId pour recaler taskCount, et
+      // l'absence de ligne doit remonter une erreur claire plutôt qu'un
+      // silence (une suppression qui ne supprime rien est un piège).
+      const { data: row, error: readErr } = await session.client
+        .from("cj_tasks").select("data, project_id").eq("id", args.task_id).maybeSingle();
+      if (readErr) throw new Error(`cj_delete_task (read): ${readErr.message}`);
+      if (!row) throw new Error(`Tâche ${args.task_id} introuvable`);
+      const data = (row.data ?? {}) as Record<string, unknown>;
+      const projectId = (row.project_id as string | null) ?? (data.projectId as string | undefined) ?? null;
+      const goalId = (data.goalId as string | undefined) ?? null;
+
+      // Dépendances d'abord : sinon elles survivraient à leur parent.
+      await session.client.from("cj_subtasks").delete().eq("task_id", args.task_id);
+      await session.client.from("cj_comments").delete().eq("task_id", args.task_id);
+
+      const { error } = await session.client.from("cj_tasks").delete().eq("id", args.task_id);
+      if (error) throw new Error(`cj_delete_task: ${error.message}`);
+
+      // taskCount du projet : miroir dénormalisé, il dérive si on l'oublie.
+      if (projectId) {
+        const { data: proj } = await session.client
+          .from("cj_projects").select("data").eq("id", projectId).maybeSingle();
+        if (proj) {
+          const pd = (proj.data ?? {}) as Record<string, unknown>;
+          const next = Math.max(0, Number(pd.taskCount ?? 0) - 1);
+          await session.client.from("cj_projects")
+            .update({ data: { ...pd, taskCount: next, updatedAt: new Date().toISOString() } })
+            .eq("id", projectId);
+        }
+      }
+
+      // La tâche ne contribue plus : le goal doit refléter sa disparition.
+      if (goalId) await recomputeGoalFromTasks(session, goalId);
+
+      return { ok: true, deleted: args.task_id, project_id: projectId, goal_id: goalId };
     },
   },
   {
