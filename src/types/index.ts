@@ -103,6 +103,13 @@ export interface Task {
    * sous-tâches — n'écrase jamais le crédit plein d'une tâche `done`.
    */
   progressPct?: number;
+  /**
+   * Axe stratégique d'origine (import Cockpit-Castel, ex. `'axe7_construction'`).
+   * Utilisé par `computeGoalProgress` pour pondérer la progression d'un goal
+   * qui regroupe des tâches de plusieurs axes — cf. `AXIS_WEIGHTS`. Absent
+   * sur les tâches créées directement dans CockpitJourney.
+   */
+  axeKey?: string;
   assignees: string[];
   watchers?: string[];
   tags: string[];

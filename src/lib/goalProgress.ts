@@ -12,8 +12,30 @@
  *  - Tous les types de goals sont AUTO-PILOTÉS quand `progressMode !== 'manual'` :
  *    `currentValue = targetValue × fraction` (ratio d'exécution) pour number /
  *    currency, `round(fraction × 100)` pour percentage, tout-ou-rien pour boolean.
+ *  - PONDÉRATION PAR AXE : quand un goal regroupe des actions provenant de
+ *    plusieurs axes stratégiques Cockpit-Castel (`task.axeKey`), sa fraction
+ *    n'est plus une moyenne plate des actions mais une moyenne pondérée par
+ *    axe (`AXIS_WEIGHTS`) — les axes eux-mêmes ne sont jamais des Goals, ils
+ *    ne servent qu'à pondérer le calcul d'un goal qui les contient.
  */
 import type { Goal, Task } from '../types';
+
+/**
+ * Poids (sur 100) de chaque axe stratégique, tels que configurés dans
+ * Cockpit-Castel (écran « Répartition des poids »). L'axe « Divers &
+ * Transverse » est à 0 par convention — présent pour rester exhaustif, mais
+ * il ne contribue jamais à la moyenne pondérée.
+ */
+export const AXIS_WEIGHTS: Record<string, number> = {
+  axe1_rh: 15,
+  axe2_commercial: 20,
+  axe3_technique: 15,
+  axe4_budget: 10,
+  axe5_marketing: 10,
+  axe6_exploitation: 5,
+  axe7_construction: 25,
+  axe8_divers: 0,
+};
 
 /** Forme minimale d'une sous-action (miroir du `Subtask` du store). */
 export interface GoalProgressSubtask {
@@ -64,14 +86,36 @@ export interface GoalProgress {
  */
 export function computeGoalProgress(
   goal: Pick<Goal, 'id' | 'metricType' | 'targetValue'>,
-  allTasks: Pick<Task, 'id' | 'status' | 'goalId' | 'progressPct'>[],
+  allTasks: Pick<Task, 'id' | 'status' | 'goalId' | 'progressPct' | 'axeKey'>[],
   allSubtasks: GoalProgressSubtask[]
 ): GoalProgress {
   const contributing = allTasks.filter((t) => t.goalId === goal.id);
   const total = contributing.length;
   const done = contributing.filter((t) => t.status === 'done').length;
-  const weightSum = contributing.reduce((sum, t) => sum + taskWeight(t, allSubtasks), 0);
-  const fraction = total > 0 ? weightSum / total : 0;
+
+  // Pondération par axe : seulement quand TOUTES les actions contributrices
+  // ont un axe reconnu et qu'il y en a plus d'un — sinon on retombe sur la
+  // moyenne plate (comportement inchangé pour les goals sans axes Castel).
+  const axeKeys = contributing.map((t) => t.axeKey);
+  const allHaveAxis = total > 0 && axeKeys.every((a): a is string => !!a && a in AXIS_WEIGHTS);
+  const distinctAxes = new Set(axeKeys);
+
+  let fraction: number;
+  if (allHaveAxis && distinctAxes.size > 1) {
+    let weightedSum = 0;
+    let weightTotal = 0;
+    for (const axe of distinctAxes) {
+      const axeTasks = contributing.filter((t) => t.axeKey === axe);
+      const axeAvg = axeTasks.reduce((sum, t) => sum + taskWeight(t, allSubtasks), 0) / axeTasks.length;
+      const poids = AXIS_WEIGHTS[axe as string];
+      weightedSum += axeAvg * poids;
+      weightTotal += poids;
+    }
+    fraction = weightTotal > 0 ? weightedSum / weightTotal : 0;
+  } else {
+    const weightSum = contributing.reduce((sum, t) => sum + taskWeight(t, allSubtasks), 0);
+    fraction = total > 0 ? weightSum / total : 0;
+  }
 
   const target = goal.targetValue;
   let currentValue: number;

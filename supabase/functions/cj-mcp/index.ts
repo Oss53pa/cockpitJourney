@@ -212,6 +212,18 @@ function normTaskStatus(s: unknown): string {
   return "todo";
 }
 
+/** Poids par axe — miroir de `AXIS_WEIGHTS` dans `src/lib/goalProgress.ts`. */
+const AXIS_WEIGHTS: Record<string, number> = {
+  axe1_rh: 15,
+  axe2_commercial: 20,
+  axe3_technique: 15,
+  axe4_budget: 10,
+  axe5_marketing: 10,
+  axe6_exploitation: 5,
+  axe7_construction: 25,
+  axe8_divers: 0,
+};
+
 /**
  * Recalcul de la progression d'un goal depuis ses actions — miroir serveur de
  * `src/lib/goalProgress.ts` (app web). Sans lui, compléter une action via MCP
@@ -219,7 +231,9 @@ function normTaskStatus(s: unknown): string {
  *
  * Règles (identiques à l'app) : crédit partiel pondéré par les sous-actions ;
  * tous les types de métriques auto-pilotés (ratio d'exécution appliqué à la
- * cible pour number/currency) ; `progressMode: 'manual'` jamais écrasé.
+ * cible pour number/currency) ; `progressMode: 'manual'` jamais écrasé ;
+ * pondération par axe (`AXIS_WEIGHTS`) quand toutes les actions contributrices
+ * ont un axe reconnu et qu'il y en a plus d'un.
  *
  * Best-effort : toute erreur est avalée — le recalcul ne doit jamais faire
  * échouer l'action de l'utilisateur.
@@ -237,7 +251,8 @@ async function recomputeGoalFromTasks(session: CjSession, goalId: string): Promi
     const tasks = (taskRows ?? []).map((r) => {
       const d = (r.data ?? {}) as Record<string, unknown>;
       const progressPct = typeof d.progressPct === "number" ? d.progressPct : undefined;
-      return { id: String(r.id), status: String(r.status ?? d.status ?? "todo"), progressPct };
+      const axeKey = typeof d.axeKey === "string" ? d.axeKey : undefined;
+      return { id: String(r.id), status: String(r.status ?? d.status ?? "todo"), progressPct, axeKey };
     });
     const total = tasks.length;
 
@@ -260,7 +275,25 @@ async function recomputeGoalFromTasks(session: CjSession, goalId: string): Promi
       if (typeof t.progressPct === "number") return Math.max(0, Math.min(100, t.progressPct)) / 100;
       return 0;
     };
-    const fraction = total > 0 ? tasks.reduce((s, t) => s + weight(t), 0) / total : 0;
+
+    const axeKeys = tasks.map((t) => t.axeKey);
+    const allHaveAxis = total > 0 && axeKeys.every((a) => !!a && a in AXIS_WEIGHTS);
+    const distinctAxes = new Set(axeKeys);
+    let fraction: number;
+    if (allHaveAxis && distinctAxes.size > 1) {
+      let weightedSum = 0;
+      let weightTotal = 0;
+      for (const axe of distinctAxes) {
+        const axeTasks = tasks.filter((t) => t.axeKey === axe);
+        const axeAvg = axeTasks.reduce((s, t) => s + weight(t), 0) / axeTasks.length;
+        const poids = AXIS_WEIGHTS[axe as string];
+        weightedSum += axeAvg * poids;
+        weightTotal += poids;
+      }
+      fraction = weightTotal > 0 ? weightedSum / weightTotal : 0;
+    } else {
+      fraction = total > 0 ? tasks.reduce((s, t) => s + weight(t), 0) / total : 0;
+    }
 
     const target = Number(g.targetValue ?? 0);
     const metric = String(g.metricType ?? "number");
