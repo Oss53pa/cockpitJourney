@@ -17,6 +17,7 @@ import {
   writeSnapshotCache,
   clearSnapshotCache,
 } from '../lib/snapshotCache';
+import { buildPeriodAnalytics, type PeriodAnalytics } from '../lib/reportAnalytics';
 import { setMonitoringUser, captureException } from '../lib/monitoring';
 // Type-only — the runtime code (vendored Proph3t core client) is lazy-imported
 // inside the action so it stays code-split, like the local agent in ./proph3t.
@@ -72,13 +73,30 @@ if (hmr) {
 // participants externes (edge function cj-share) sans rechargement.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let realtimeChannel: any = null;
-type RealtimeKey = 'tasks' | 'comments' | 'subtasks' | 'activity' | 'notifications';
+// Étendu en juin 2026 : on subscribe à toutes les tables structurelles
+// (goals, folders, projects, sections) en plus des tâches/commentaires.
+// Sans ça, les changements faits via cj-mcp / Cowork / SQL direct
+// n'apparaissaient qu'au prochain reload — frustrant et confusing.
+type RealtimeKey =
+  | 'tasks'
+  | 'comments'
+  | 'subtasks'
+  | 'activity'
+  | 'notifications'
+  | 'goals'
+  | 'folders'
+  | 'projects'
+  | 'sections';
 const RT_TABLES: { table: string; key: RealtimeKey }[] = [
   { table: 'cj_tasks', key: 'tasks' },
   { table: 'cj_comments', key: 'comments' },
   { table: 'cj_subtasks', key: 'subtasks' },
   { table: 'cj_activity', key: 'activity' },
   { table: 'cj_notifications', key: 'notifications' },
+  { table: 'cj_goals', key: 'goals' },
+  { table: 'cj_folders', key: 'folders' },
+  { table: 'cj_projects', key: 'projects' },
+  { table: 'cj_sections', key: 'sections' },
 ];
 
 function teardownRealtime() {
@@ -389,6 +407,12 @@ export interface Report {
   goalsProgress?: ReportGoalEntry[];
   topRetards?: ReportRetard[];
   topAchievements?: string[];
+  /**
+   * Analytics scopées sur la période + comparaison période précédente.
+   * Optionnel — les rapports générés avant l'enrichissement de juin 2026
+   * n'en ont pas et la modale n'affiche pas l'onglet correspondant pour eux.
+   */
+  analytics?: PeriodAnalytics;
 }
 
 export interface ReportProjectBreakdown {
@@ -484,6 +508,13 @@ export interface Subtask {
   done: boolean;
   assigneeId?: string;
   position: number;
+  /**
+   * Goal auquel la sous-action contribue DIRECTEMENT. Optionnel : par défaut
+   * une sous-action contribue au goal de sa tâche parente (crédit partiel via
+   * `computeGoalProgress`). Renseigné uniquement quand elle est rattachée à un
+   * autre cap que celui de sa tâche.
+   */
+  goalId?: string;
 }
 
 interface State {
@@ -571,6 +602,14 @@ interface State {
   signOut: () => Promise<void>;
   /** Basculer vers un autre espace (recharge pour ré-hydrater proprement). */
   switchWorkspace: (ownerId: string) => void;
+  /**
+   * Forcer un re-fetch complet depuis Supabase, en ignorant le snapshot
+   * local. Utile quand des données ont été écrites en dehors de l'onglet
+   * (Claude Cowork via MCP, autre onglet, autre appareil) et que la
+   * subscription Realtime a manqué les events (PWA en arrière-plan,
+   * onglet inactif, réseau coupé puis revenu).
+   */
+  refreshSnapshot: () => Promise<void>;
 
   // toasts
   pushToast: (t: Omit<Toast, 'id'>) => void;
@@ -600,7 +639,7 @@ interface State {
   clearNotifications: () => void;
 
   // goals
-  createGoal: (g: Omit<Goal, 'id'>) => void;
+  createGoal: (g: Omit<Goal, 'id'>) => Goal;
   updateGoal: (id: string, patch: Partial<Goal>) => void;
   deleteGoal: (id: string) => void;
   bumpGoalValue: (id: string, delta: number) => void;
@@ -1549,6 +1588,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     // Reflète immédiatement d'éventuelles actions déjà liées (ex. depuis un
     // goal parent) sans attendre le prochain changement de tâche.
     if (goal.progressMode !== 'manual') get().recomputeGoalFromTasks(goal.id);
+    return goal;
   },
   updateGoal: (id, patch) => {
     set((s) => ({ goals: s.goals.map((g) => (g.id === id ? { ...g, ...patch } : g)) }));
@@ -2305,6 +2345,19 @@ const initialState = (set: SetFn, get: GetFn): State => ({
     const tasksDone = tasks.filter((t) => t.status === 'done').length;
     const automationsRun = automations.reduce((s, a) => s + a.runs, 0);
 
+    // Period-scoped analytics + previous-period comparison. Replaces the
+    // lifetime-wide counts + hardcoded deltas that were shown before
+    // (which made the "Tâches livrées · +12%" line meaningless — the
+    // number was lifetime, the delta was a placeholder).
+    const analytics = buildPeriodAnalytics(tasks, periodStart, periodEnd);
+    const cur = analytics.current;
+    const prev = analytics.previous;
+    const pctOrUndef = (c: number, p: number): number | undefined => {
+      if (p === 0) return undefined;
+      return Math.round(((c - p) / p) * 100);
+    };
+    const onTimePct = cur.completed > 0 ? Math.round((cur.completedOnTime / cur.completed) * 100) : null;
+
     const report: Report = {
       id: uid('r'),
       kind,
@@ -2315,25 +2368,64 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       generatedAt: new Date().toISOString(),
       authorId: get().currentProfileId || 'u_pame',
       highlights: [
-        `${tasksDone} tâches livrées sur la période (toutes périodes confondues)`,
+        `${cur.completed} tâches livrées sur la période` +
+          (prev.completed > 0
+            ? ` (${cur.completed >= prev.completed ? '+' : ''}${cur.completed - prev.completed} vs période précédente)`
+            : ''),
+        `${cur.created} tâches créées · ${cur.created - cur.completed} de plus à traiter`,
+        onTimePct !== null
+          ? `Respect des délais : ${onTimePct}% (${cur.completedOnTime}/${cur.completed} livrées dans les temps)`
+          : null,
+        cur.avgCycleHours !== null
+          ? `Cycle moyen : ${cur.avgCycleHours < 24 ? cur.avgCycleHours + ' h' : Math.round(cur.avgCycleHours / 24) + ' j'} entre création et livraison`
+          : null,
         `${goalsProgress.filter((g) => g.health === 'green').length} goals on-track sur ${goals.length}`,
-        `${automationsRun} exécutions d'automations enregistrées`,
         topAchievements[0] && `Faits marquants : ${topAchievements[0]}`,
       ].filter(Boolean) as string[],
       metrics: [
-        { label: 'Tâches actives', value: String(tasks.filter((t) => t.status !== 'done').length), delta: 8 },
-        { label: 'Tâches livrées', value: String(tasksDone), delta: 12 },
         {
-          label: 'Projets actifs',
-          value: String(projects.filter((p) => p.status === 'active').length),
-          delta: 0,
+          label: 'Tâches livrées',
+          value: String(cur.completed),
+          delta: pctOrUndef(cur.completed, prev.completed),
         },
-        { label: 'En retard', value: String(overdueTotal), delta: overdueTotal > 5 ? 18 : -3 },
-        { label: 'Automations', value: String(automationsRun), delta: 5 },
+        {
+          label: 'Tâches créées',
+          value: String(cur.created),
+          delta: pctOrUndef(cur.created, prev.created),
+        },
+        {
+          label: 'Respect des délais',
+          value: onTimePct !== null ? `${onTimePct}%` : '—',
+        },
+        {
+          label: 'En retard (période)',
+          value: String(cur.overdueInPeriod),
+          delta: pctOrUndef(cur.overdueInPeriod, prev.overdueInPeriod),
+        },
+        {
+          label: 'Cycle moyen',
+          value:
+            cur.avgCycleHours === null
+              ? '—'
+              : cur.avgCycleHours < 24
+                ? `${cur.avgCycleHours} h`
+                : `${Math.round(cur.avgCycleHours / 24)} j`,
+        },
+        {
+          label: 'Temps réel / estimé',
+          value:
+            cur.estimatedHours > 0 ? `${cur.actualHours}/${cur.estimatedHours} h` : `${cur.actualHours} h`,
+        },
         {
           label: 'Goals on-track',
           value: `${goalsProgress.filter((g) => g.health === 'green').length}/${goals.length}`,
         },
+        {
+          label: 'Tâches actives (total)',
+          value: String(tasks.filter((t) => t.status !== 'done').length),
+        },
+        { label: 'Lifetime livrées', value: String(tasksDone) },
+        { label: 'Automations', value: String(automationsRun) },
       ],
       blockers: attentionPoints
         .filter((a) => a.severity === 'critical')
@@ -2349,6 +2441,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       goalsProgress,
       topRetards,
       topAchievements,
+      analytics,
     };
     set((s) => ({ reports: [report, ...s.reports] }));
     dbPersist.put('reports', report);
@@ -3064,6 +3157,56 @@ Reste sous 400 mots, ton factuel et engagé.`,
     // profile, cache — all keyed by the new owner).
     writeActiveWsPref(authUserId, ownerId);
     window.location.reload();
+  },
+
+  refreshSnapshot: async () => {
+    const authUserId = getCurrentAuthUserId();
+    const profileId = get().currentProfileId;
+    if (!authUserId || !profileId) {
+      get().pushToast({ kind: 'error', title: 'Session non initialisée' });
+      return;
+    }
+    set({ revalidating: true });
+    try {
+      const snap = await loadSnapshot();
+      set({
+        users: snap.users,
+        folders: snap.folders,
+        projects: snap.projects,
+        sections: snap.sections,
+        tasks: snap.tasks,
+        goals: snap.goals,
+        comments: snap.comments,
+        notifications: snap.notifications,
+        insights: snap.insights,
+        automations: snap.automations,
+        forms: snap.forms,
+        reports: snap.reports,
+        attachments: snap.attachments,
+        dependencies: snap.dependencies,
+        activity: snap.activity,
+        subtasks: snap.subtasks,
+        notes: snap.notes,
+        budgetLines: snap.budgetLines,
+        expenses: snap.expenses,
+        settings: { ...get().settings, ...(snap.settings as Partial<State['settings']>) },
+        revalidating: false,
+        degraded: false,
+      });
+      writeSnapshotCache(authUserId, snap, profileId);
+      get().pushToast({
+        kind: 'success',
+        title: 'Données rafraîchies',
+        body: `${snap.tasks.length} tâches · ${snap.projects.length} projets`,
+      });
+    } catch (e) {
+      set({ revalidating: false });
+      get().pushToast({
+        kind: 'error',
+        title: 'Rafraîchissement échoué',
+        body: (e as Error).message,
+      });
+    }
   },
 
   signOut: async () => {

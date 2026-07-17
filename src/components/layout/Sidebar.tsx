@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   type DragEndEvent,
@@ -223,6 +223,32 @@ export function Sidebar({
   const isNavGroupOpen = (label: string) => openNavGroups[label] !== false;
   const toggleNavGroup = (label: string) =>
     setOpenNavGroups((s) => ({ ...s, [label]: s[label] === false ? true : false }));
+
+  // Anti-frustration : si une sphère est repliée et qu'un nouveau dossier
+  // y atterrit (via le modal de création), on force-ouvre la sphère pour
+  // que l'utilisateur VOIE son dossier au lieu de le croire perdu. Sans
+  // ça, on observe le pattern « je crée → je vois pas → je recrée → doublons ».
+  const folderCountsBySphere = useMemo(() => {
+    let perso = 0;
+    let pro = 0;
+    for (const f of folders) {
+      if ((f.sphere ?? 'personnel') === 'professionnel') pro++;
+      else perso++;
+    }
+    return { personnel: perso, professionnel: pro };
+  }, [folders]);
+  const prevCountsRef = useRef(folderCountsBySphere);
+  useEffect(() => {
+    const prev = prevCountsRef.current;
+    const cur = folderCountsBySphere;
+    const opened: Record<string, boolean> = {};
+    if (cur.personnel > prev.personnel) opened['sphere-personnel'] = true;
+    if (cur.professionnel > prev.professionnel) opened['sphere-professionnel'] = true;
+    if (Object.keys(opened).length > 0) {
+      setOpenNavGroups((s) => ({ ...s, ...opened }));
+    }
+    prevCountsRef.current = cur;
+  }, [folderCountsBySphere]);
 
   // Collapse-all / expand-all: a single affordance that flips every folder
   // at once. If any folder is currently open we collapse them all, otherwise

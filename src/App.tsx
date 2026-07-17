@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useState, type ComponentType } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Sparkles } from 'lucide-react';
 import { Sidebar } from './components/layout/Sidebar';
+import { NavRail } from './components/layout/NavRail';
 import { TopBar } from './components/layout/TopBar';
 import { CommandMenu } from './components/layout/CommandMenu';
 import { TodayView } from './components/views/TodayView';
@@ -351,6 +352,8 @@ function CockpitShell() {
               onClick={() => setMobileSidebarOpen(false)}
             />
           )}
+          {/* Rail d'icônes — toujours visible en desktop, accès 1-click aux vues. */}
+          <NavRail view={view} onNavigate={(v) => onNavigate(v)} />
           <div
             className={cn(
               'shrink-0 transition-transform z-50',
@@ -381,7 +384,7 @@ function CockpitShell() {
                 <Suspense fallback={<ViewSkeleton />}>
                   {view === 'today' && <TodayView onOpenTask={setOpenTask} onNavigate={onNavigate} />}
                   {view === 'inbox' && <InboxView onOpenTask={setOpenTask} />}
-                  {view === 'goals' && <GoalsView />}
+                  {view === 'goals' && <GoalsView onNavigate={onNavigate} />}
                   {view === 'dashboards' && <DashboardView />}
                   {view === 'focus' && <FocusView onExit={() => setView('today')} />}
                   {view === 'automations' && <AutomationsView />}
@@ -390,7 +393,11 @@ function CockpitShell() {
                   {view === 'projects' && <ProjectsView onNavigate={onNavigate} />}
                   {view === 'budget' && <BudgetOverview onNavigate={onNavigate} />}
                   {view === 'project' && project && (
-                    <ProjectView project={project} onOpenTask={setOpenTask} />
+                    <ProjectView
+                      project={project}
+                      onOpenTask={setOpenTask}
+                      onBack={() => onNavigate('projects')}
+                    />
                   )}
                 </Suspense>
               </ErrorBoundary>
