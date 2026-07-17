@@ -9,6 +9,7 @@ import {
   setActiveWorkspaceOwnerId,
 } from '../lib/repo';
 import { bootstrapUserData, buildOfflineSnapshot } from '../lib/seed';
+import { computeGoalProgress } from '../lib/goalProgress';
 import { supabase, SUPABASE_CONFIGURED } from '../lib/supabase';
 import {
   peekSupabaseSession,
@@ -507,6 +508,13 @@ export interface Subtask {
   done: boolean;
   assigneeId?: string;
   position: number;
+  /**
+   * Goal auquel la sous-action contribue DIRECTEMENT. Optionnel : par défaut
+   * une sous-action contribue au goal de sa tâche parente (crédit partiel via
+   * `computeGoalProgress`). Renseigné uniquement quand elle est rattachée à un
+   * autre cap que celui de sa tâche.
+   */
+  goalId?: string;
 }
 
 interface State {
@@ -636,11 +644,17 @@ interface State {
   deleteGoal: (id: string) => void;
   bumpGoalValue: (id: string, delta: number) => void;
   /**
-   * Recompute a goal's value from its contributing tasks. Only auto-pilots
-   * percentage / boolean goals — currency & number goals keep their manual
-   * value (execution ratio is surfaced separately in the UI).
+   * Recompute a goal's value from its contributing tasks + sub-actions
+   * (weighted partial credit). Auto-pilots every metric type unless the goal
+   * is in `progressMode: 'manual'`. Coalesced per goal via a microtask.
    */
   recomputeGoalFromTasks: (goalId: string) => void;
+  /**
+   * Réconcilie TOUS les goals auto en une passe — appelé après hydratation
+   * pour recaler les progressions modifiées ailleurs (MCP, autre client).
+   * Idempotent : n'écrit que les goals dont la valeur a réellement changé.
+   */
+  reconcileAutoGoals: () => void;
 
   // projects
   createProject: (p: Partial<Project> & { name: string; folderId?: string }) => Project;
@@ -1566,10 +1580,14 @@ const initialState = (set: SetFn, get: GetFn): State => ({
   },
 
   createGoal: (g) => {
-    const goal: Goal = { id: uid('g'), ...g };
+    // Auto-piloté par défaut : la progression suivra les actions liées.
+    const goal: Goal = { id: uid('g'), progressMode: 'auto', ...g };
     set((s) => ({ goals: [...s.goals, goal] }));
     dbPersist.put('goals', goal);
     get().pushToast({ kind: 'success', title: 'Goal créé', body: goal.title });
+    // Reflète immédiatement d'éventuelles actions déjà liées (ex. depuis un
+    // goal parent) sans attendre le prochain changement de tâche.
+    if (goal.progressMode !== 'manual') get().recomputeGoalFromTasks(goal.id);
     return goal;
   },
   updateGoal: (id, patch) => {
@@ -1616,27 +1634,26 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       _pendingGoalRecomputes.delete(goalId);
       const goal = get().goals.find((g) => g.id === goalId);
       if (!goal) return;
-      // Currency / number goals stay manual — the execution ratio is shown
-      // alongside the metric in the UI rather than overwriting it.
-      if (goal.metricType !== 'percentage' && goal.metricType !== 'boolean') return;
-      const contributing = get().tasks.filter((t) => t.goalId === goalId);
-      const total = contributing.length;
-      const done = contributing.filter((t) => t.status === 'done').length;
-      const currentValue =
-        goal.metricType === 'percentage'
-          ? total
-            ? Math.round((done / total) * 100)
-            : 0
-          : total > 0 && done === total
-            ? goal.targetValue
-            : 0;
-      const pct = (currentValue / Math.max(1, goal.targetValue)) * 100;
-      get().updateGoal(goalId, {
-        currentValue,
-        health: pct >= 60 ? 'green' : pct >= 35 ? 'yellow' : 'red',
-        status: pct >= 100 ? 'achieved' : pct >= 60 ? 'on_track' : pct >= 35 ? 'at_risk' : 'off_track',
-      });
+      // Mode manuel : l'utilisateur pilote `currentValue` à la main — on ne
+      // l'écrase jamais. `undefined` vaut 'auto' (données existantes).
+      if (goal.progressMode === 'manual') return;
+      // Progression pondérée par les sous-actions, pour TOUS les types de
+      // métriques (ratio d'exécution appliqué à la cible pour number/currency).
+      const { currentValue, health, status } = computeGoalProgress(goal, get().tasks, get().subtasks);
+      get().updateGoal(goalId, { currentValue, health, status });
     });
+  },
+  reconcileAutoGoals: () => {
+    const { goals, tasks, subtasks } = get();
+    for (const goal of goals) {
+      if (goal.progressMode === 'manual') continue;
+      const { currentValue, health, status } = computeGoalProgress(goal, tasks, subtasks);
+      // N'écrit (et ne persiste) que si quelque chose a bougé — évite un flot
+      // d'upserts inutiles à chaque chargement.
+      if (goal.currentValue !== currentValue || goal.health !== health || goal.status !== status) {
+        get().updateGoal(goal.id, { currentValue, health, status });
+      }
+    }
   },
 
   createProject: (p) => {
@@ -2909,6 +2926,9 @@ Reste sous 400 mots, ton factuel et engagé.`,
     const sub: Subtask = { id: uid('st'), taskId, title: title.trim(), done: false, position: list.length };
     set((s: any) => ({ subtasks: [...s.subtasks, sub] }));
     dbPersist.put('subtasks', sub);
+    // Ajouter une sous-action non faite dilue le crédit partiel de la tâche.
+    const parent = get().tasks.find((t) => t.id === taskId);
+    if (parent?.goalId) get().recomputeGoalFromTasks(parent.goalId);
   },
   toggleSubtask: (id) => {
     set((s: any) => ({
@@ -2916,10 +2936,16 @@ Reste sous 400 mots, ton factuel et engagé.`,
     }));
     const updated = get().subtasks.find((x) => x.id === id);
     if (updated) dbPersist.put('subtasks', updated);
+    // Cocher/décocher une sous-action fait progresser le goal de la tâche.
+    const parent = updated && get().tasks.find((t) => t.id === updated.taskId);
+    if (parent?.goalId) get().recomputeGoalFromTasks(parent.goalId);
   },
   removeSubtask: (id) => {
+    const removed = get().subtasks.find((x) => x.id === id);
     set((s: any) => ({ subtasks: s.subtasks.filter((x: Subtask) => x.id !== id) }));
     dbPersist.delete('subtasks', id);
+    const parent = removed && get().tasks.find((t) => t.id === removed.taskId);
+    if (parent?.goalId) get().recomputeGoalFromTasks(parent.goalId);
   },
   reorderSubtasks: (taskId, ids) => {
     set((s: any) => {

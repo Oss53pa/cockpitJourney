@@ -230,6 +230,13 @@ function CockpitShell() {
     }
   }, [ready, projects, activeProjectId]);
 
+  // Recale les goals auto une fois les données hydratées : les progressions
+  // modifiées ailleurs (actions complétées via MCP / autre appareil) se
+  // reflètent dès l'ouverture, sans attendre un nouveau changement local.
+  useEffect(() => {
+    if (ready) useApp.getState().reconcileAutoGoals();
+  }, [ready]);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

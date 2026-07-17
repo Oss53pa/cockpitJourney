@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useApp, useCurrentUser } from '../../stores/appStore';
 import { Modal } from '../ui/Modal';
-import { FieldLabel, NativeSelect, TextInput, Textarea } from '../ui/Field';
+import { FieldLabel, NativeSelect, Switch, TextInput, Textarea } from '../ui/Field';
 import { Search, Link2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { Goal } from '../../types';
@@ -18,6 +18,7 @@ export function GoalFormModal({ initial, onClose }: Props) {
   const allProjects = useApp((s) => s.projects);
   const create = useApp((s) => s.createGoal);
   const update = useApp((s) => s.updateGoal);
+  const recompute = useApp((s) => s.recomputeGoalFromTasks);
   const updateTask = useApp((s) => s.updateTask);
   const me = useCurrentUser();
 
@@ -28,6 +29,8 @@ export function GoalFormModal({ initial, onClose }: Props) {
   const [ownerId, setOwnerId] = useState(initial?.ownerId ?? me?.id ?? '');
   const [period, setPeriod] = useState<Goal['period']>(initial?.period ?? 'quarterly');
   const [metricType, setMetricType] = useState<Goal['metricType']>(initial?.metricType ?? 'percentage');
+  // Auto = piloté par les actions liées (défaut). Manuel = saisie libre.
+  const [autoProgress, setAutoProgress] = useState<boolean>((initial?.progressMode ?? 'auto') !== 'manual');
   const [unit, setUnit] = useState(initial?.unit ?? '%');
   const [targetValue, setTargetValue] = useState<number>(initial?.targetValue ?? 100);
   const [currentValue, setCurrentValue] = useState<number>(initial?.currentValue ?? 0);
@@ -96,8 +99,11 @@ export function GoalFormModal({ initial, onClose }: Props) {
       ownerId,
       period,
       metricType,
+      progressMode: autoProgress ? 'auto' : 'manual',
       unit,
       targetValue,
+      // En auto, `currentValue` sera recalculé depuis les actions — la valeur
+      // saisie n'est conservée que comme point de départ en mode manuel.
       currentValue,
       startDate: new Date(startDate).toISOString(),
       endDate: new Date(endDate).toISOString(),
@@ -121,6 +127,9 @@ export function GoalFormModal({ initial, onClose }: Props) {
     for (const tid of initialLinkedIds) {
       if (!linkedIds.has(tid)) updateTask(tid, { goalId: undefined });
     }
+    // Recale aussi quand aucune liaison n'a changé (ex. bascule manuel → auto,
+    // ou changement de cible) — sinon la valeur resterait celle d'avant.
+    if (autoProgress) recompute(goalId);
     onClose();
   };
 
@@ -227,10 +236,13 @@ export function GoalFormModal({ initial, onClose }: Props) {
             />
           </div>
           <div>
-            <FieldLabel>Valeur actuelle</FieldLabel>
+            <FieldLabel hint={autoProgress ? 'calculée depuis les actions' : undefined}>
+              Valeur actuelle
+            </FieldLabel>
             <TextInput
               type="number"
               value={currentValue}
+              disabled={autoProgress}
               onChange={(e) => setCurrentValue(Number(e.target.value))}
             />
           </div>
@@ -242,6 +254,17 @@ export function GoalFormModal({ initial, onClose }: Props) {
             <FieldLabel>Fin</FieldLabel>
             <TextInput type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </div>
+        </div>
+        <div className="flex items-center justify-between panel p-3">
+          <div className="pr-3">
+            <div className="text-sm text-atlas-fg-1">Progression automatique</div>
+            <div className="text-2xs text-atlas-fg-3 mt-0.5">
+              {autoProgress
+                ? 'Calculée depuis les actions liées et leurs sous-actions (crédit partiel). La valeur actuelle est verrouillée.'
+                : 'Vous saisissez la valeur à la main — elle ne sera jamais écrasée par les actions.'}
+            </div>
+          </div>
+          <Switch checked={autoProgress} onChange={setAutoProgress} />
         </div>
 
         {/* Liaison tâches ↔ goal */}
