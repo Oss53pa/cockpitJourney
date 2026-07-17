@@ -37,6 +37,8 @@ import {
   Rocket,
   GraduationCap,
   FolderPlus,
+  FolderInput,
+  AlertTriangle,
   Compass,
   FileText,
   Wallet,
@@ -142,6 +144,16 @@ export function Sidebar({
     }
     return { personnel: perso, professionnel: pro };
   }, [sortedFolders]);
+
+  // Projets dont le dossier n'existe pas (ou plus) : `folderId` vide, ou
+  // pointant vers un dossier supprimé / issu d'un autre espace. L'arbre étant
+  // rendu dossier par dossier, ils seraient INVISIBLES — donc introuvables
+  // alors qu'ils existent bien. On les regroupe dans un bac « Non classés »
+  // pour qu'aucun projet ne puisse disparaître de la navigation.
+  const orphanProjects = useMemo(() => {
+    const known = new Set(folders.map((f) => f.id));
+    return projects.filter((p) => !p.folderId || !known.has(p.folderId));
+  }, [projects, folders]);
 
   // dnd-kit setup — 5px activation threshold so a normal click (open
   // folder, navigate to project) isn't accidentally interpreted as a
@@ -492,9 +504,12 @@ export function Sidebar({
               const sphereFolders = foldersBySphere[sphereKey];
               const sphereOpen = isNavGroupOpen('sphere-' + sphereKey);
               return (
-                <div key={sphereKey} className="mb-3">
+                // Respiration entre sphères : ce sont les deux grandes
+                // partitions de la nav, elles méritent d'être distinguées au
+                // premier coup d'œil plutôt que collées l'une à l'autre.
+                <div key={sphereKey} className="mb-6">
                   {/* Sphere header — repliable (Personnel / Professionnel) */}
-                  <div className="flex items-center justify-between px-3 mb-1.5">
+                  <div className="flex items-center justify-between px-3 mb-2">
                     <button
                       onClick={() => toggleNavGroup('sphere-' + sphereKey)}
                       className="group/sph flex items-center gap-1 flex-1 text-left text-[10px] uppercase tracking-[0.22em] font-semibold text-atlas-amber-deep hover:opacity-80 transition-opacity"
@@ -520,7 +535,9 @@ export function Sidebar({
                       Aucun dossier — cliquez sur + pour en ajouter
                     </div>
                   ) : (
-                    <div className="space-y-0.5">
+                    // Dossiers espacés : chaque dossier est un bloc autonome
+                    // (en-tête + ses projets), pas une ligne d'une liste dense.
+                    <div className="space-y-1.5">
                       {sphereFolders.map((folder) => {
                         const FolderIcon = folderIcons[folder.icon] || Building2;
                         const isOpen = isFolderOpen(folder.id);
@@ -694,6 +711,64 @@ export function Sidebar({
               );
             })}
           </SortableContext>
+
+          {/* Filet de sécurité : aucun projet ne doit disparaître de la nav
+              parce que son dossier a été supprimé ou vient d'un autre espace. */}
+          {orphanProjects.length > 0 && (
+            <div className="mt-4 mb-3">
+              <div className="flex items-center gap-1.5 px-3 mb-1.5">
+                <AlertTriangle className="w-3 h-3 text-signal-yellow shrink-0" />
+                <span className="text-[10px] uppercase tracking-[0.22em] font-semibold text-signal-yellow">
+                  Non classés
+                </span>
+                <span className="chip text-[9px] px-1.5 py-0 bg-signal-yellow/15 text-signal-yellow">
+                  {orphanProjects.length}
+                </span>
+              </div>
+              <p className="px-3 mb-2 text-[10px] leading-snug text-atlas-fg-3">
+                Dossier introuvable — rangez-les pour les retrouver dans l'arbre.
+              </p>
+              <div className="space-y-0.5">
+                {orphanProjects.map((p) => {
+                  const Icon = projectIcons[p.icon] || Compass;
+                  const active = activeProjectId === p.id;
+                  return (
+                    <div
+                      key={p.id}
+                      className={cn(
+                        'group flex items-center rounded-lg text-sm transition-colors',
+                        active
+                          ? 'bg-black/[0.06] text-atlas-fg-1'
+                          : 'text-atlas-fg-2 hover:text-atlas-fg-1 hover:bg-black/[0.03]'
+                      )}
+                    >
+                      <button
+                        onClick={() => onNavigate('project', p.id)}
+                        className="flex-1 flex items-center gap-2.5 px-3 py-1.5 min-w-0"
+                      >
+                        <span
+                          className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
+                          style={{ background: `${p.color}22`, color: p.color }}
+                        >
+                          <Icon className="w-3 h-3" strokeWidth={2.2} />
+                        </span>
+                        <span className="flex-1 text-left truncate">{p.name}</span>
+                        <HealthDot health={p.health} />
+                      </button>
+                      <button
+                        onClick={() => openModal('project-edit', p)}
+                        title="Classer dans un dossier"
+                        className="w-6 h-6 rounded-md flex items-center justify-center text-atlas-fg-3 opacity-0 group-hover:opacity-100 hover:bg-black/[0.06] hover:text-atlas-fg-1 shrink-0 mr-1"
+                      >
+                        <FolderInput className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <DragOverlay>
             {draggingFolderId && (
               <div className="px-3 py-1.5 rounded-lg bg-white border border-atlas-line shadow-soft-pop text-2xs uppercase tracking-[0.12em] font-semibold text-atlas-fg-1">
