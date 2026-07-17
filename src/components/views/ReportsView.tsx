@@ -33,6 +33,7 @@ import { useApp, type Report, type ReportKind, type AttentionPoint } from '../..
 import type { Task } from '../../types';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../ui/Menu';
 import { Modal } from '../ui/Modal';
+import { GoalPerformancePanel } from './GoalPerformancePanel';
 import { cn, relativeTime } from '../../lib/utils';
 import { ReportExportDialog } from '../reports/ReportExportDialog';
 
@@ -181,6 +182,10 @@ export function ReportsView() {
           </Menu>
         </div>
       </div>
+
+      {/* Rapport vivant : recalculé depuis les actions, contrairement aux
+          rapports archivés ci-dessous qui sont des snapshots figés. */}
+      <GoalPerformancePanel />
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-7">
         {(Object.keys(kindLabels) as ReportKind[]).map((k) => {
