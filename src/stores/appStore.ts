@@ -1599,11 +1599,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       if (goal.progressMode === 'manual') return;
       // Progression pondérée par les sous-actions, pour TOUS les types de
       // métriques (ratio d'exécution appliqué à la cible pour number/currency).
-      const { currentValue, health, status } = computeGoalProgress(
-        goal,
-        get().tasks,
-        get().subtasks
-      );
+      const { currentValue, health, status } = computeGoalProgress(goal, get().tasks, get().subtasks);
       get().updateGoal(goalId, { currentValue, health, status });
     });
   },

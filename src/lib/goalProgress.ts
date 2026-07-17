@@ -27,10 +27,7 @@ export interface GoalProgressSubtask {
  * - sinon avec sous-actions → fraction des sous-actions cochées.
  * - sinon → 0.
  */
-export function taskWeight(
-  task: Pick<Task, 'id' | 'status'>,
-  subtasks: GoalProgressSubtask[]
-): number {
+export function taskWeight(task: Pick<Task, 'id' | 'status'>, subtasks: GoalProgressSubtask[]): number {
   if (task.status === 'done') return 1;
   const own = subtasks.filter((s) => s.taskId === task.id);
   if (own.length === 0) return 0;

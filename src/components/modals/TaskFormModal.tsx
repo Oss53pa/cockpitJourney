@@ -744,14 +744,15 @@ export function TaskFormModal({ mode, initial, onClose }: Props) {
               <div className="surface p-3 flex items-start gap-3">
                 <Target className="w-4 h-4 text-atlas-amber-deep mt-0.5 shrink-0" />
                 <div className="text-2xs text-atlas-fg-2">
-                  L'objectif rattaché se choisit dans l'onglet <strong>Essentiel</strong> (champ
-                  obligatoire){' '}
+                  L'objectif rattaché se choisit dans l'onglet <strong>Essentiel</strong> (champ obligatoire){' '}
                   {goalId ? (
                     <>
                       — actuellement : <strong>{goals.find((g) => g.id === goalId)?.title}</strong>.
                     </>
                   ) : (
-                    <>— <span className="text-signal-red">aucun pour l'instant</span>.</>
+                    <>
+                      — <span className="text-signal-red">aucun pour l'instant</span>.
+                    </>
                   )}
                 </div>
               </div>

@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { computeGoalProgress, taskWeight } from './goalProgress';
 import type { Goal, Task } from '../types';
 
-const task = (id: string, status: Task['status'], goalId?: string): Pick<Task, 'id' | 'status' | 'goalId'> => ({
+const task = (
+  id: string,
+  status: Task['status'],
+  goalId?: string
+): Pick<Task, 'id' | 'status' | 'goalId'> => ({
   id,
   status,
   goalId,

@@ -248,10 +248,7 @@ function OrphanActionsPanel() {
 
   return (
     <div className="mb-7 rounded-2xl border border-signal-yellow/30 bg-signal-yellow/[0.05] overflow-hidden">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-3 px-4 py-3"
-      >
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-3 px-4 py-3">
         <AlertTriangle className="w-4 h-4 text-signal-yellow shrink-0" />
         <div className="flex-1 text-left">
           <div className="text-sm font-medium text-atlas-fg-1">
