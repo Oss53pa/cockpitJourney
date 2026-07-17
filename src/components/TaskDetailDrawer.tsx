@@ -533,9 +533,9 @@ function DetailsTab({ task }: { task: Task }) {
             <Menu
               trigger={
                 <button>
-                  {task.assignees.length > 0 ? (
+                  {(task.assignees ?? []).length > 0 ? (
                     <AvatarGroup
-                      users={task.assignees
+                      users={(task.assignees ?? [])
                         .map((id) => users.find((u) => u.id === id))
                         .filter((u): u is NonNullable<typeof u> => Boolean(u))}
                       max={3}
@@ -558,7 +558,9 @@ function DetailsTab({ task }: { task: Task }) {
                       }}
                     >
                       {u.name}
-                      {task.assignees.includes(u.id) && <span className="text-atlas-amber ml-2">✓</span>}
+                      {(task.assignees ?? []).includes(u.id) && (
+                        <span className="text-atlas-amber ml-2">✓</span>
+                      )}
                     </MenuItem>
                   ))}
                 </>

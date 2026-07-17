@@ -133,7 +133,7 @@ export function ProjectView({ project, onOpenTask, onBack }: Props) {
   const tasks = useMemo(() => {
     let list = allTasks.filter((t) => t.projectId === project.id);
     if (filterPriority !== 'all') list = list.filter((t) => t.priority === filterPriority);
-    if (filterAssignee !== 'all') list = list.filter((t) => t.assignees.includes(filterAssignee));
+    if (filterAssignee !== 'all') list = list.filter((t) => (t.assignees ?? []).includes(filterAssignee));
     list = [...list].sort((a, b) => {
       switch (sort) {
         case 'due':
@@ -771,7 +771,7 @@ function KanbanCard({
   const toggleDone = useApp((s) => s.toggleTaskDone);
   const openModal = useApp((s) => s.openModal);
   const deleteTask = useApp((s) => s.deleteTask);
-  const assignees = task.assignees
+  const assignees = (task.assignees ?? [])
     .map((id) => users.find((u) => u.id === id))
     .filter((u): u is NonNullable<typeof u> => Boolean(u));
   const subtasksDone = subtasks.filter((s) => s.done).length;
@@ -1058,7 +1058,7 @@ function ListRow({
       <StatusBadge status={t.status} size="xs" />
       <ProgressBar value={subPct} showLabel />
       <AvatarGroup
-        users={t.assignees
+        users={(t.assignees ?? [])
           .map((id) => users.find((u) => u.id === id))
           .filter((u): u is NonNullable<typeof u> => Boolean(u))}
         size="xs"
@@ -1333,7 +1333,7 @@ function TableBoard({ tasks, onOpenTask }: { tasks: Task[]; onOpenTask: (t: Task
             </span>
             <PriorityBadge priority={t.priority} />
             <AvatarGroup
-              users={t.assignees
+              users={(t.assignees ?? [])
                 .map((id) => users.find((u) => u.id === id))
                 .filter((u): u is NonNullable<typeof u> => Boolean(u))}
               size="xs"

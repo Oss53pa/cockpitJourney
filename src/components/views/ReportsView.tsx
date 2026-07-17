@@ -36,7 +36,9 @@ import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../ui/Menu';
 import { Modal } from '../ui/Modal';
 import { GoalPerformancePanel } from './GoalPerformancePanel';
 import { DuplicateActionsPanel } from './DuplicateActionsPanel';
+import { DuplicateProjectsPanel } from './DuplicateProjectsPanel';
 import { findDuplicateTasks } from '../../lib/duplicates';
+import { findDuplicateProjects } from '../../lib/duplicateProjects';
 
 /** Onglets de la vue Rapports — le vivant et le nettoyage avant l'historique. */
 const VIEW_TABS = [
@@ -51,6 +53,7 @@ const kindLabels: Record<ReportKind, string> = {
   weekly: 'Hebdomadaire',
   monthly: 'Mensuel',
   quarterly: 'Trimestriel',
+  semestrial: 'Semestriel',
   annual: 'Annuel',
 };
 
@@ -83,6 +86,7 @@ const kindColors: Record<ReportKind, string> = {
   weekly: 'border-atlas-amber/30 bg-atlas-amber/10 text-atlas-amber-deep',
   monthly: 'border-signal-blue/30 bg-signal-blue/10 text-signal-blue',
   quarterly: 'border-signal-violet/30 bg-signal-violet/10 text-signal-violet',
+  semestrial: 'border-signal-pink/30 bg-signal-pink/10 text-signal-pink',
   annual: 'border-signal-green/30 bg-signal-green/10 text-signal-green',
 };
 const sevConfig: Record<AttentionPoint['severity'], { cls: string; icon: any; label: string }> = {
@@ -118,9 +122,12 @@ export function ReportsView() {
   // Compteur de doublons pour le badge d'onglet — recalculé en direct.
   const allTasks = useApp((s) => s.tasks);
   const allSubtasks = useApp((s) => s.subtasks);
+  const allProjects = useApp((s) => s.projects);
   const dupExcess = useMemo(
-    () => findDuplicateTasks(allTasks, allSubtasks).reduce((s, g) => s + g.remove.length, 0),
-    [allTasks, allSubtasks]
+    () =>
+      findDuplicateTasks(allTasks, allSubtasks).reduce((s, g) => s + g.remove.length, 0) +
+      findDuplicateProjects(allProjects, allTasks).reduce((s, g) => s + g.remove.length, 0),
+    [allTasks, allSubtasks, allProjects]
   );
 
   const filtered = useMemo(() => {
@@ -239,11 +246,16 @@ export function ReportsView() {
       </nav>
 
       {view === 'live' && <GoalPerformancePanel />}
-      {view === 'dups' && <DuplicateActionsPanel />}
+      {view === 'dups' && (
+        <div className="space-y-8">
+          <DuplicateProjectsPanel />
+          <DuplicateActionsPanel />
+        </div>
+      )}
 
       {view === 'archive' && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-7">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-7">
             {(Object.keys(kindLabels) as ReportKind[]).map((k) => {
               const count = reports.filter((r) => r.kind === k).length;
               return (

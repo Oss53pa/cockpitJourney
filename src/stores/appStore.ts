@@ -383,7 +383,7 @@ export interface IntakeForm {
   publicUrl: string;
 }
 
-export type ReportKind = 'weekly' | 'monthly' | 'quarterly' | 'annual';
+export type ReportKind = 'weekly' | 'monthly' | 'quarterly' | 'semestrial' | 'annual';
 export interface Report {
   id: string;
   kind: ReportKind;
@@ -2129,6 +2129,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       weekly: 'Rapport hebdomadaire',
       monthly: 'Bilan mensuel',
       quarterly: 'Bilan trimestriel',
+      semestrial: 'Bilan semestriel',
       annual: 'Bilan annuel',
     };
 
@@ -2155,6 +2156,10 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       const q = Math.floor(today.getMonth() / 3);
       periodStart = new Date(today.getFullYear(), q * 3, 1);
       periodEnd = new Date(today.getFullYear(), q * 3 + 3, 0, 23, 59, 59, 999);
+    } else if (kind === 'semestrial') {
+      const h = today.getMonth() < 6 ? 0 : 1;
+      periodStart = new Date(today.getFullYear(), h * 6, 1);
+      periodEnd = new Date(today.getFullYear(), h * 6 + 6, 0, 23, 59, 59, 999);
     } else {
       periodStart = new Date(today.getFullYear(), 0, 1);
       periodEnd = new Date(today.getFullYear(), 11, 31, 23, 59, 59, 999);
@@ -2166,7 +2171,9 @@ const initialState = (set: SetFn, get: GetFn): State => ({
           ? today.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
           : kind === 'quarterly'
             ? `T${Math.floor(today.getMonth() / 3) + 1} ${today.getFullYear()}`
-            : `${today.getFullYear()}`;
+            : kind === 'semestrial'
+              ? `S${today.getMonth() < 6 ? 1 : 2} ${today.getFullYear()}`
+              : `${today.getFullYear()}`;
     const tasks = get().tasks;
     const projects = get().projects;
     const users = get().users;
@@ -2280,7 +2287,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
 
     // Workload
     const workload: ReportWorkloadEntry[] = users.slice(0, 7).map((u) => {
-      const open = tasks.filter((t) => t.assignees.includes(u.id) && t.status !== 'done');
+      const open = tasks.filter((t) => (t.assignees ?? []).includes(u.id) && t.status !== 'done');
       const planned = Math.round(open.reduce((sum, t) => sum + (t.estimatedMinutes || 60), 0) / 60);
       const capacity = get().settings.weeklyCapacityHours;
       const status: ReportWorkloadEntry['status'] =
@@ -2323,7 +2330,7 @@ const initialState = (set: SetFn, get: GetFn): State => ({
       .filter((t) => t.dueDate && new Date(t.dueDate).getTime() < now && t.status !== 'done')
       .map((t) => {
         const project = projects.find((p) => p.id === t.projectId);
-        const owner = users.find((u) => t.assignees.includes(u.id));
+        const owner = users.find((u) => (t.assignees ?? []).includes(u.id));
         return {
           taskId: t.id,
           title: t.title,

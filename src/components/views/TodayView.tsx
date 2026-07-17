@@ -706,7 +706,7 @@ function PriorityRow({ task, onClick }: { task: Task; onClick: () => void }) {
   const users = useApp((s) => s.users);
   const toggleDone = useApp((s) => s.toggleTaskDone);
   const project = projects.find((p) => p.id === task.projectId);
-  const assignees = task.assignees
+  const assignees = (task.assignees ?? [])
     .map((id) => users.find((u) => u.id === id))
     .filter((u): u is NonNullable<typeof u> => Boolean(u));
   const SourceIcon = task.source ? sourceIcons[task.source] : null;

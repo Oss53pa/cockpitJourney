@@ -385,7 +385,7 @@ export function Sidebar({
   };
 
   return (
-    <aside className="w-[280px] sm:w-[260px] shrink-0 h-full flex flex-col bg-atlas-ink/80 backdrop-blur-2xl border-r border-black/[0.05]">
+    <aside className="w-[300px] sm:w-[280px] shrink-0 h-full flex flex-col bg-atlas-ink/80 backdrop-blur-2xl border-r border-black/[0.05]">
       {/* Mobile-only close button at top-right */}
       {onCloseMobile && (
         <button
@@ -428,7 +428,7 @@ export function Sidebar({
       <nav className="px-3 mt-2 space-y-2.5">{topNavGroups.map(renderNavGroup)}</nav>
 
       <div className="mt-6 px-3 flex-1 min-h-0 overflow-y-auto">
-        <div className="flex items-center justify-between px-3 py-1.5 mb-1 sticky top-0 z-20 bg-atlas-ink/90 backdrop-blur-md">
+        <div className="flex items-center justify-between px-3 py-2 mb-1 sticky top-0 z-20 bg-atlas-ink/90 backdrop-blur-md">
           <span className="text-2xs uppercase tracking-[0.18em] font-medium text-atlas-fg-3">Projets</span>
           <div className="flex items-center gap-0.5">
             {folders.length > 0 && (
@@ -507,7 +507,7 @@ export function Sidebar({
                 // Respiration entre sphères : ce sont les deux grandes
                 // partitions de la nav, elles méritent d'être distinguées au
                 // premier coup d'œil plutôt que collées l'une à l'autre.
-                <div key={sphereKey} className="mb-6">
+                <div key={sphereKey} className="mb-7">
                   {/* Sphere header — repliable (Personnel / Professionnel) */}
                   <div className="flex items-center justify-between px-3 mb-2">
                     <button
@@ -537,7 +537,7 @@ export function Sidebar({
                   ) : (
                     // Dossiers espacés : chaque dossier est un bloc autonome
                     // (en-tête + ses projets), pas une ligne d'une liste dense.
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {sphereFolders.map((folder) => {
                         const FolderIcon = folderIcons[folder.icon] || Building2;
                         const isOpen = isFolderOpen(folder.id);
@@ -558,7 +558,7 @@ export function Sidebar({
                                       onClick={() =>
                                         setOpenFolders((s) => ({ ...s, [folder.id]: !s[folder.id] }))
                                       }
-                                      className="flex-1 flex items-center gap-2 px-2 py-1.5 rounded-lg text-atlas-fg-1 hover:text-atlas-fg-1"
+                                      className="flex-1 flex items-center gap-2 px-2.5 py-2 rounded-lg text-atlas-fg-1 hover:text-atlas-fg-1"
                                     >
                                       <ChevronRight
                                         className={cn(
@@ -567,7 +567,7 @@ export function Sidebar({
                                         )}
                                       />
                                       <span
-                                        className="w-5 h-5 rounded-md grid place-items-center shrink-0"
+                                        className="w-6 h-6 rounded-md grid place-items-center shrink-0"
                                         style={{
                                           background: `${folder.color}1f`,
                                           color: folder.color,
@@ -621,7 +621,7 @@ export function Sidebar({
                                     </Menu>
                                   </div>
                                   {isOpen && (
-                                    <div className="pl-2 space-y-0.5 mt-0.5 mb-1">
+                                    <div className="pl-2 space-y-1 mt-0.5 mb-1">
                                       {folderProjects.map((p) => {
                                         const Icon = projectIcons[p.icon] || Compass;
                                         const active = view === 'project' && activeProjectId === p.id;
@@ -637,10 +637,10 @@ export function Sidebar({
                                           >
                                             <button
                                               onClick={() => onNavigate('project', p.id)}
-                                              className="flex-1 flex items-center gap-2.5 px-3 py-1.5 min-w-0"
+                                              className="flex-1 flex items-center gap-2.5 px-3 py-2 min-w-0"
                                             >
                                               <span
-                                                className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
+                                                className="w-6 h-6 rounded-md flex items-center justify-center shrink-0"
                                                 style={{ background: `${p.color}22`, color: p.color }}
                                               >
                                                 <Icon className="w-3 h-3" strokeWidth={2.2} />
@@ -728,7 +728,7 @@ export function Sidebar({
               <p className="px-3 mb-2 text-[10px] leading-snug text-atlas-fg-3">
                 Dossier introuvable — rangez-les pour les retrouver dans l'arbre.
               </p>
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 {orphanProjects.map((p) => {
                   const Icon = projectIcons[p.icon] || Compass;
                   const active = activeProjectId === p.id;
@@ -744,10 +744,10 @@ export function Sidebar({
                     >
                       <button
                         onClick={() => onNavigate('project', p.id)}
-                        className="flex-1 flex items-center gap-2.5 px-3 py-1.5 min-w-0"
+                        className="flex-1 flex items-center gap-2.5 px-3 py-2 min-w-0"
                       >
                         <span
-                          className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
+                          className="w-6 h-6 rounded-md flex items-center justify-center shrink-0"
                           style={{ background: `${p.color}22`, color: p.color }}
                         >
                           <Icon className="w-3 h-3" strokeWidth={2.2} />

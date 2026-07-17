@@ -198,6 +198,8 @@ function kindEyebrowText(kind: string): string {
       return 'BILAN MENSUEL';
     case 'quarterly':
       return 'BILAN TRIMESTRIEL';
+    case 'semestrial':
+      return 'BILAN SEMESTRIEL';
     case 'annual':
       return 'BILAN ANNUEL';
     default:
