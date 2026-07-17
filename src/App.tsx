@@ -405,7 +405,7 @@ function CockpitShell() {
           </main>
 
           <CommandMenu open={cmdOpen} onClose={() => setCmdOpen(false)} onNavigate={onNavigate} />
-          <TaskDetailDrawer task={openTask} onClose={() => setOpenTask(null)} />
+          <TaskDetailDrawer task={openTask} onClose={() => setOpenTask(null)} onNavigate={onNavigate} />
           <ModalRoot />
           {showOnboarding && <OnboardingModal />}
           <Toaster />

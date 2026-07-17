@@ -38,9 +38,10 @@ import {
   Loader2,
   Share2,
   CalendarClock,
+  Columns3,
 } from 'lucide-react';
 import { RetroPlanPanel } from './retro/RetroPlanPanel';
-import type { Task, Priority } from '../types';
+import type { Task, Priority, ViewKey } from '../types';
 import { useApp, useCurrentUser, type Attachment } from '../stores/appStore';
 import { Avatar, AvatarGroup } from './ui/Avatar';
 import { PriorityBadge } from './ui/PriorityBadge';
@@ -52,11 +53,13 @@ import { uploadTaskFile, signedAttachmentUrl, removeAttachmentFile } from '../li
 interface Props {
   task: Task | null;
   onClose: () => void;
+  /** Optional: absent when the drawer is opened from a context with no router (rare). */
+  onNavigate?: (view: ViewKey, projectId?: string) => void;
 }
 
 type TabKey = 'details' | 'notes' | 'subtasks' | 'retroplan' | 'files' | 'discussion' | 'activity' | 'links';
 
-export function TaskDetailDrawer({ task: liveTaskRef, onClose }: Props) {
+export function TaskDetailDrawer({ task: liveTaskRef, onClose, onNavigate }: Props) {
   // ALL hooks at the top — no early return before hooks (rules of hooks)
   const taskFromStore = useApp((s) => s.tasks.find((t) => t.id === liveTaskRef?.id));
   const projects = useApp((s) => s.projects);
@@ -357,7 +360,7 @@ export function TaskDetailDrawer({ task: liveTaskRef, onClose }: Props) {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
-          {tab === 'details' && <DetailsTab task={task} />}
+          {tab === 'details' && <DetailsTab task={task} onNavigate={onNavigate} onClose={onClose} />}
           {tab === 'notes' && <NotesTab task={task} />}
           {tab === 'subtasks' && <SubtasksTab task={task} />}
           {tab === 'retroplan' && (
@@ -417,7 +420,15 @@ export function TaskDetailDrawer({ task: liveTaskRef, onClose }: Props) {
 }
 
 /* ───────────────────────── Details Tab ───────────────────────── */
-function DetailsTab({ task }: { task: Task }) {
+function DetailsTab({
+  task,
+  onNavigate,
+  onClose,
+}: {
+  task: Task;
+  onNavigate?: (view: ViewKey, projectId?: string) => void;
+  onClose: () => void;
+}) {
   const projects = useApp((s) => s.projects);
   const sections = useApp((s) => s.sections);
   const users = useApp((s) => s.users);
@@ -475,8 +486,35 @@ function DetailsTab({ task }: { task: Task }) {
           <Field icon={ListChecks} label="Statut">
             <Menu
               trigger={
-                <button className="chip border bg-atlas-amber/15 text-atlas-amber-deep border-atlas-amber/30 cursor-pointer">
-                  ● {task.status.replace('_', ' ')}
+                <button className="cursor-pointer">
+                  <StatusBadge status={task.status} size="xs" />
+                </button>
+              }
+              width={180}
+            >
+              {(close) => (
+                <>
+                  {(['todo', 'in_progress', 'in_review', 'done', 'blocked'] as const).map((st) => (
+                    <MenuItem
+                      key={st}
+                      onClick={() => {
+                        close();
+                        updateTask(task.id, { status: st });
+                      }}
+                    >
+                      <StatusBadge status={st} size="xs" />
+                      {task.status === st && <span className="text-atlas-amber ml-2">✓</span>}
+                    </MenuItem>
+                  ))}
+                </>
+              )}
+            </Menu>
+          </Field>
+          <Field icon={Columns3} label="Section">
+            <Menu
+              trigger={
+                <button className="chip border bg-black/[0.04] text-atlas-fg-2 border-atlas-line cursor-pointer">
+                  {projectSections.find((sec) => sec.id === task.sectionId)?.name ?? '—'}
                 </button>
               }
               width={200}
@@ -709,7 +747,13 @@ function DetailsTab({ task }: { task: Task }) {
                 {project.taskCount} tâches · {project.progress}% complété
               </div>
             </div>
-            <button className="btn-ghost text-2xs px-2 py-1">
+            <button
+              onClick={() => {
+                onNavigate?.('project', project.id);
+                onClose();
+              }}
+              className="btn-ghost text-2xs px-2 py-1"
+            >
               <ArrowUpRight className="w-3 h-3" /> Ouvrir
             </button>
           </div>
